@@ -4,7 +4,7 @@ import React from 'react';
 import { useWealth } from '@/context/WealthContext';
 
 export const Header: React.FC = () => {
-  const { view, currency, setCurrency, openAddModal } = useWealth();
+  const { view, openAddModal } = useWealth();
 
   const viewTitles: Record<string, string> = {
     dashboard: 'Dashboard',
@@ -47,52 +47,6 @@ export const Header: React.FC = () => {
         >
           {viewSubtitles[view]}
         </div>
-      </div>
-
-      {/* Currency Switcher */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '3px',
-          border: '1px solid var(--color-divider)',
-          borderRadius: 'var(--radius-md)',
-          background: 'var(--color-surface)',
-        }}
-      >
-        <button
-          onClick={() => setCurrency('USD')}
-          style={{
-            padding: '5px 11px',
-            borderRadius: '6px',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            border: 'none',
-            color: currency === 'USD' ? 'var(--color-accent)' : 'var(--color-text)',
-            background: currency === 'USD' ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'transparent',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          USD
-        </button>
-        <button
-          onClick={() => setCurrency('ARS')}
-          style={{
-            padding: '5px 11px',
-            borderRadius: '6px',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            border: 'none',
-            color: currency === 'ARS' ? 'var(--color-accent)' : 'var(--color-text)',
-            background: currency === 'ARS' ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'transparent',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          ARS
-        </button>
       </div>
 
       {/* Add Asset CTA */}

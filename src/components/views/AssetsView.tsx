@@ -2,20 +2,19 @@
 
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
-import { formatCurrency, formatPercentage } from '@/lib/calculations';
-import { ASSET_CLASS_OPTIONS, ASSET_CLASS_TAG_CLASSES } from '@/lib/constants';
+import { formatCurrency } from '@/lib/calculations';
+import { ASSET_CLASS_TAG_CLASSES } from '@/lib/constants';
 
 export const AssetsView: React.FC = () => {
   const {
     filteredHoldings,
     assetFilter,
     setAssetFilter,
-    currency,
-    fxRate,
+    availableAssetClasses,
     deleteHolding,
   } = useWealth();
 
-  const filterOptions = ['All', ...ASSET_CLASS_OPTIONS];
+  const filterOptions = ['All', ...availableAssetClasses];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -55,28 +54,18 @@ export const AssetsView: React.FC = () => {
               <th>Platform</th>
               <th>Qty</th>
               <th>Value</th>
-              <th>Currency</th>
-              <th>24h</th>
               <th style={{ width: '40px' }}></th>
             </tr>
           </thead>
           <tbody>
             {filteredHoldings.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-neutral-400)' }}>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-neutral-400)' }}>
                   No holdings found for the selected category.
                 </td>
               </tr>
             ) : (
               filteredHoldings.map((h) => {
-                const isUp = h.change > 0;
-                const isDown = h.change < 0;
-                const changeColor = isUp
-                  ? 'var(--color-positive)'
-                  : isDown
-                  ? 'var(--color-negative)'
-                  : 'var(--color-neutral-400)';
-                const changeIcon = isUp ? '▲ ' : isDown ? '▼ ' : '– ';
                 const tagClass = ASSET_CLASS_TAG_CLASSES[h.cls] || 'tag tag-neutral';
 
                 return (
@@ -92,23 +81,7 @@ export const AssetsView: React.FC = () => {
                       {h.qty !== null ? h.qty.toLocaleString('en-US', { maximumFractionDigits: 3 }) : '—'}
                     </td>
                     <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
-                      {formatCurrency(h.value, currency, fxRate)}
-                    </td>
-                    <td style={{ padding: '12px 10px' }} className="text-muted">
-                      {h.currency}
-                    </td>
-                    <td style={{ padding: '12px 10px' }}>
-                      <span
-                        style={{
-                          color: changeColor,
-                          fontSize: '13px',
-                          fontVariantNumeric: 'tabular-nums',
-                          fontWeight: 500,
-                        }}
-                      >
-                        {changeIcon}
-                        {formatPercentage(h.change)}
-                      </span>
+                      {formatCurrency(h.value)}
                     </td>
                     <td style={{ padding: '12px 6px', textAlign: 'right' }}>
                       <button

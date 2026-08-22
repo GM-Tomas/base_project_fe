@@ -2,17 +2,14 @@
 
 import React, { useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
-import { AssetClass, Currency } from '@/types/wealth';
-import { ASSET_CLASS_OPTIONS, CURRENCY_OPTIONS } from '@/lib/constants';
 
 export const AddAssetModal: React.FC = () => {
-  const { isAddModalOpen, closeAddModal, addHolding, platforms } = useWealth();
+  const { isAddModalOpen, closeAddModal, addHolding, platforms, availableAssetClasses } = useWealth();
 
   const [name, setName] = useState('');
-  const [platform, setPlatform] = useState(platforms[0]?.name || 'Balanz');
-  const [assetClass, setAssetClass] = useState<AssetClass>('Equity');
+  const [platform, setPlatform] = useState(platforms[0]?.name || '');
+  const [assetClass, setAssetClass] = useState(availableAssetClasses[0] || '');
   const [value, setValue] = useState('');
-  const [currency, setCurrency] = useState<Currency>('USD');
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
 
@@ -24,20 +21,31 @@ export const AddAssetModal: React.FC = () => {
       setError('Please enter an asset name');
       return;
     }
+    if (!platform.trim()) {
+      setError('Please enter a platform');
+      return;
+    }
+    if (!assetClass.trim()) {
+      setError('Please enter an asset class');
+      return;
+    }
     const numValue = parseFloat(value);
     if (isNaN(numValue) || numValue <= 0) {
       setError('Please enter a valid positive value');
       return;
     }
+    const numQty = parseFloat(quantity);
+    if (isNaN(numQty) || numQty <= 0) {
+      setError('Please enter a valid quantity');
+      return;
+    }
 
     addHolding({
       name: name.trim(),
-      cls: assetClass,
-      platform,
-      qty: quantity ? parseFloat(quantity) : null,
+      cls: assetClass.trim(),
+      platform: platform.trim(),
+      qty: numQty,
       value: numValue,
-      currency,
-      change: 0,
     });
 
     // Reset and close
@@ -84,38 +92,44 @@ export const AddAssetModal: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div className="field">
               <label>Platform</label>
-              <select
+              <input
                 className="input"
+                type="text"
+                list="platform-suggestions"
+                placeholder="e.g. Balanz"
                 value={platform}
                 onChange={(e) => setPlatform(e.target.value)}
-              >
+                required
+              />
+              <datalist id="platform-suggestions">
                 {platforms.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name}
-                  </option>
+                  <option key={p.name} value={p.name} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div className="field">
               <label>Asset class</label>
-              <select
+              <input
                 className="input"
+                type="text"
+                list="asset-class-suggestions"
+                placeholder="e.g. Equity"
                 value={assetClass}
-                onChange={(e) => setAssetClass(e.target.value as AssetClass)}
-              >
-                {ASSET_CLASS_OPTIONS.map((cls) => (
-                  <option key={cls} value={cls}>
-                    {cls}
-                  </option>
+                onChange={(e) => setAssetClass(e.target.value)}
+                required
+              />
+              <datalist id="asset-class-suggestions">
+                {availableAssetClasses.map((cls) => (
+                  <option key={cls} value={cls} />
                 ))}
-              </select>
+              </datalist>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div className="field">
-              <label>Value (USD)</label>
+              <label>Value</label>
               <input
                 className="input"
                 type="number"
@@ -128,31 +142,17 @@ export const AddAssetModal: React.FC = () => {
             </div>
 
             <div className="field">
-              <label>Native currency</label>
-              <select
+              <label>Quantity</label>
+              <input
                 className="input"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value as Currency)}
-              >
-                {CURRENCY_OPTIONS.map((cur) => (
-                  <option key={cur} value={cur}>
-                    {cur}
-                  </option>
-                ))}
-              </select>
+                type="number"
+                step="any"
+                placeholder="e.g. 10.5"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                required
+              />
             </div>
-          </div>
-
-          <div className="field">
-            <label>Quantity (Optional)</label>
-            <input
-              className="input"
-              type="number"
-              step="any"
-              placeholder="e.g. 10.5"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-            />
           </div>
 
           <div className="dialog-actions">

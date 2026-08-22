@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
-import { formatCurrency, formatPercentage } from '@/lib/calculations';
+import { formatCurrency } from '@/lib/calculations';
 import { ASSET_CLASS_TAG_CLASSES } from '@/lib/constants';
 
 export const PlatformsView: React.FC = () => {
@@ -11,8 +11,6 @@ export const PlatformsView: React.FC = () => {
     selectedPlatform,
     setSelectedPlatform,
     selectedPlatformHoldings,
-    currency,
-    fxRate,
   } = useWealth();
 
   return (
@@ -129,19 +127,10 @@ export const PlatformsView: React.FC = () => {
                     <th>Class</th>
                     <th>Qty</th>
                     <th>Value</th>
-                    <th>24h</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selectedPlatformHoldings.map((h) => {
-                    const isUp = h.change > 0;
-                    const isDown = h.change < 0;
-                    const changeColor = isUp
-                      ? 'var(--color-positive)'
-                      : isDown
-                      ? 'var(--color-negative)'
-                      : 'var(--color-neutral-400)';
-                    const changeIcon = isUp ? '▲ ' : isDown ? '▼ ' : '– ';
                     const tagClass = ASSET_CLASS_TAG_CLASSES[h.cls] || 'tag tag-neutral';
 
                     return (
@@ -154,19 +143,7 @@ export const PlatformsView: React.FC = () => {
                           {h.qty !== null ? h.qty.toLocaleString('en-US', { maximumFractionDigits: 3 }) : '—'}
                         </td>
                         <td style={{ padding: '12px 10px' }} className="text-nowrap">
-                          {formatCurrency(h.value, currency, fxRate)}
-                        </td>
-                        <td style={{ padding: '12px 10px' }}>
-                          <span
-                            style={{
-                              color: changeColor,
-                              fontSize: '13px',
-                              fontVariantNumeric: 'tabular-nums',
-                            }}
-                          >
-                            {changeIcon}
-                            {formatPercentage(h.change)}
-                          </span>
+                          {formatCurrency(h.value)}
                         </td>
                       </tr>
                     );

@@ -6,7 +6,6 @@ import {
   PlatformMeta,
   HistorySnapshot,
   AssetClass,
-  Currency,
   ViewType,
   EstimateParams,
 } from '@/types/wealth';
@@ -14,7 +13,7 @@ import {
   INITIAL_HOLDINGS,
   INITIAL_PLATFORMS,
   INITIAL_HISTORY,
-  DEFAULT_FX_USD_ARS,
+  ASSET_CLASS_OPTIONS,
   ASSET_CLASS_COLORS,
   ASSET_CLASS_TAG_CLASSES,
   PLATFORM_COLORS,
@@ -49,8 +48,6 @@ interface PlatformCardItem {
 
 interface WealthContextType {
   // State
-  currency: 'USD' | 'ARS';
-  fxRate: number;
   view: ViewType;
   selectedPlatform: string | null;
   assetFilter: string;
@@ -70,14 +67,14 @@ interface WealthContextType {
   platformDistribution: PlatformCardItem[];
   filteredHoldings: Holding[];
   selectedPlatformHoldings: Holding[];
+  availableAssetClasses: AssetClass[];
 
   // Actions
-  setCurrency: (currency: 'USD' | 'ARS') => void;
   setView: (view: ViewType) => void;
   setSelectedPlatform: (platform: string | null) => void;
   setAssetFilter: (filter: string) => void;
   setEstimateParams: React.Dispatch<React.SetStateAction<EstimateParams>>;
-  addHolding: (holding: Omit<Holding, 'id' | 'change'> & { change?: number }) => void;
+  addHolding: (holding: Omit<Holding, 'id'>) => void;
   deleteHolding: (id: string | number) => void;
   takeSnapshot: () => void;
   openAddModal: () => void;
@@ -87,15 +84,13 @@ interface WealthContextType {
 const WealthContext = createContext<WealthContextType | undefined>(undefined);
 
 export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currency, setCurrency] = useState<'USD' | 'ARS'>('USD');
-  const [fxRate] = useState<number>(DEFAULT_FX_USD_ARS);
   const [view, setView] = useState<ViewType>('dashboard');
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [assetFilter, setAssetFilter] = useState<string>('All');
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
 
   const [holdings, setHoldings] = useState<Holding[]>(INITIAL_HOLDINGS);
-  const [platforms] = useState<PlatformMeta[]>(INITIAL_PLATFORMS);
+  const [platforms, setPlatforms] = useState<PlatformMeta[]>(INITIAL_PLATFORMS);
   const [history, setHistory] = useState<HistorySnapshot[]>(INITIAL_HISTORY);
 
   const [estimateParams, setEstimateParams] = useState<EstimateParams>({
@@ -115,9 +110,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (savedHistory) {
         setHistory(JSON.parse(savedHistory));
       }
-      const savedCurrency = localStorage.getItem('base_currency');
-      if (savedCurrency === 'USD' || savedCurrency === 'ARS') {
-        setCurrency(savedCurrency);
+      const savedPlatforms = localStorage.getItem('base_platforms');
+      if (savedPlatforms) {
+        setPlatforms(JSON.parse(savedPlatforms));
       }
     } catch {
       // Ignore localStorage errors in SSR/sandboxed mode
@@ -143,10 +138,10 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const handleSetCurrency = (newCurrency: 'USD' | 'ARS') => {
-    setCurrency(newCurrency);
+  const savePlatforms = (newPlatforms: PlatformMeta[]) => {
+    setPlatforms(newPlatforms);
     try {
-      localStorage.setItem('base_currency', newCurrency);
+      localStorage.setItem('base_platforms', JSON.stringify(newPlatforms));
     } catch {
       // Ignore
     }
@@ -158,8 +153,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [holdings]);
 
   const netWorthFormatted = useMemo(() => {
-    return formatCurrency(netWorthUSD, currency, fxRate);
-  }, [netWorthUSD, currency, fxRate]);
+    return formatCurrency(netWorthUSD);
+  }, [netWorthUSD]);
 
   const ytdGrowthFormatted = useMemo(() => {
     const startYearValue = history[0]?.v || netWorthUSD;
@@ -190,6 +185,13 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return items.sort((a, b) => b.value - a.value);
   }, [holdings, netWorthUSD]);
 
+  // Asset classes available for filtering/suggestions: known defaults + any custom ones in use
+  const availableAssetClasses = useMemo(() => {
+    const set = new Set<AssetClass>(ASSET_CLASS_OPTIONS);
+    holdings.forEach((h) => set.add(h.cls));
+    return Array.from(set);
+  }, [holdings]);
+
   // Liquidity breakdown
   const { liquidityPct, illiquidPct } = useMemo(() => {
     const liquidClasses: AssetClass[] = ['Cash', 'Equity', 'Crypto', 'Index Fund'];
@@ -216,7 +218,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         name: p.name,
         type: p.type,
         balanceUSD: bal,
-        balanceFormatted: formatCurrency(bal, currency, fxRate),
+        balanceFormatted: formatCurrency(bal),
         pctOfTotal: pct,
         pctLabel: pct.toFixed(1) + '%',
         color: PLATFORM_COLORS[p.name] || 'var(--color-neutral-400)',
@@ -225,7 +227,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         isActive: selectedPlatform === p.name,
       };
     });
-  }, [holdings, platforms, netWorthUSD, currency, fxRate, selectedPlatform]);
+  }, [holdings, platforms, netWorthUSD, selectedPlatform]);
 
   // Filtered holdings
   const filteredHoldings = useMemo(() => {
@@ -240,13 +242,18 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [holdings, selectedPlatform]);
 
   // Actions
-  const addHolding = (newHolding: Omit<Holding, 'id' | 'change'> & { change?: number }) => {
+  const addHolding = (newHolding: Omit<Holding, 'id'>) => {
     const item: Holding = {
       ...newHolding,
       id: Date.now().toString(),
-      change: newHolding.change ?? 0,
     };
     saveHoldings([...holdings, item]);
+
+    const platformName = newHolding.platform.trim();
+    const isKnownPlatform = platforms.some((p) => p.name.toLowerCase() === platformName.toLowerCase());
+    if (platformName && !isKnownPlatform) {
+      savePlatforms([...platforms, { name: platformName, type: 'Other' }]);
+    }
   };
 
   const deleteHolding = (id: string | number) => {
@@ -265,8 +272,6 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   return (
     <WealthContext.Provider
       value={{
-        currency,
-        fxRate,
         view,
         selectedPlatform,
         assetFilter,
@@ -285,8 +290,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         platformDistribution,
         filteredHoldings,
         selectedPlatformHoldings,
+        availableAssetClasses,
 
-        setCurrency: handleSetCurrency,
         setView: (v) => {
           setView(v);
           setSelectedPlatform(null);

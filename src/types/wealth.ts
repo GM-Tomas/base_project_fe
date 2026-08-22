@@ -1,8 +1,6 @@
-export type AssetClass = 'Cash' | 'Fixed Income' | 'Index Fund' | 'Equity' | 'Crypto';
+export type AssetClass = string;
 
-export type PlatformType = 'Broker' | 'Wallet' | 'Bank' | 'Exchange';
-
-export type Currency = 'USD' | 'ARS' | 'BTC' | 'ETH' | 'USDT';
+export type PlatformType = string;
 
 export interface Holding {
   id: number | string;
@@ -10,9 +8,7 @@ export interface Holding {
   cls: AssetClass;
   platform: string;
   qty: number | null;
-  value: number; // Stored in base currency (USD)
-  currency: Currency;
-  change: number; // 24h change in %
+  value: number; // Stored in USD
 }
 
 export interface PlatformMeta {

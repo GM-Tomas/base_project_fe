@@ -11,7 +11,7 @@ import {
 } from '@/lib/calculations';
 
 export const EstimateView: React.FC = () => {
-  const { netWorthUSD, currency, fxRate, estimateParams, setEstimateParams } = useWealth();
+  const { netWorthUSD, estimateParams, setEstimateParams } = useWealth();
   const { contribution, yieldPct, years } = estimateParams;
 
   // Calculate annual series
@@ -37,7 +37,7 @@ export const EstimateView: React.FC = () => {
 
   // Final value in N years
   const finalValue = estimateSeries[estimateSeries.length - 1] || netWorthUSD;
-  const estimateFinalLabel = formatCurrency(finalValue, currency, fxRate);
+  const estimateFinalLabel = formatCurrency(finalValue);
 
   // Milestone Calculations
   const maxMonths = years * 12;

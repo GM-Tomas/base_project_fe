@@ -1,13 +1,10 @@
 import { MONTH_NAMES } from './constants';
-import { Currency } from '@/types/wealth';
 
 /**
- * Format currency value according to selected currency and FX rate
+ * Format a USD value for display
  */
-export function formatCurrency(valUSD: number, currency: 'USD' | 'ARS', fxRate: number = 1050): string {
-  const converted = currency === 'ARS' ? valUSD * fxRate : valUSD;
-  const prefix = currency === 'ARS' ? 'AR$\u00A0' : '$';
-  return prefix + Math.round(converted).toLocaleString('en-US');
+export function formatCurrency(valUSD: number): string {
+  return '$' + Math.round(valUSD).toLocaleString('en-US');
 }
 
 /**

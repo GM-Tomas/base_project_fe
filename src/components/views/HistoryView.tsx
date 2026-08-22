@@ -5,7 +5,7 @@ import { useWealth } from '@/context/WealthContext';
 import { generateLinePath, formatCurrency, formatPercentage } from '@/lib/calculations';
 
 export const HistoryView: React.FC = () => {
-  const { history, takeSnapshot, currency, fxRate } = useWealth();
+  const { history, takeSnapshot } = useWealth();
 
   const historyValues = useMemo(() => history.map((s) => s.v), [history]);
 
@@ -31,7 +31,7 @@ export const HistoryView: React.FC = () => {
 
       return {
         label: s.m,
-        valueFormatted: formatCurrency(s.v, currency, fxRate),
+        valueFormatted: formatCurrency(s.v),
         changeFormatted: i === 0 ? '—' : (isUp ? '▲ ' : isDown ? '▼ ' : '– ') + formatPercentage(change),
         changeColor:
           i === 0
@@ -43,7 +43,7 @@ export const HistoryView: React.FC = () => {
             : 'var(--color-neutral-400)',
       };
     });
-  }, [history, currency, fxRate]);
+  }, [history]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
