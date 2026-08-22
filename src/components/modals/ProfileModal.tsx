@@ -10,7 +10,7 @@ interface ProfileModalProps {
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
   const { user, signOut } = useAuth();
-  const { platforms, netWorthFormatted } = useWealth();
+  const { netWorthFormatted } = useWealth();
 
   if (!user) return null;
 
@@ -76,19 +76,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
             marginTop: '4px',
             borderTop: '1px solid var(--color-divider)',
             borderBottom: '1px solid var(--color-divider)',
-            fontSize: '13px',
-          }}
-        >
-          <span style={{ color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>
-            Accounts linked
-          </span>
-          <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{platforms.length}</span>
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
             fontSize: '13px',
           }}
         >

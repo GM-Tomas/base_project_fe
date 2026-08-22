@@ -13,7 +13,7 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { view, setView, platforms } = useWealth();
+  const { view, setView } = useWealth();
   const { user } = useAuth();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -203,14 +203,6 @@ export const Sidebar: React.FC = () => {
             }}
           >
             {name}
-          </div>
-          <div
-            style={{
-              fontSize: '11.5px',
-              color: 'color-mix(in srgb, var(--color-text) 50%, transparent)',
-            }}
-          >
-            {platforms.length} accounts linked
           </div>
         </div>
       </button>
