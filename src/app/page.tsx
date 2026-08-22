@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
 import { useAuth } from '@/context/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -16,9 +16,10 @@ import { AddAssetModal } from '@/components/modals/AddAssetModal';
 export default function HomePage() {
   const { view } = useWealth();
   const { user, loading } = useAuth();
+  const [skipped, setSkipped] = useState(false);
 
   if (loading) return null;
-  if (!user) return <Login />;
+  if (!user && !skipped) return <Login onSkip={() => setSkipped(true)} />;
 
   return (
     <div

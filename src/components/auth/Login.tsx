@@ -3,7 +3,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-export const Login: React.FC = () => {
+export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
   const { signInWithGoogle } = useAuth();
 
   return (
@@ -47,6 +47,15 @@ export const Login: React.FC = () => {
           </svg>
           Continue with Google
         </button>
+        {onSkip && (
+          <button
+            onClick={onSkip}
+            className="btn"
+            style={{ width: '100%', justifyContent: 'center', marginTop: '10px' }}
+          >
+            Skip login (dev)
+          </button>
+        )}
       </div>
     </div>
   );
