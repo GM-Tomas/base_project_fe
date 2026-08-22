@@ -2,8 +2,10 @@
 
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
+import { useAuth } from '@/context/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
+import { Login } from '@/components/auth/Login';
 import { DashboardView } from '@/components/views/DashboardView';
 import { PlatformsView } from '@/components/views/PlatformsView';
 import { AssetsView } from '@/components/views/AssetsView';
@@ -13,6 +15,10 @@ import { AddAssetModal } from '@/components/modals/AddAssetModal';
 
 export default function HomePage() {
   const { view } = useWealth();
+  const { user, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user) return <Login />;
 
   return (
     <div

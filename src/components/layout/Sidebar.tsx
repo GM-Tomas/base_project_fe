@@ -1,7 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
+import { useAuth } from '@/context/AuthContext';
+import { ProfileModal } from '@/components/modals/ProfileModal';
 import { ViewType } from '@/types/wealth';
 
 interface NavItem {
@@ -12,6 +14,12 @@ interface NavItem {
 
 export const Sidebar: React.FC = () => {
   const { view, setView, platforms } = useWealth();
+  const { user } = useAuth();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Account';
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
+  const initial = name.charAt(0).toUpperCase();
 
   const navItems: NavItem[] = [
     {
@@ -141,33 +149,48 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* User Profile Footer */}
-      <div
+      <button
+        onClick={() => setIsProfileOpen(true)}
         style={{
           marginTop: 'auto',
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
           padding: '10px 8px',
+          background: 'transparent',
+          border: 'none',
           borderTop: '1px solid var(--color-divider)',
+          cursor: 'pointer',
+          textAlign: 'left',
+          width: '100%',
         }}
       >
-        <div
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            background: 'var(--color-accent-800)',
-            color: 'var(--color-accent-200)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '12px',
-            fontWeight: 600,
-            flex: 'none',
-          }}
-        >
-          MF
-        </div>
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt={name}
+            style={{ width: '32px', height: '32px', borderRadius: '50%', flex: 'none' }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'var(--color-accent-800)',
+              color: 'var(--color-accent-200)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              fontWeight: 600,
+              flex: 'none',
+            }}
+          >
+            {initial}
+          </div>
+        )}
         <div style={{ minWidth: 0 }}>
           <div
             style={{
@@ -179,13 +202,20 @@ export const Sidebar: React.FC = () => {
               color: 'var(--color-text)',
             }}
           >
-            Martín Ferrari
+            {name}
           </div>
-          <div style={{ fontSize: '11px', color: 'color-mix(in srgb, var(--color-text) 50%, transparent)' }}>
+          <div
+            style={{
+              fontSize: '11.5px',
+              color: 'color-mix(in srgb, var(--color-text) 50%, transparent)',
+            }}
+          >
             {platforms.length} accounts linked
           </div>
         </div>
-      </div>
+      </button>
+
+      {isProfileOpen && <ProfileModal onClose={() => setIsProfileOpen(false)} />}
     </aside>
   );
 };
