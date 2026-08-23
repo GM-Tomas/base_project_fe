@@ -7,7 +7,6 @@ export interface Holding {
   name: string;
   cls: AssetClass;
   platform: string;
-  qty: number | null;
   value: number; // Stored in USD
 }
 

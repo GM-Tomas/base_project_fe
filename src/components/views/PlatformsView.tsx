@@ -125,7 +125,6 @@ export const PlatformsView: React.FC = () => {
                   <tr>
                     <th>Instrument</th>
                     <th>Class</th>
-                    <th>Qty</th>
                     <th>Value</th>
                   </tr>
                 </thead>
@@ -138,9 +137,6 @@ export const PlatformsView: React.FC = () => {
                         <td style={{ padding: '12px 10px', fontWeight: 500 }}>{h.name}</td>
                         <td style={{ padding: '12px 10px' }}>
                           <span className={tagClass}>{h.cls}</span>
-                        </td>
-                        <td style={{ padding: '12px 10px' }} className="text-muted">
-                          {h.qty !== null ? h.qty.toLocaleString('en-US', { maximumFractionDigits: 3 }) : '—'}
                         </td>
                         <td style={{ padding: '12px 10px' }} className="text-nowrap">
                           {formatCurrency(h.value)}

@@ -1,16 +1,16 @@
 import { Holding, PlatformMeta, HistorySnapshot, AssetClass } from '@/types/wealth';
 
 export const INITIAL_HOLDINGS: Holding[] = [
-  { id: 1, name: 'Cuenta remunerada ARS', cls: 'Cash', platform: 'Mercado Pago', qty: null, value: 6150 },
-  { id: 2, name: 'Plazo fijo UVA 90d', cls: 'Fixed Income', platform: 'Banco Galicia', qty: null, value: 11300 },
-  { id: 3, name: 'AL30D Bonar 2030', cls: 'Fixed Income', platform: 'Balanz', qty: null, value: 9100 },
-  { id: 4, name: 'S&P 500 Index Fund', cls: 'Index Fund', platform: 'Balanz', qty: 42, value: 5100 },
-  { id: 5, name: 'AAPL', cls: 'Equity', platform: 'Balanz', qty: 34, value: 7643 },
-  { id: 6, name: 'NVDA', cls: 'Equity', platform: 'Balanz', qty: 8, value: 10557 },
-  { id: 7, name: 'Bitcoin', cls: 'Crypto', platform: 'Nexo', qty: 0.098, value: 9200 },
-  { id: 8, name: 'Ethereum', cls: 'Crypto', platform: 'Nexo', qty: 1.62, value: 5580 },
-  { id: 9, name: 'Bitcoin', cls: 'Crypto', platform: 'Binance', qty: 0.145, value: 13616 },
-  { id: 10, name: 'USDT (stable)', cls: 'Cash', platform: 'Binance', qty: 6004, value: 6004 },
+  { id: 1, name: 'Cuenta remunerada ARS', cls: 'Cash', platform: 'Mercado Pago', value: 6150 },
+  { id: 2, name: 'Plazo fijo UVA 90d', cls: 'Fixed Income', platform: 'Banco Galicia', value: 11300 },
+  { id: 3, name: 'AL30D Bonar 2030', cls: 'Fixed Income', platform: 'Balanz', value: 9100 },
+  { id: 4, name: 'S&P 500 Index Fund', cls: 'Index Fund', platform: 'Balanz', value: 5100 },
+  { id: 5, name: 'AAPL', cls: 'Equity', platform: 'Balanz', value: 7643 },
+  { id: 6, name: 'NVDA', cls: 'Equity', platform: 'Balanz', value: 10557 },
+  { id: 7, name: 'Bitcoin', cls: 'Crypto', platform: 'Nexo', value: 9200 },
+  { id: 8, name: 'Ethereum', cls: 'Crypto', platform: 'Nexo', value: 5580 },
+  { id: 9, name: 'Bitcoin', cls: 'Crypto', platform: 'Binance', value: 13616 },
+  { id: 10, name: 'USDT (stable)', cls: 'Cash', platform: 'Binance', value: 6004 },
 ];
 
 export const INITIAL_PLATFORMS: PlatformMeta[] = [

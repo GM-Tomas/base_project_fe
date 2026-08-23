@@ -52,7 +52,6 @@ export const AssetsView: React.FC = () => {
               <th>Instrument</th>
               <th>Class</th>
               <th>Platform</th>
-              <th>Qty</th>
               <th>Value</th>
               <th style={{ width: '40px' }}></th>
             </tr>
@@ -60,7 +59,7 @@ export const AssetsView: React.FC = () => {
           <tbody>
             {filteredHoldings.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-neutral-400)' }}>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-neutral-400)' }}>
                   No holdings found for the selected category.
                 </td>
               </tr>
@@ -76,9 +75,6 @@ export const AssetsView: React.FC = () => {
                     </td>
                     <td style={{ padding: '12px 10px' }} className="text-muted">
                       {h.platform}
-                    </td>
-                    <td style={{ padding: '12px 10px' }} className="text-muted">
-                      {h.qty !== null ? h.qty.toLocaleString('en-US', { maximumFractionDigits: 3 }) : '—'}
                     </td>
                     <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
                       {formatCurrency(h.value)}

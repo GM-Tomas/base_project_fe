@@ -3,30 +3,36 @@
 import React, { useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
 
+const NEW_OPTION = '__new__';
+
 export const AddAssetModal: React.FC = () => {
   const { isAddModalOpen, closeAddModal, addHolding, platforms, availableAssetClasses } = useWealth();
 
   const [name, setName] = useState('');
   const [platform, setPlatform] = useState(platforms[0]?.name || '');
+  const [newPlatform, setNewPlatform] = useState('');
   const [assetClass, setAssetClass] = useState(availableAssetClasses[0] || '');
+  const [newAssetClass, setNewAssetClass] = useState('');
   const [value, setValue] = useState('');
-  const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
 
   if (!isAddModalOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalPlatform = platform === NEW_OPTION ? newPlatform.trim() : platform.trim();
+    const finalAssetClass = assetClass === NEW_OPTION ? newAssetClass.trim() : assetClass.trim();
+
     if (!name.trim()) {
       setError('Please enter an asset name');
       return;
     }
-    if (!platform.trim()) {
-      setError('Please enter a platform');
+    if (!finalPlatform) {
+      setError('Please choose or enter a platform');
       return;
     }
-    if (!assetClass.trim()) {
-      setError('Please enter an asset class');
+    if (!finalAssetClass) {
+      setError('Please choose or enter an asset class');
       return;
     }
     const numValue = parseFloat(value);
@@ -34,24 +40,19 @@ export const AddAssetModal: React.FC = () => {
       setError('Please enter a valid positive value');
       return;
     }
-    const numQty = parseFloat(quantity);
-    if (isNaN(numQty) || numQty <= 0) {
-      setError('Please enter a valid quantity');
-      return;
-    }
 
     addHolding({
       name: name.trim(),
-      cls: assetClass.trim(),
-      platform: platform.trim(),
-      qty: numQty,
+      cls: finalAssetClass,
+      platform: finalPlatform,
       value: numValue,
     });
 
     // Reset and close
     setName('');
     setValue('');
-    setQuantity('');
+    setNewPlatform('');
+    setNewAssetClass('');
     setError('');
     closeAddModal();
   };
@@ -92,67 +93,74 @@ export const AddAssetModal: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div className="field">
               <label>Platform</label>
-              <input
+              <select
                 className="input"
-                type="text"
-                list="platform-suggestions"
-                placeholder="e.g. Balanz"
                 value={platform}
                 onChange={(e) => setPlatform(e.target.value)}
                 required
-              />
-              <datalist id="platform-suggestions">
+              >
                 {platforms.map((p) => (
-                  <option key={p.name} value={p.name} />
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                  </option>
                 ))}
-              </datalist>
+                <option value={NEW_OPTION}>+ Add new platform...</option>
+              </select>
+              {platform === NEW_OPTION && (
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="New platform name"
+                  value={newPlatform}
+                  onChange={(e) => setNewPlatform(e.target.value)}
+                  autoFocus
+                  required
+                  style={{ marginTop: '8px' }}
+                />
+              )}
             </div>
 
             <div className="field">
               <label>Asset class</label>
-              <input
+              <select
                 className="input"
-                type="text"
-                list="asset-class-suggestions"
-                placeholder="e.g. Equity"
                 value={assetClass}
                 onChange={(e) => setAssetClass(e.target.value)}
                 required
-              />
-              <datalist id="asset-class-suggestions">
+              >
                 {availableAssetClasses.map((cls) => (
-                  <option key={cls} value={cls} />
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
                 ))}
-              </datalist>
+                <option value={NEW_OPTION}>+ Add new asset class...</option>
+              </select>
+              {assetClass === NEW_OPTION && (
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="New asset class name"
+                  value={newAssetClass}
+                  onChange={(e) => setNewAssetClass(e.target.value)}
+                  autoFocus
+                  required
+                  style={{ marginTop: '8px' }}
+                />
+              )}
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div className="field">
-              <label>Value</label>
-              <input
-                className="input"
-                type="number"
-                step="any"
-                placeholder="0.00"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="field">
-              <label>Quantity</label>
-              <input
-                className="input"
-                type="number"
-                step="any"
-                placeholder="e.g. 10.5"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                required
-              />
-            </div>
+          <div className="field">
+            <label>Value</label>
+            <input
+              className="input"
+              type="number"
+              step="any"
+              placeholder="0.00"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              required
+            />
           </div>
 
           <div className="dialog-actions">
