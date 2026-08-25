@@ -1,28 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
-import {
-  Holding,
-  PlatformMeta,
-  HistorySnapshot,
-  AssetClass,
-  ViewType,
-  EstimateParams,
-} from '@/types/wealth';
-import {
-  INITIAL_HOLDINGS,
-  INITIAL_PLATFORMS,
-  INITIAL_HISTORY,
-  ASSET_CLASS_OPTIONS,
-  ASSET_CLASS_COLORS,
-  ASSET_CLASS_TAG_CLASSES,
-  PLATFORM_COLORS,
-  PLATFORM_TAG_CLASSES,
-} from '@/lib/constants';
-import {
-  formatCurrency,
-  formatPercentage,
-} from '@/lib/calculations';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams } from '@/types/wealth';
+import { ASSET_CLASS_COLORS, ASSET_CLASS_TAG_CLASSES, PLATFORM_COLORS, PLATFORM_TAG_CLASSES } from '@/lib/constants';
+import { formatCurrency, formatPercentage } from '@/lib/calculations';
+import { api, ApiError, HoldingInput } from '@/lib/api';
 
 interface ClassDistributionItem {
   label: AssetClass;
@@ -35,7 +17,7 @@ interface ClassDistributionItem {
 
 interface PlatformCardItem {
   name: string;
-  type: PlatformMeta['type'];
+  type: string;
   balanceUSD: number;
   balanceFormatted: string;
   pctOfTotal: number;
@@ -52,15 +34,18 @@ interface WealthContextType {
   selectedPlatform: string | null;
   assetFilter: string;
   holdings: Holding[];
-  platforms: PlatformMeta[];
-  history: HistorySnapshot[];
+  platforms: Platform[];
+  snapshots: Snapshot[];
   estimateParams: EstimateParams;
   isAddModalOpen: boolean;
+  loading: boolean;
+  loadError: string | null;
 
   // Computed Values
   netWorthUSD: number;
   netWorthFormatted: string;
   ytdGrowthFormatted: string;
+  ytdLabel: string;
   liquidityPct: number;
   illiquidPct: number;
   classDistribution: ClassDistributionItem[];
@@ -74,24 +59,39 @@ interface WealthContextType {
   setSelectedPlatform: (platform: string | null) => void;
   setAssetFilter: (filter: string) => void;
   setEstimateParams: React.Dispatch<React.SetStateAction<EstimateParams>>;
-  addHolding: (holding: Omit<Holding, 'id'>) => void;
-  deleteHolding: (id: string | number) => void;
-  takeSnapshot: () => void;
+  addHolding: (holding: HoldingInput) => Promise<void>;
+  deleteHolding: (id: string) => Promise<void>;
+  takeSnapshot: () => Promise<void>;
   openAddModal: () => void;
   closeAddModal: () => void;
+  refresh: () => Promise<void>;
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined);
 
+const EMPTY_SUMMARY: WealthSummary = {
+  netWorth: { usd: 0, ars: null, fxRate: { available: false } },
+  holdingsCount: 0,
+  ytd: { basis: 'NO_BASELINE', growthPct: 0 },
+  liquidity: { liquidPct: 0, illiquidPct: 0, liquidAssetClasses: [] },
+  byAssetClass: [],
+  byPlatform: [],
+};
+
 export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [view, setView] = useState<ViewType>('dashboard');
+  const [view, setViewState] = useState<ViewType>('dashboard');
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [assetFilter, setAssetFilter] = useState<string>('All');
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
 
-  const [holdings, setHoldings] = useState<Holding[]>(INITIAL_HOLDINGS);
-  const [platforms, setPlatforms] = useState<PlatformMeta[]>(INITIAL_PLATFORMS);
-  const [history, setHistory] = useState<HistorySnapshot[]>(INITIAL_HISTORY);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [summary, setSummary] = useState<WealthSummary>(EMPTY_SUMMARY);
+  const [assetClasses, setAssetClasses] = useState<string[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [estimateParams, setEstimateParams] = useState<EstimateParams>({
     contribution: 900,
@@ -99,175 +99,116 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     years: 12,
   });
 
-  // Hydrate from localStorage if available
-  useEffect(() => {
-    try {
-      const savedHoldings = localStorage.getItem('base_holdings');
-      if (savedHoldings) {
-        setHoldings(JSON.parse(savedHoldings));
-      }
-      const savedHistory = localStorage.getItem('base_history');
-      if (savedHistory) {
-        setHistory(JSON.parse(savedHistory));
-      }
-      const savedPlatforms = localStorage.getItem('base_platforms');
-      if (savedPlatforms) {
-        setPlatforms(JSON.parse(savedPlatforms));
-      }
-    } catch {
-      // Ignore localStorage errors in SSR/sandboxed mode
-    }
+  // Every read comes from the backend now (Fase 6 cutover) — no localStorage, no client-side
+  // aggregation. A mutation is followed by a full refresh rather than an optimistic update: this
+  // is a low-traffic personal dashboard, so staying simple and always-authoritative beats the
+  // complexity of reconciling optimistic state with what the server actually persisted.
+  const refresh = useCallback(async () => {
+    const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes] = await Promise.all([
+      api.getSummary(),
+      api.getHoldings(),
+      api.getPlatforms(),
+      api.getAssetClasses(),
+      api.getSnapshots(),
+    ]);
+    setSummary(summaryRes);
+    setHoldings(holdingsRes);
+    setPlatforms(platformsRes);
+    setAssetClasses(assetClassesRes.all);
+    setSnapshots(snapshotsRes);
   }, []);
 
-  // Save changes to localStorage
-  const saveHoldings = (newHoldings: Holding[]) => {
-    setHoldings(newHoldings);
-    try {
-      localStorage.setItem('base_holdings', JSON.stringify(newHoldings));
-    } catch {
-      // Ignore
-    }
-  };
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    refresh()
+      .catch((e) => {
+        if (!cancelled) setLoadError(e instanceof ApiError ? e.message : 'Failed to load your data');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
 
-  const saveHistory = (newHistory: HistorySnapshot[]) => {
-    setHistory(newHistory);
-    try {
-      localStorage.setItem('base_history', JSON.stringify(newHistory));
-    } catch {
-      // Ignore
-    }
-  };
+  // Computed values — all sourced from GET /wealth/summary (SQL-side aggregation), not
+  // recomputed from the raw holdings list on every render.
+  const netWorthUSD = summary.netWorth.usd;
+  const netWorthFormatted = useMemo(() => formatCurrency(netWorthUSD), [netWorthUSD]);
+  const ytdGrowthFormatted = useMemo(() => formatPercentage(summary.ytd.growthPct), [summary.ytd.growthPct]);
+  const ytdLabel = useMemo(() => {
+    if (summary.ytd.basis === 'YEAR_START_SNAPSHOT') return 'since January';
+    if (summary.ytd.basis === 'EARLIEST_SNAPSHOT') return 'since your first snapshot';
+    return 'no history yet';
+  }, [summary.ytd.basis]);
 
-  const savePlatforms = (newPlatforms: PlatformMeta[]) => {
-    setPlatforms(newPlatforms);
-    try {
-      localStorage.setItem('base_platforms', JSON.stringify(newPlatforms));
-    } catch {
-      // Ignore
-    }
-  };
+  const liquidityPct = summary.liquidity.liquidPct;
+  const illiquidPct = summary.liquidity.illiquidPct;
 
-  // Calculations
-  const netWorthUSD = useMemo(() => {
-    return holdings.reduce((sum, h) => sum + h.value, 0);
-  }, [holdings]);
+  const classDistribution = useMemo<ClassDistributionItem[]>(
+    () =>
+      summary.byAssetClass.map((item) => ({
+        label: item.assetClass,
+        value: item.valueUsd,
+        pct: item.pct,
+        color: ASSET_CLASS_COLORS[item.assetClass] || 'var(--color-neutral-400)',
+        tagClass: ASSET_CLASS_TAG_CLASSES[item.assetClass] || 'tag tag-neutral',
+        pctLabel: item.pct.toFixed(1) + '%',
+      })),
+    [summary.byAssetClass],
+  );
 
-  const netWorthFormatted = useMemo(() => {
-    return formatCurrency(netWorthUSD);
-  }, [netWorthUSD]);
+  const platformDistribution = useMemo<PlatformCardItem[]>(
+    () =>
+      summary.byPlatform.map((item) => ({
+        name: item.name,
+        type: item.type,
+        balanceUSD: item.valueUsd,
+        balanceFormatted: formatCurrency(item.valueUsd),
+        pctOfTotal: item.pct,
+        pctLabel: item.pct.toFixed(1) + '%',
+        color: PLATFORM_COLORS[item.name] || 'var(--color-neutral-400)',
+        tagClass: PLATFORM_TAG_CLASSES[item.type] || 'tag tag-neutral',
+        initial: item.name.charAt(0) || '?',
+        isActive: selectedPlatform === item.name,
+      })),
+    [summary.byPlatform, selectedPlatform],
+  );
 
-  const ytdGrowthFormatted = useMemo(() => {
-    const startYearValue = history[0]?.v || netWorthUSD;
-    const growth = ((netWorthUSD - startYearValue) / startYearValue) * 100;
-    return formatPercentage(growth);
-  }, [netWorthUSD, history]);
-
-  // Asset Class Distribution
-  const classDistribution = useMemo(() => {
-    const map: Partial<Record<AssetClass, number>> = {};
-    holdings.forEach((h) => {
-      map[h.cls] = (map[h.cls] || 0) + h.value;
-    });
-
-    const items: ClassDistributionItem[] = (Object.keys(map) as AssetClass[]).map((cls) => {
-      const val = map[cls] || 0;
-      const pct = netWorthUSD > 0 ? (val / netWorthUSD) * 100 : 0;
-      return {
-        label: cls,
-        value: val,
-        pct,
-        color: ASSET_CLASS_COLORS[cls] || 'var(--color-neutral-400)',
-        tagClass: ASSET_CLASS_TAG_CLASSES[cls] || 'tag tag-neutral',
-        pctLabel: pct.toFixed(1) + '%',
-      };
-    });
-
-    return items.sort((a, b) => b.value - a.value);
-  }, [holdings, netWorthUSD]);
-
-  // Asset classes available for filtering/suggestions: known defaults + any custom ones in use
-  const availableAssetClasses = useMemo(() => {
-    const set = new Set<AssetClass>(ASSET_CLASS_OPTIONS);
-    holdings.forEach((h) => set.add(h.cls));
-    return Array.from(set);
-  }, [holdings]);
-
-  // Liquidity breakdown
-  const { liquidityPct, illiquidPct } = useMemo(() => {
-    const liquidClasses: AssetClass[] = ['Cash', 'Equity', 'Crypto', 'Index Fund'];
-    const liquidVal = holdings
-      .filter((h) => liquidClasses.includes(h.cls))
-      .reduce((sum, h) => sum + h.value, 0);
-
-    const liqPct = netWorthUSD > 0 ? Number(((liquidVal / netWorthUSD) * 100).toFixed(1)) : 0;
-    const illiqPct = Number((100 - liqPct).toFixed(1));
-    return { liquidityPct: liqPct, illiquidPct: illiqPct };
-  }, [holdings, netWorthUSD]);
-
-  // Platform Distribution
-  const platformDistribution = useMemo(() => {
-    const map: Record<string, number> = {};
-    holdings.forEach((h) => {
-      map[h.platform] = (map[h.platform] || 0) + h.value;
-    });
-
-    return platforms.map((p) => {
-      const bal = map[p.name] || 0;
-      const pct = netWorthUSD > 0 ? (bal / netWorthUSD) * 100 : 0;
-      return {
-        name: p.name,
-        type: p.type,
-        balanceUSD: bal,
-        balanceFormatted: formatCurrency(bal),
-        pctOfTotal: pct,
-        pctLabel: pct.toFixed(1) + '%',
-        color: PLATFORM_COLORS[p.name] || 'var(--color-neutral-400)',
-        tagClass: PLATFORM_TAG_CLASSES[p.type] || 'tag tag-neutral',
-        initial: p.name[0],
-        isActive: selectedPlatform === p.name,
-      };
-    });
-  }, [holdings, platforms, netWorthUSD, selectedPlatform]);
-
-  // Filtered holdings
   const filteredHoldings = useMemo(() => {
     if (assetFilter === 'All') return holdings;
-    return holdings.filter((h) => h.cls === assetFilter);
+    return holdings.filter((h) => h.assetClass === assetFilter);
   }, [holdings, assetFilter]);
 
-  // Selected Platform holdings
   const selectedPlatformHoldings = useMemo(() => {
     if (!selectedPlatform) return [];
     return holdings.filter((h) => h.platform === selectedPlatform);
   }, [holdings, selectedPlatform]);
 
   // Actions
-  const addHolding = (newHolding: Omit<Holding, 'id'>) => {
-    const item: Holding = {
-      ...newHolding,
-      id: Date.now().toString(),
-    };
-    saveHoldings([...holdings, item]);
+  const addHolding = useCallback(
+    async (input: HoldingInput) => {
+      await api.createHolding(input);
+      await refresh();
+    },
+    [refresh],
+  );
 
-    const platformName = newHolding.platform.trim();
-    const isKnownPlatform = platforms.some((p) => p.name.toLowerCase() === platformName.toLowerCase());
-    if (platformName && !isKnownPlatform) {
-      savePlatforms([...platforms, { name: platformName, type: 'Other' }]);
-    }
-  };
+  const deleteHolding = useCallback(
+    async (id: string) => {
+      await api.deleteHolding(id);
+      await refresh();
+    },
+    [refresh],
+  );
 
-  const deleteHolding = (id: string | number) => {
-    saveHoldings(holdings.filter((h) => h.id !== id));
-  };
-
-  const takeSnapshot = () => {
-    const snapMonth = `Snap ${history.length - INITIAL_HISTORY.length + 1}`;
-    const newSnap: HistorySnapshot = {
-      m: snapMonth,
-      v: Math.round(netWorthUSD),
-    };
-    saveHistory([...history, newSnap]);
-  };
+  const takeSnapshot = useCallback(async () => {
+    await api.createSnapshot();
+    await refresh();
+  }, [refresh]);
 
   return (
     <WealthContext.Provider
@@ -277,23 +218,26 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         assetFilter,
         holdings,
         platforms,
-        history,
+        snapshots,
         estimateParams,
         isAddModalOpen,
+        loading,
+        loadError,
 
         netWorthUSD,
         netWorthFormatted,
         ytdGrowthFormatted,
+        ytdLabel,
         liquidityPct,
         illiquidPct,
         classDistribution,
         platformDistribution,
         filteredHoldings,
         selectedPlatformHoldings,
-        availableAssetClasses,
+        availableAssetClasses: assetClasses,
 
         setView: (v) => {
-          setView(v);
+          setViewState(v);
           setSelectedPlatform(null);
         },
         setSelectedPlatform,
@@ -304,6 +248,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         takeSnapshot,
         openAddModal: () => setIsAddModalOpen(true),
         closeAddModal: () => setIsAddModalOpen(false),
+        refresh,
       }}
     >
       {children}

@@ -1,25 +1,63 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
-import {
-  fvYears,
-  monthsToReach,
-  dateLabelFromMonths,
-  generateLinePath,
-  formatCurrency,
-} from '@/lib/calculations';
+import { generateLinePath, formatCurrency } from '@/lib/calculations';
+import { api, ApiError } from '@/lib/api';
+import { Milestone, Projection } from '@/types/wealth';
+
+const DEBOUNCE_MS = 150;
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+const formatMilestoneAmount = (amountUsd: number) =>
+  amountUsd % 1000 === 0 ? `$${amountUsd / 1000}k` : formatCurrency(amountUsd);
+
+const formatMilestoneLabel = (milestone: Milestone | undefined, years: number) => {
+  if (!milestone) return '';
+  if (milestone.status === 'ACHIEVED') return 'already there';
+  if (milestone.status === 'OUT_OF_HORIZON') return `not within ${years}y at this pace`;
+  if (!milestone.targetMonth) return '';
+  const [year, month] = milestone.targetMonth.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+};
 
 export const EstimateView: React.FC = () => {
-  const { netWorthUSD, estimateParams, setEstimateParams } = useWealth();
+  const { estimateParams, setEstimateParams } = useWealth();
   const { contribution, yieldPct, years } = estimateParams;
+  const debouncedParams = useDebouncedValue(estimateParams, DEBOUNCE_MS);
 
-  // Calculate annual series
-  const estimateSeries = useMemo(() => {
-    return Array.from({ length: years + 1 }, (_, y) =>
-      fvYears(netWorthUSD, contribution, yieldPct, y)
-    );
-  }, [netWorthUSD, contribution, yieldPct, years]);
+  const [projection, setProjection] = useState<Projection | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getEstimate(debouncedParams)
+      .then((res) => {
+        if (!cancelled) {
+          setProjection(res);
+          setError('');
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : 'Could not calculate the projection');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedParams]);
+
+  // Annual series from the server — the chart re-renders smoothly off the debounced request,
+  // not a per-keystroke recalculation.
+  const estimateSeries = useMemo(() => projection?.series.map((p) => p.futureValueUsd) ?? [], [projection]);
 
   // Generate SVG Path
   const { pathString: estimatePath, points: estPoints } = useMemo(() => {
@@ -36,27 +74,10 @@ export const EstimateView: React.FC = () => {
   const chartGridLines = [0, 1, 2, 3, 4].map((i) => ({ y: 24 + i * ((260 - 48) / 4) }));
 
   // Final value in N years
-  const finalValue = estimateSeries[estimateSeries.length - 1] || netWorthUSD;
-  const estimateFinalLabel = formatCurrency(finalValue);
+  const finalValue = estimateSeries[estimateSeries.length - 1];
+  const estimateFinalLabel = finalValue !== undefined ? formatCurrency(finalValue) : '—';
 
-  // Milestone Calculations
-  const maxMonths = years * 12;
-  const m150 = monthsToReach(150000, netWorthUSD, contribution, yieldPct, maxMonths);
-  const m250 = monthsToReach(250000, netWorthUSD, contribution, yieldPct, maxMonths);
-
-  const milestone150Label =
-    netWorthUSD >= 150000
-      ? 'already there'
-      : m150 === null
-      ? `not within ${years}y at this pace`
-      : dateLabelFromMonths(m150);
-
-  const milestone250Label =
-    netWorthUSD >= 250000
-      ? 'already there'
-      : m250 === null
-      ? `not within ${years}y at this pace`
-      : dateLabelFromMonths(m250);
+  const [firstMilestone, secondMilestone] = projection?.milestones ?? [];
 
   return (
     <div
@@ -145,8 +166,11 @@ export const EstimateView: React.FC = () => {
 
       {/* Forecast Chart & Milestones Card */}
       <div className="card elev-sm" style={{ padding: '22px' }}>
-        <div className="card-kicker">
-          Where you&apos;re headed, next {years} {years === 1 ? 'year' : 'years'}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div className="card-kicker">
+            Where you&apos;re headed, next {years} {years === 1 ? 'year' : 'years'}
+          </div>
+          {error && <span style={{ fontSize: '12.5px', color: 'var(--color-negative)' }}>{error}</span>}
         </div>
 
         <div style={{ position: 'relative', width: '100%', height: '280px', marginTop: '6px' }}>
@@ -195,7 +219,7 @@ export const EstimateView: React.FC = () => {
           <div>
             <div className="card-kicker">Next milestone</div>
             <div style={{ fontSize: '20px', fontWeight: 600, marginTop: '2px', color: 'var(--color-text)' }}>
-              $150k
+              {firstMilestone ? formatMilestoneAmount(firstMilestone.amountUsd) : '—'}
             </div>
             <div
               style={{
@@ -204,14 +228,14 @@ export const EstimateView: React.FC = () => {
                 marginTop: '2px',
               }}
             >
-              {milestone150Label}
+              {formatMilestoneLabel(firstMilestone, years)}
             </div>
           </div>
 
           <div>
             <div className="card-kicker">Bigger milestone</div>
             <div style={{ fontSize: '20px', fontWeight: 600, marginTop: '2px', color: 'var(--color-text)' }}>
-              $250k
+              {secondMilestone ? formatMilestoneAmount(secondMilestone.amountUsd) : '—'}
             </div>
             <div
               style={{
@@ -220,7 +244,7 @@ export const EstimateView: React.FC = () => {
                 marginTop: '2px',
               }}
             >
-              {milestone250Label}
+              {formatMilestoneLabel(secondMilestone, years)}
             </div>
           </div>
 

@@ -130,16 +130,16 @@ export const PlatformsView: React.FC = () => {
                 </thead>
                 <tbody>
                   {selectedPlatformHoldings.map((h) => {
-                    const tagClass = ASSET_CLASS_TAG_CLASSES[h.cls] || 'tag tag-neutral';
+                    const tagClass = ASSET_CLASS_TAG_CLASSES[h.assetClass] || 'tag tag-neutral';
 
                     return (
                       <tr key={h.id}>
                         <td style={{ padding: '12px 10px', fontWeight: 500 }}>{h.name}</td>
                         <td style={{ padding: '12px 10px' }}>
-                          <span className={tagClass}>{h.cls}</span>
+                          <span className={tagClass}>{h.assetClass}</span>
                         </td>
                         <td style={{ padding: '12px 10px' }} className="text-nowrap">
-                          {formatCurrency(h.value)}
+                          {formatCurrency(h.valueUsd)}
                         </td>
                       </tr>
                     );

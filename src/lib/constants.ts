@@ -1,40 +1,4 @@
-import { Holding, PlatformMeta, HistorySnapshot, AssetClass } from '@/types/wealth';
-
-export const INITIAL_HOLDINGS: Holding[] = [
-  { id: 1, name: 'Cuenta remunerada ARS', cls: 'Cash', platform: 'Mercado Pago', value: 6150 },
-  { id: 2, name: 'Plazo fijo UVA 90d', cls: 'Fixed Income', platform: 'Banco Galicia', value: 11300 },
-  { id: 3, name: 'AL30D Bonar 2030', cls: 'Fixed Income', platform: 'Balanz', value: 9100 },
-  { id: 4, name: 'S&P 500 Index Fund', cls: 'Index Fund', platform: 'Balanz', value: 5100 },
-  { id: 5, name: 'AAPL', cls: 'Equity', platform: 'Balanz', value: 7643 },
-  { id: 6, name: 'NVDA', cls: 'Equity', platform: 'Balanz', value: 10557 },
-  { id: 7, name: 'Bitcoin', cls: 'Crypto', platform: 'Nexo', value: 9200 },
-  { id: 8, name: 'Ethereum', cls: 'Crypto', platform: 'Nexo', value: 5580 },
-  { id: 9, name: 'Bitcoin', cls: 'Crypto', platform: 'Binance', value: 13616 },
-  { id: 10, name: 'USDT (stable)', cls: 'Cash', platform: 'Binance', value: 6004 },
-];
-
-export const INITIAL_PLATFORMS: PlatformMeta[] = [
-  { name: 'Balanz', type: 'Broker' },
-  { name: 'Mercado Pago', type: 'Wallet' },
-  { name: 'Banco Galicia', type: 'Bank' },
-  { name: 'Nexo', type: 'Exchange' },
-  { name: 'Binance', type: 'Exchange' },
-];
-
-export const INITIAL_HISTORY: HistorySnapshot[] = [
-  { m: 'Jan', v: 61200 },
-  { m: 'Feb', v: 64800 },
-  { m: 'Mar', v: 68950 },
-  { m: 'Apr', v: 66300 },
-  { m: 'May', v: 73100 },
-  { m: 'Jun', v: 76800 },
-  { m: 'Jul', v: 79400 },
-  { m: 'Aug', v: 84250 },
-];
-
-export const ASSET_CLASS_OPTIONS: AssetClass[] = ['Cash', 'Fixed Income', 'Index Fund', 'Equity', 'Crypto'];
-
-export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+import { AssetClass } from '@/types/wealth';
 
 export const ASSET_CLASS_COLORS: Record<AssetClass, string> = {
   Cash: 'var(--color-accent-300)',

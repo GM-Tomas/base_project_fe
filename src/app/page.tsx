@@ -13,13 +13,58 @@ import { EstimateView } from '@/components/views/EstimateView';
 import { HistoryView } from '@/components/views/HistoryView';
 import { AddAssetModal } from '@/components/modals/AddAssetModal';
 
+const canSkipLogin = process.env.NODE_ENV !== 'production';
+
 export default function HomePage() {
-  const { view } = useWealth();
-  const { user, loading } = useAuth();
+  const { view, loading: dataLoading, loadError } = useWealth();
+  const { user, loading: authLoading } = useAuth();
   const [skipped, setSkipped] = useState(false);
 
-  if (loading) return null;
-  if (!user && !skipped) return <Login onSkip={() => setSkipped(true)} />;
+  if (authLoading) return null;
+  if (!user && !(canSkipLogin && skipped)) {
+    return <Login onSkip={canSkipLogin ? () => setSkipped(true) : undefined} />;
+  }
+
+  if (dataLoading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          width: '100vw',
+          background: 'var(--color-bg)',
+          color: 'var(--color-text)',
+        }}
+      >
+        Loading your data…
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          height: '100vh',
+          width: '100vw',
+          background: 'var(--color-bg)',
+          color: 'var(--color-text)',
+        }}
+      >
+        <div>Couldn&apos;t reach the server: {loadError}</div>
+        <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div

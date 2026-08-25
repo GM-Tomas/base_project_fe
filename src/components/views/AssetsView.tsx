@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
 import { ASSET_CLASS_TAG_CLASSES } from '@/lib/constants';
+import { ApiError } from '@/lib/api';
 
 export const AssetsView: React.FC = () => {
   const {
@@ -13,11 +14,25 @@ export const AssetsView: React.FC = () => {
     availableAssetClasses,
     deleteHolding,
   } = useWealth();
+  const [error, setError] = useState('');
 
   const filterOptions = ['All', ...availableAssetClasses];
 
+  const handleDelete = async (id: string) => {
+    setError('');
+    try {
+      await deleteHolding(id);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not remove this asset');
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {error && (
+        <div style={{ fontSize: '13px', color: 'var(--color-negative)' }}>{error}</div>
+      )}
+
       {/* Filter Chips */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {filterOptions.map((opt) => {
@@ -65,24 +80,24 @@ export const AssetsView: React.FC = () => {
               </tr>
             ) : (
               filteredHoldings.map((h) => {
-                const tagClass = ASSET_CLASS_TAG_CLASSES[h.cls] || 'tag tag-neutral';
+                const tagClass = ASSET_CLASS_TAG_CLASSES[h.assetClass] || 'tag tag-neutral';
 
                 return (
                   <tr key={h.id}>
                     <td style={{ padding: '12px 10px', fontWeight: 500 }}>{h.name}</td>
                     <td style={{ padding: '12px 10px' }}>
-                      <span className={tagClass}>{h.cls}</span>
+                      <span className={tagClass}>{h.assetClass}</span>
                     </td>
                     <td style={{ padding: '12px 10px' }} className="text-muted">
                       {h.platform}
                     </td>
                     <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
-                      {formatCurrency(h.value)}
+                      {formatCurrency(h.valueUsd)}
                     </td>
                     <td style={{ padding: '12px 6px', textAlign: 'right' }}>
                       <button
                         title="Remove asset"
-                        onClick={() => deleteHolding(h.id)}
+                        onClick={() => handleDelete(h.id)}
                         style={{
                           background: 'transparent',
                           border: 'none',

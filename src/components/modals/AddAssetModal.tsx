@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
+import { ApiError } from '@/lib/api';
 
 const NEW_OPTION = '__new__';
 
@@ -15,10 +16,11 @@ export const AddAssetModal: React.FC = () => {
   const [newAssetClass, setNewAssetClass] = useState('');
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   if (!isAddModalOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalPlatform = platform === NEW_OPTION ? newPlatform.trim() : platform.trim();
     const finalAssetClass = assetClass === NEW_OPTION ? newAssetClass.trim() : assetClass.trim();
@@ -41,20 +43,27 @@ export const AddAssetModal: React.FC = () => {
       return;
     }
 
-    addHolding({
-      name: name.trim(),
-      cls: finalAssetClass,
-      platform: finalPlatform,
-      value: numValue,
-    });
-
-    // Reset and close
-    setName('');
-    setValue('');
-    setNewPlatform('');
-    setNewAssetClass('');
     setError('');
-    closeAddModal();
+    setIsSaving(true);
+    try {
+      await addHolding({
+        name: name.trim(),
+        assetClass: finalAssetClass,
+        platform: finalPlatform,
+        valueUsd: numValue,
+      });
+
+      // Reset and close
+      setName('');
+      setValue('');
+      setNewPlatform('');
+      setNewAssetClass('');
+      closeAddModal();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save this asset. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -164,11 +173,11 @@ export const AddAssetModal: React.FC = () => {
           </div>
 
           <div className="dialog-actions">
-            <button type="button" className="btn btn-secondary" onClick={closeAddModal}>
+            <button type="button" className="btn btn-secondary" onClick={closeAddModal} disabled={isSaving}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
-              Save asset
+            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save asset'}
             </button>
           </div>
         </form>
