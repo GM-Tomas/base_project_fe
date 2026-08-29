@@ -19,9 +19,9 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 - **Language**: [TypeScript](https://www.typescriptlang.org/)
 - **Design System**: Nocturne Design Tokens (OKLCH, CSS Custom Properties, Ambient Glows)
 - **Auth**: [Supabase Auth](https://supabase.com/) (Google OAuth)
-- **Backend**: `base_project/backend` — Spring Boot REST API (`specs/001-backend-para-frontend/`). All
-  wealth data (holdings, platforms, snapshots, summary, projections) is served from there; nothing
-  is persisted client-side.
+- **Backend**: [GM-Tomas/base_project](https://github.com/GM-Tomas/base_project) — Spring Boot
+  REST API. All wealth data (holdings, platforms, snapshots, summary, projections) is served from
+  there; nothing is persisted client-side.
 - **Deployment**: [Vercel](https://vercel.com/) Ready
 
 ## 📦 Getting Started
@@ -39,8 +39,9 @@ cp .env.example .env.local
 ```
    - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`: from the Supabase project's
      Settings > API.
-   - `NEXT_PUBLIC_API_BASE_URL`: where the backend is running. For local dev, start the backend
-     first (`cd ../backend && ./gradlew bootRun`, defaults to `http://localhost:8080`).
+   - `NEXT_PUBLIC_API_BASE_URL`: where the backend is running. For local dev, clone and start
+     [GM-Tomas/base_project](https://github.com/GM-Tomas/base_project) first (`./gradlew
+     bootRun`, defaults to `http://localhost:8080`).
 
 3. Run the development server:
 ```bash
@@ -62,9 +63,8 @@ npm run start
 
 This project is configured out of the box for zero-config deployment on Vercel.
 
-1. Push your repository to GitHub, GitLab, or Bitbucket.
-2. Import the project in the [Vercel Dashboard](https://vercel.com/new).
-3. If deploying from the repository root, set **Root Directory** to `frontend`.
-4. Add the three env vars from `.env.example` under Project Settings > Environment Variables —
+1. Import this repository in the [Vercel Dashboard](https://vercel.com/new) — no Root Directory
+   override needed, the app is already at the repo root.
+2. Add the three env vars from `.env.example` under Project Settings > Environment Variables —
    `NEXT_PUBLIC_API_BASE_URL` should point at the deployed backend (Render), not `localhost`.
-5. Click **Deploy**.
+3. Click **Deploy**.
