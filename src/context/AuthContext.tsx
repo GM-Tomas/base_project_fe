@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signInWithGoogle: () => void;
+  signInWithPassword: (email: string, password: string) => Promise<string | null>;
   signOut: () => void;
 }
 
@@ -35,11 +35,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         user: session?.user ?? null,
         loading,
-        signInWithGoogle: () => {
-          supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: { redirectTo: window.location.origin },
-          });
+        signInWithPassword: async (email, password) => {
+          const { error } = await supabase.auth.signInWithPassword({ email, password });
+          return error?.message ?? null;
         },
         signOut: () => supabase.auth.signOut(),
       }}
