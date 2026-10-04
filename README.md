@@ -36,8 +36,9 @@ npm install
 ```bash
 cp .env.example .env.local
 ```
-   - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`: from the Supabase project's
-     Settings > API.
+   - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: from the Supabase project's
+     Settings > API Keys. Sign-ups are disabled there: users are created from the Supabase dashboard
+     (Authentication > Users > Add user) and can only sign in.
    - `NEXT_PUBLIC_API_BASE_URL`: where the backend is running. For local dev, clone and start
      [GM-Tomas/base_project_go](https://github.com/GM-Tomas/base_project_go) first (`go run
      ./cmd/api`, defaults to `http://localhost:8080`).
