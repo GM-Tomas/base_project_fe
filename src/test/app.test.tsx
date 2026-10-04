@@ -225,7 +225,7 @@ describe('loading data', () => {
         <HomePage />
       </AuthProvider>,
     );
-    expect(await screen.findByText("Couldn't load your data. Check your connection and try again.")).toBeTruthy();
+    expect(await screen.findByText("Couldn't load your data. Please try again.")).toBeTruthy();
   });
 
   it('signs out when the backend rejects the token', async () => {
@@ -426,6 +426,33 @@ describe('overlapping refreshes', () => {
     expect(screen.getByText('SPY, Gold bar, Coins')).toBeTruthy();
   });
 
+  it('a newer refresh that loads clears the error an older one left', async () => {
+    routes['DELETE /api/v1/holdings/h1'] = () => {
+      routes['GET /api/v1/wealth/snapshots'] = () => json({ detail: 'Service Unavailable' }, 503);
+      return new Response(null, { status: 204 });
+    };
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    let wealth!: ReturnType<typeof useWealth>;
+    const Probe = () => {
+      wealth = useWealth();
+      return <p>{wealth.loadError ?? wealth.holdings.map((h) => h.name).join(', ')}</p>;
+    };
+    render(
+      <WealthProvider>
+        <Probe />
+      </WealthProvider>,
+    );
+    await screen.findByText('SPY, Gold bar, Coins');
+
+    await act(() => wealth.deleteHolding('h1'));
+    expect(screen.getByText("Your change was saved, but your data couldn't be reloaded: Service Unavailable")).toBeTruthy();
+
+    routes['GET /api/v1/wealth/snapshots'] = () => json(SNAPSHOTS);
+    routes['GET /api/v1/holdings'] = () => json(HOLDINGS.slice(1));
+    await act(() => wealth.refresh());
+    expect(screen.getByText('Gold bar, Coins')).toBeTruthy();
+  });
+
   it("doesn't report an older refresh failing once newer data is on screen", async () => {
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
     let wealth!: ReturnType<typeof useWealth>;
@@ -507,7 +534,7 @@ describe('assets', () => {
 
     expect(
       await screen.findByText(
-        "Your change was saved, but your data couldn't be reloaded. Check your connection and try again.",
+        "Your change was saved, but your data couldn't be reloaded. Please try again.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText('Could not remove this asset')).toBeNull();
@@ -812,6 +839,20 @@ describe('profile', () => {
     fireEvent.click(screen.getByRole('button', { name: /bo@example.com/ }));
     expect(screen.getAllByText('B')).toHaveLength(2);
     expect(document.querySelectorAll('img')).toHaveLength(0);
+  });
+
+  it('takes whole characters as initials, emoji included', async () => {
+    routes['GET /api/v1/wealth/summary'] = () =>
+      json(summary({ byPlatform: [{ name: '\u{1F3E6} Bank', type: 'Bank', valueUsd: 12345.6, pct: 100, count: 3 }] }));
+    await renderApp({
+      ...SESSION,
+      user: { id: 'u3', email: 'e@example.com', user_metadata: { full_name: '\u{1F600} Tomás' } },
+    } as unknown as Session);
+
+    fireEvent.click(screen.getByRole('button', { name: /Tomás/ }));
+    expect(screen.getAllByText('\u{1F600}')).toHaveLength(2);
+    nav('Platforms');
+    expect(screen.getByText('\u{1F3E6}')).toBeTruthy();
   });
 });
 

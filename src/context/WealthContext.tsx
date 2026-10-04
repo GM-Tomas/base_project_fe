@@ -79,8 +79,7 @@ function followPlatform(selected: string | null, before: Holding[], after: Holdi
 }
 
 // How a failed load ends the sentence on the error screen: what the API said, if it answered.
-const reason = (e: unknown) =>
-  e instanceof ApiError ? `: ${e.message}` : '. Check your connection and try again.';
+const reason = (e: unknown) => (e instanceof ApiError ? `: ${e.message}` : '. Please try again.');
 
 const EMPTY_SUMMARY: WealthSummary = {
   netWorth: { usd: 0 },
@@ -142,6 +141,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes] = results;
     if (refreshId < refreshShown.current) return;
     refreshShown.current = refreshId;
+    setLoadError(null); // an earlier refresh's failure, if any, is moot now
     const before = holdingsRef.current;
     holdingsRef.current = holdingsRes;
     setSummary(summaryRes);
@@ -206,7 +206,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         pctLabel: item.pct.toFixed(1) + '%',
         color: platformColor(item.name),
         tagClass: platformTag(item.type),
-        initial: item.name.charAt(0) || '?',
+        initial: Array.from(item.name)[0] ?? '?',
         isActive: selectedPlatform === item.name,
       })),
     [summary.byPlatform, selectedPlatform],
