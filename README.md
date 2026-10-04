@@ -1,6 +1,6 @@
 # BASE Wealth Dashboard (Next.js + React + TypeScript)
 
-A modern, high-performance personal wealth and portfolio tracker built with Next.js 14 (App Router), React 18, TypeScript, and the Nocturne dark-theme design system.
+A modern, high-performance personal wealth and portfolio tracker built with Next.js 16 (App Router), React 19, TypeScript, and the Nocturne dark-theme design system.
 
 ## 🚀 Features
 

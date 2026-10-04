@@ -75,7 +75,7 @@ export const api = {
   getHoldings: () => request<Holding[]>('/api/v1/holdings'),
   createHolding: (body: HoldingInput) =>
     request<Holding>('/api/v1/holdings', { method: 'POST', body: JSON.stringify(body) }),
-  deleteHolding: (id: string) => request<void>(`/api/v1/holdings/${id}`, { method: 'DELETE' }),
+  deleteHolding: (id: string) => request<void>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getPlatforms: () => request<Platform[]>('/api/v1/platforms'),
   getAssetClasses: () => request<AvailableAssetClasses>('/api/v1/asset-classes'),
