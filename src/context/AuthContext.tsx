@@ -41,7 +41,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const { error } = await supabase.auth.signInWithPassword({ email, password });
           return error?.message ?? null;
         },
-        signOut: () => supabase.auth.signOut(),
+        // This browser only: on a shared computer, switching accounts mustn't end the user's other devices.
+        signOut: () => supabase.auth.signOut({ scope: 'local' }),
       }}
     >
       {children}

@@ -237,7 +237,7 @@ describe('loading data', () => {
       </AuthProvider>,
     );
     expect(await screen.findByText(/Your session expired/)).toBeTruthy();
-    expect(supabase.auth.signOut).toHaveBeenCalled();
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 });
 
@@ -587,7 +587,7 @@ describe('profile', () => {
     expect(screen.getByText('Profile')).toBeTruthy();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
-    expect(supabase.auth.signOut).toHaveBeenCalled();
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('Profile')).toBeNull();
@@ -716,6 +716,6 @@ describe('multiple accounts', () => {
     await screen.findByText(/Couldn.t reach the server/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(supabase.auth.signOut).toHaveBeenCalled();
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 });

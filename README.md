@@ -62,11 +62,13 @@ Every person signs in with their own Supabase account and only ever sees and cha
 - **Adding people:** sign-ups are off, so create each account in the Supabase dashboard (Authentication >
   Users > Add user). Nothing else to configure: a new account starts with an empty dashboard.
 - **Switching accounts on one browser:** signing out (from the profile menu, or from the error screen if the
-  API is unreachable) drops all of the previous account's data from memory; the next account's dashboard is
-  rebuilt from scratch with its own token, and a slow response for the previous account is discarded.
+  API is unreachable) ends the session on this browser only — the user's other devices stay signed in — and
+  drops all of the previous account's data from memory; the next account's dashboard is rebuilt from scratch
+  with its own token, and a slow response for the previous account is discarded.
 - **Session safety:** the Supabase client never adopts a session from the URL (`detectSessionInUrl: false`),
   so a crafted link can't silently sign someone into another account. A `401` from the API only signs out
-  the session that was rejected, and only on this browser.
+  the session that was rejected, and only on this browser; if supabase-js refreshed the token meanwhile, the
+  request is retried once (never on behalf of a different account).
 
 ### Tests
 
