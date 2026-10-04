@@ -95,6 +95,10 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const holdingsRef = useRef<Holding[]>([]);
+  // Overlapping refreshes (a mutation's while an earlier one is still out) can answer out of order: only
+  // the answer to a newer one than what's on screen is shown.
+  const refreshesStarted = useRef(0);
+  const refreshShown = useRef(0);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [summary, setSummary] = useState<WealthSummary>(EMPTY_SUMMARY);
@@ -114,6 +118,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // is a low-traffic personal dashboard, so staying simple and always-authoritative beats the
   // complexity of reconciling optimistic state with what the server actually persisted.
   const refresh = useCallback(async () => {
+    const refreshId = ++refreshesStarted.current;
     const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes] = await Promise.all([
       api.getSummary(),
       api.getHoldings(),
@@ -121,6 +126,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       api.getAssetClasses(),
       api.getSnapshots(),
     ]);
+    if (refreshId < refreshShown.current) return;
+    refreshShown.current = refreshId;
     const before = holdingsRef.current;
     holdingsRef.current = holdingsRes;
     setSummary(summaryRes);

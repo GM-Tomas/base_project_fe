@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@supabase/supabase-js';
 import HomePage from '@/app/page';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { useWealth } from '@/context/WealthContext';
+import { useWealth, WealthProvider } from '@/context/WealthContext';
 import { supabase } from '@/lib/supabaseClient';
 import type { Holding, Platform, Projection, Snapshot, WealthSummary } from '@/types/wealth';
 
@@ -347,6 +347,49 @@ describe('platform drill-down across refreshes', () => {
     serve([HOLDINGS[0], VOO], [BALANZ]);
     await addAsset();
     await waitFor(() => expect(screen.queryByText("Vault · what's there")).toBeNull());
+  });
+});
+
+describe('overlapping refreshes', () => {
+  it('never shows an older answer over a newer one', async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    let wealth!: ReturnType<typeof useWealth>;
+    const Probe = () => {
+      wealth = useWealth();
+      return (
+        <p>
+          {wealth.holdings.map((h) => h.name).join(', ')} / {wealth.selectedPlatform ?? 'none'}
+        </p>
+      );
+    };
+    render(
+      <WealthProvider>
+        <Probe />
+      </WealthProvider>,
+    );
+    await screen.findByText('SPY, Gold bar, Coins / none');
+
+    // A refresh goes out and its answer is slow…
+    let answerOld!: (res: Response) => void;
+    routes['GET /api/v1/holdings'] = () => new Promise<Response>((resolve) => (answerOld = resolve));
+    let older!: Promise<void>;
+    act(() => {
+      older = wealth.refresh();
+    });
+    await waitFor(() => expect(answerOld).toBeTypeOf('function'));
+
+    // …a newer one lands first (a platform added since), and the user opens it…
+    routes['GET /api/v1/holdings'] = () => json([...HOLDINGS, holding('h9', 'BTC', 'Crypto', 'Binance', 10)]);
+    await act(() => wealth.refresh());
+    act(() => wealth.setSelectedPlatform('Binance'));
+    expect(screen.getByText('SPY, Gold bar, Coins, BTC / Binance')).toBeTruthy();
+
+    // …then the older answer arrives: dropped, the screen and the selection stay.
+    await act(async () => {
+      answerOld(json(HOLDINGS));
+      await older;
+    });
+    expect(screen.getByText('SPY, Gold bar, Coins, BTC / Binance')).toBeTruthy();
   });
 });
 
