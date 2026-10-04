@@ -193,6 +193,7 @@ export const EstimateView: React.FC = () => {
                 stroke="var(--color-divider)"
                 strokeWidth="1"
                 strokeDasharray="4 4"
+                vectorEffect="non-scaling-stroke"
               />
             ))}
 
@@ -208,6 +209,7 @@ export const EstimateView: React.FC = () => {
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
               />
             )}
           </svg>

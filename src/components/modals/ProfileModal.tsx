@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useWealth } from '@/context/WealthContext';
 
@@ -18,7 +19,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
   const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
   const initial = name.charAt(0).toUpperCase();
 
-  return (
+  // ponytail: portal escapes Sidebar's z-index stacking context, which buried the modal under <main>
+  return createPortal(
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-title">Profile</div>
@@ -94,6 +96,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

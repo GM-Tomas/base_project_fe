@@ -12,6 +12,7 @@ export const HistoryView: React.FC = () => {
   const { snapshots, takeSnapshot } = useWealth();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [hovered, setHovered] = useState<number | null>(null);
 
   const handleTakeSnapshot = async () => {
     setError('');
@@ -101,22 +102,78 @@ export const HistoryView: React.FC = () => {
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
               />
             )}
-
-            {/* Checkpoint Dot Nodes */}
-            {histPoints.map((p, idx) => (
-              <circle
-                key={idx}
-                cx={p[0]}
-                cy={p[1]}
-                r={3.8}
-                fill="var(--color-bg)"
-                stroke="var(--color-accent-500)"
-                strokeWidth="2"
-              />
-            ))}
           </svg>
+
+          {/* Checkpoint dots live outside the stretched SVG (preserveAspectRatio="none" turns circles into ovals) */}
+          {snapshots.map((s, idx) => {
+            const [x, y] = histPoints[idx];
+            const left = (x / 680) * 100;
+            const top = (y / 220) * 100;
+            const isHovered = hovered === idx;
+            return (
+              <div
+                key={s.capturedAt + idx}
+                tabIndex={0}
+                aria-label={`${formatCheckpointLabel(s.capturedAt)}: ${formatCurrency(s.totalValueUsd)}`}
+                onMouseEnter={() => setHovered(idx)}
+                onMouseLeave={() => setHovered(null)}
+                onFocus={() => setHovered(idx)}
+                onBlur={() => setHovered(null)}
+                style={{
+                  position: 'absolute',
+                  left: `${left}%`,
+                  top: `${top}%`,
+                  width: '24px',
+                  height: '24px',
+                  transform: 'translate(-50%, -50%)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  cursor: 'pointer',
+                  zIndex: isHovered ? 2 : 1,
+                }}
+              >
+                <span
+                  style={{
+                    width: isHovered ? '12px' : '9px',
+                    height: isHovered ? '12px' : '9px',
+                    borderRadius: '50%',
+                    background: isHovered ? 'var(--color-accent-500)' : 'var(--color-bg)',
+                    border: '2px solid var(--color-accent-500)',
+                    boxShadow: isHovered ? '0 0 0 4px color-mix(in srgb, var(--color-accent-500) 25%, transparent)' : 'none',
+                    transition: 'all 0.12s ease',
+                  }}
+                />
+                {isHovered && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      // keep the tooltip inside the card: flip below for high points, hug the edges at the ends
+                      ...(top < 50 ? { top: '30px' } : { bottom: '30px' }),
+                      left: left < 15 ? '0' : left > 85 ? 'auto' : '50%',
+                      right: left > 85 ? '0' : 'auto',
+                      transform: left < 15 || left > 85 ? 'none' : 'translateX(-50%)',
+                      padding: '8px 12px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--color-surface)',
+                      boxShadow: 'var(--shadow-md)',
+                      whiteSpace: 'nowrap',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text)' }}>
+                      {formatCurrency(s.totalValueUsd)}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'color-mix(in srgb, var(--color-text) 60%, transparent)' }}>
+                      {formatCheckpointLabel(s.capturedAt)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
