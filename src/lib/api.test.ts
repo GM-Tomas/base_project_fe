@@ -60,18 +60,59 @@ describe('api', () => {
     expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 
-  it('never signs out an account that signed in after the rejected request was sent', async () => {
+  it('never signs out, nor retries as, an account that signed in after the rejected request was sent', async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: { access_token: 'tok', user: { id: 'u1' } } } } as never);
     let answer!: (res: Response) => void;
     fetchMock.mockReturnValue(new Promise<Response>((resolve) => (answer = resolve)));
-    const pending = api.getSummary().catch((e) => e);
+    const pending = api.createHolding({ name: 'SPY', assetClass: 'Equity', platform: 'IBKR', valueUsd: 10 }).catch((e) => e);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     // Meanwhile: signed out, and someone else signed in on this browser.
-    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: { access_token: 'other' } } } as never);
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: { access_token: 'other', user: { id: 'u2' } } } } as never);
     answer(json({}, 401));
 
     expect(await pending).toMatchObject({ status: 401 });
     expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once with the token supabase-js refreshed for the same account', async () => {
+    vi.mocked(supabase.auth.getSession)
+      .mockResolvedValueOnce({ data: { session: { access_token: 'old', user: { id: 'u1' } } } } as never)
+      .mockResolvedValue({ data: { session: { access_token: 'new', user: { id: 'u1' } } } } as never);
+    fetchMock.mockResolvedValueOnce(json({}, 401)).mockResolvedValueOnce(json({ id: 'h1' }, 201));
+
+    await expect(api.createHolding({ name: 'SPY', assetClass: 'Equity', platform: 'IBKR', valueUsd: 10 })).resolves.toEqual({ id: 'h1' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, retry] = fetchMock.mock.calls[1];
+    expect(retry.headers.Authorization).toBe('Bearer new');
+    expect(JSON.parse(retry.body)).toEqual({ name: 'SPY', assetClass: 'Equity', platform: 'IBKR', valueUsd: 10 });
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('retries only once: a refreshed token that is rejected too signs out', async () => {
+    vi.mocked(supabase.auth.getSession)
+      .mockResolvedValueOnce({ data: { session: { access_token: 'old', user: { id: 'u1' } } } } as never)
+      .mockResolvedValue({ data: { session: { access_token: 'new', user: { id: 'u1' } } } } as never);
+    fetchMock.mockResolvedValue(json({}, 401));
+
+    await expect(api.getHoldings()).rejects.toMatchObject({ status: 401 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('never loops, even if the token keeps changing under it', async () => {
+    let n = 0;
+    vi.mocked(supabase.auth.getSession).mockImplementation(
+      async () => ({ data: { session: { access_token: `tok-${n++}`, user: { id: 'u1' } } } }) as never,
+    );
+    fetchMock.mockResolvedValue(json({}, 401));
+
+    await expect(api.getHoldings()).rejects.toMatchObject({ status: 401 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('has nothing to sign out on a 401 without a session', async () => {

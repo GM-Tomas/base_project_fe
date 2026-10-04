@@ -29,9 +29,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const session = data.session;
+  const token = session?.access_token;
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
@@ -43,13 +44,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (res.status === 401) {
-    // The session Supabase handed us is no longer valid for the backend — clear it so AuthContext
-    // drops back to the login screen instead of retrying with a dead token. Only if it's still the
-    // current one, though: by the time a slow request answers, someone else may have signed in on
-    // this browser. And only here ('local'): a 401 is no reason to end the user's other devices.
-    const { data: current } = await supabase.auth.getSession();
-    if (token && current.session?.access_token === token) {
+    const { data: now } = await supabase.auth.getSession();
+    const current = now.session;
+    if (token && current?.access_token === token) {
+      // The session Supabase handed us is no longer valid for the backend — clear it so AuthContext
+      // drops back to the login screen instead of retrying with a dead token. Only here ('local'): a
+      // 401 is no reason to end the user's other devices.
       await supabase.auth.signOut({ scope: 'local' });
+    } else if (!isRetry && token && session?.user?.id && current?.user?.id === session.user.id) {
+      // Same account, fresh token: supabase-js refreshed it while this request was out, so the 401 was
+      // for the stale one. Try once more. Never when someone else has signed in on this browser since:
+      // the request was made by and for the previous account.
+      return request<T>(path, options, true);
     }
     throw new ApiError(401, 'Your session expired. Please sign in again.');
   }
