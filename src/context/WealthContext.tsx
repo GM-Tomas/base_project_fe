@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams } from '@/types/wealth';
 import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
+import { initialOf } from '@/lib/initial';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
 import { api, ApiError, HoldingInput } from '@/lib/api';
 
@@ -65,6 +66,7 @@ interface WealthContextType {
   openAddModal: () => void;
   closeAddModal: () => void;
   refresh: () => Promise<void>;
+  retry: () => Promise<void>;
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined);
@@ -152,21 +154,29 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setSelectedPlatform((selected) => followPlatform(selected, before, holdingsRes));
   }, []);
 
+  // The first load, and Retry on the error screen, which reloads in place: the view and selection stay.
+  const load = useCallback(
+    async (isCurrent: () => boolean = () => true) => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        await refresh();
+      } catch (e) {
+        if (isCurrent()) setLoadError(`Couldn't load your data${reason(e)}`);
+      } finally {
+        if (isCurrent()) setLoading(false);
+      }
+    },
+    [refresh],
+  );
+
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    refresh()
-      .catch((e) => {
-        if (!cancelled) setLoadError(`Couldn't load your data${reason(e)}`);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    let current = true;
+    void load(() => current);
     return () => {
-      cancelled = true;
+      current = false;
     };
-  }, [refresh]);
+  }, [load]);
 
   // Computed values — all sourced from GET /wealth/summary (server-side aggregation), not
   // recomputed from the raw holdings list on every render.
@@ -206,7 +216,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         pctLabel: item.pct.toFixed(1) + '%',
         color: platformColor(item.name),
         tagClass: platformTag(item.type),
-        initial: Array.from(item.name)[0] ?? '?',
+        initial: initialOf(item.name),
         isActive: selectedPlatform === item.name,
       })),
     [summary.byPlatform, selectedPlatform],
@@ -292,6 +302,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         openAddModal: () => setIsAddModalOpen(true),
         closeAddModal: () => setIsAddModalOpen(false),
         refresh,
+        retry: () => load(),
       }}
     >
       {children}

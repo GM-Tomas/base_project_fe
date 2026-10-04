@@ -34,7 +34,7 @@ export default function HomePage() {
 }
 
 function Dashboard() {
-  const { view, loading: dataLoading, loadError, isAddModalOpen } = useWealth();
+  const { view, loading: dataLoading, loadError, isAddModalOpen, retry } = useWealth();
   const { user, signOut } = useAuth();
 
   if (dataLoading) {
@@ -72,7 +72,7 @@ function Dashboard() {
       >
         <div>{loadError}</div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          <button className="btn btn-primary" onClick={() => void retry()}>
             Retry
           </button>
           {/* Without the dashboard there's no profile menu: still let people switch accounts. */}

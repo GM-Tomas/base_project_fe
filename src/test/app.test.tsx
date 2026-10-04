@@ -217,6 +217,25 @@ describe('loading data', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
+  it('retries in place from the error screen', async () => {
+    routes['GET /api/v1/wealth/summary'] = () => json({ detail: 'Database unavailable' }, 503);
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    await screen.findByText("Couldn't load your data: Database unavailable");
+
+    routes['GET /api/v1/wealth/summary'] = () => json({ detail: 'Still down' }, 503);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText("Couldn't load your data: Still down")).toBeTruthy();
+
+    routes['GET /api/v1/wealth/summary'] = () => json(summary());
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('$12,346')).toBeTruthy();
+  });
+
   it('shows a generic message when the network fails', async () => {
     routes['GET /api/v1/holdings'] = () => Promise.reject(new TypeError('Failed to fetch'));
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
@@ -426,11 +445,7 @@ describe('overlapping refreshes', () => {
     expect(screen.getByText('SPY, Gold bar, Coins')).toBeTruthy();
   });
 
-  it('a newer refresh that loads clears the error an older one left', async () => {
-    routes['DELETE /api/v1/holdings/h1'] = () => {
-      routes['GET /api/v1/wealth/snapshots'] = () => json({ detail: 'Service Unavailable' }, 503);
-      return new Response(null, { status: 204 });
-    };
+  it('a reload that fails is cleared by an overlapping one that loads', async () => {
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
     let wealth!: ReturnType<typeof useWealth>;
     const Probe = () => {
@@ -444,13 +459,28 @@ describe('overlapping refreshes', () => {
     );
     await screen.findByText('SPY, Gold bar, Coins');
 
-    await act(() => wealth.deleteHolding('h1'));
-    expect(screen.getByText("Your change was saved, but your data couldn't be reloaded: Service Unavailable")).toBeTruthy();
+    // Two deletes in a row: the first one's reload fails, the second one's loads, a moment later.
+    routes['DELETE /api/v1/holdings/h1'] = () => new Response(null, { status: 204 });
+    routes['DELETE /api/v1/holdings/h2'] = () => new Response(null, { status: 204 });
+    let summaries = 0;
+    routes['GET /api/v1/wealth/summary'] = () =>
+      ++summaries === 1 ? json({ detail: 'Service Unavailable' }, 503) : json(summary());
+    let answerLast!: (res: Response) => void;
+    let holdingsAsked = 0;
+    routes['GET /api/v1/holdings'] = () =>
+      ++holdingsAsked === 1 ? json(HOLDINGS) : new Promise<Response>((resolve) => (answerLast = resolve));
 
-    routes['GET /api/v1/wealth/snapshots'] = () => json(SNAPSHOTS);
-    routes['GET /api/v1/holdings'] = () => json(HOLDINGS.slice(1));
-    await act(() => wealth.refresh());
-    expect(screen.getByText('Gold bar, Coins')).toBeTruthy();
+    let both!: Promise<unknown>;
+    act(() => {
+      both = Promise.all([wealth.deleteHolding('h1'), wealth.deleteHolding('h2')]);
+    });
+    expect(await screen.findByText("Your change was saved, but your data couldn't be reloaded: Service Unavailable")).toBeTruthy();
+
+    await act(async () => {
+      answerLast(json([HOLDINGS[2]]));
+      await both;
+    });
+    expect(screen.getByText('Coins')).toBeTruthy();
   });
 
   it("doesn't report an older refresh failing once newer data is on screen", async () => {

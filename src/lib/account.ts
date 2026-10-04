@@ -1,4 +1,5 @@
 import type { User } from '@supabase/supabase-js';
+import { initialOf } from './initial';
 
 const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : undefined);
 
@@ -7,5 +8,5 @@ const text = (value: unknown) => (typeof value === 'string' && value.trim() ? va
 // email/password and the CSP blocks remote images anyway.
 export function accountLabel(user: User | null): { name: string; initial: string } {
   const name = text(user?.user_metadata?.full_name) ?? text(user?.user_metadata?.name) ?? text(user?.email) ?? 'Account';
-  return { name, initial: Array.from(name)[0].toUpperCase() }; // a whole character, even outside the BMP
+  return { name, initial: initialOf(name) };
 }
