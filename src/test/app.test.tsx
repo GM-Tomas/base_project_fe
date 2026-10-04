@@ -273,6 +273,15 @@ describe('dashboard', () => {
 });
 
 describe('platforms', () => {
+  it('lists holdings stored under another casing of the platform in its drill-down', async () => {
+    routes['GET /api/v1/holdings'] = () => json([...HOLDINGS, holding('h4', 'Silver', 'Gold', 'vault', 100)]);
+    await renderApp();
+    nav('Platforms');
+    fireEvent.click(screen.getByText('Vault'));
+    expect(screen.getByText('Gold bar')).toBeTruthy();
+    expect(screen.getByText('Silver')).toBeTruthy();
+  });
+
   it('drills into a platform and closes again', async () => {
     await renderApp();
     nav('Platforms');
