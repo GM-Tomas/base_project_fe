@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams } from '@/types/wealth';
 import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
@@ -69,6 +69,15 @@ interface WealthContextType {
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined);
 
+// The API spells a platform as on its earliest holding, so deleting that holding (say, from another
+// device) can change how a selected platform is spelled. Follow it through the holdings it still has; with
+// none left, it's gone.
+function followPlatform(selected: string | null, before: Holding[], after: Holding[]): string | null {
+  if (selected === null || after.some((h) => h.platform === selected)) return selected;
+  const ids = new Set(before.filter((h) => h.platform === selected).map((h) => h.id));
+  return after.find((h) => ids.has(h.id))?.platform ?? null;
+}
+
 const EMPTY_SUMMARY: WealthSummary = {
   netWorth: { usd: 0 },
   holdingsCount: 0,
@@ -85,6 +94,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const holdingsRef = useRef<Holding[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [summary, setSummary] = useState<WealthSummary>(EMPTY_SUMMARY);
@@ -111,11 +121,14 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       api.getAssetClasses(),
       api.getSnapshots(),
     ]);
+    const before = holdingsRef.current;
+    holdingsRef.current = holdingsRes;
     setSummary(summaryRes);
     setHoldings(holdingsRes);
     setPlatforms(platformsRes);
     setAssetClasses(assetClassesRes.all);
     setSnapshots(snapshotsRes);
+    setSelectedPlatform((selected) => followPlatform(selected, before, holdingsRes));
   }, []);
 
   useEffect(() => {

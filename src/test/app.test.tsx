@@ -299,6 +299,57 @@ describe('platforms', () => {
   });
 });
 
+describe('platform drill-down across refreshes', () => {
+  // A refresh while the drill-down is open: adding an asset from the header.
+  const addAsset = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
+    fireEvent.change(screen.getByPlaceholderText('e.g. Vanguard S&P 500 ETF'), { target: { value: 'VOO' } });
+    const [platform, assetClass] = screen.getAllByRole('combobox');
+    fireEvent.change(platform, { target: { value: 'Balanz' } });
+    fireEvent.change(assetClass, { target: { value: 'Equity' } });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Save asset' }).closest('form')!);
+    await waitFor(() => expect(screen.queryByText('Save asset')).toBeNull());
+  };
+  const serve = (holdings: Holding[], byPlatform: WealthSummary['byPlatform']) => {
+    routes['GET /api/v1/holdings'] = () => json(holdings);
+    routes['GET /api/v1/wealth/summary'] = () => json(summary({ byPlatform }));
+  };
+  const BALANZ = { name: 'Balanz', type: 'Broker', valueUsd: 8001, pct: 64.8, count: 2 };
+  const VOO = holding('h4', 'VOO', 'Equity', 'Balanz', 1);
+
+  beforeEach(() => {
+    routes['POST /api/v1/holdings'] = () => json({}, 201);
+  });
+
+  it('follows the selected platform when the API respells it', async () => {
+    await renderApp();
+    nav('Platforms');
+    fireEvent.click(screen.getByText('Vault'));
+
+    serve([...HOLDINGS, VOO], [{ name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2 }, BALANZ]);
+    await addAsset();
+    expect(screen.getByText("Vault · what's there")).toBeTruthy();
+
+    // "Gold bar", the earliest Vault holding, was deleted elsewhere; "Coins" was stored as "vault".
+    serve([HOLDINGS[0], { ...HOLDINGS[2], platform: 'vault' }, VOO], [{ name: 'vault', type: 'Safe', valueUsd: 345.6, pct: 4, count: 1 }, BALANZ]);
+    await addAsset();
+    expect(await screen.findByText("vault · what's there")).toBeTruthy();
+    expect(screen.getByText('Coins')).toBeTruthy();
+    expect(screen.queryByText('Gold bar')).toBeNull();
+  });
+
+  it('closes the drill-down when its platform is gone', async () => {
+    await renderApp();
+    nav('Platforms');
+    fireEvent.click(screen.getByText('Vault'));
+
+    serve([HOLDINGS[0], VOO], [BALANZ]);
+    await addAsset();
+    await waitFor(() => expect(screen.queryByText("Vault · what's there")).toBeNull());
+  });
+});
+
 describe('assets', () => {
   it('filters by asset class', async () => {
     await renderApp();
