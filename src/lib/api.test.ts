@@ -50,14 +50,36 @@ describe('api', () => {
     expect(lastCall().init.method).toBe('DELETE');
   });
 
-  it('signs out and throws on 401', async () => {
+  it('signs out (this browser only) and throws on 401', async () => {
     fetchMock.mockResolvedValue(json({}, 401));
 
     const err = await api.getSummary().catch((e) => e);
 
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 401, message: 'Your session expired. Please sign in again.' });
-    expect(supabase.auth.signOut).toHaveBeenCalled();
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('never signs out an account that signed in after the rejected request was sent', async () => {
+    let answer!: (res: Response) => void;
+    fetchMock.mockReturnValue(new Promise<Response>((resolve) => (answer = resolve)));
+    const pending = api.getSummary().catch((e) => e);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    // Meanwhile: signed out, and someone else signed in on this browser.
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: { access_token: 'other' } } } as never);
+    answer(json({}, 401));
+
+    expect(await pending).toMatchObject({ status: 401 });
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('has nothing to sign out on a 401 without a session', async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null } } as never);
+    fetchMock.mockResolvedValue(json({}, 401));
+
+    await expect(api.getHoldings()).rejects.toMatchObject({ status: 401 });
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
   });
 
   it('surfaces problem detail, then title, then a generic message', async () => {

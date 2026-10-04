@@ -43,9 +43,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (res.status === 401) {
-    // The session Supabase handed us is no longer valid for the backend — clear it so
-    // AuthContext drops back to the login screen instead of retrying with a dead token.
-    await supabase.auth.signOut();
+    // The session Supabase handed us is no longer valid for the backend — clear it so AuthContext
+    // drops back to the login screen instead of retrying with a dead token. Only if it's still the
+    // current one, though: by the time a slow request answers, someone else may have signed in on
+    // this browser. And only here ('local'): a 401 is no reason to end the user's other devices.
+    const { data: current } = await supabase.auth.getSession();
+    if (token && current.session?.access_token === token) {
+      await supabase.auth.signOut({ scope: 'local' });
+    }
     throw new ApiError(401, 'Your session expired. Please sign in again.');
   }
 
