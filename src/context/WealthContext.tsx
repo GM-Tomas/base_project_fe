@@ -70,7 +70,7 @@ interface WealthContextType {
 const WealthContext = createContext<WealthContextType | undefined>(undefined);
 
 const EMPTY_SUMMARY: WealthSummary = {
-  netWorth: { usd: 0, ars: null, fxRate: { available: false } },
+  netWorth: { usd: 0 },
   holdingsCount: 0,
   ytd: { basis: 'NO_BASELINE', growthPct: 0 },
   liquidity: { liquidPct: 0, illiquidPct: 0, liquidAssetClasses: [] },

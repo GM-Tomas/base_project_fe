@@ -6,10 +6,9 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 
 - **Dashboard Overview**: Live Net Worth tracking, YTD performance indicator, liquidity breakdown, and asset class distribution.
 - **Platforms Grid**: Detailed tracking across all connected financial platforms (brokers, banks, wallets, exchanges) with drilldown inspection.
-- **Assets Explorer**: Filterable multi-currency holdings table with 24h market movements.
+- **Assets Explorer**: Holdings table filterable by asset class, with delete.
 - **Wealth Estimation Engine**: Interactive compound interest and wealth projection simulator with milestone tracking ($150k, $250k targets).
 - **Historical Snapshots**: Net worth timeline curve and snapshot logging.
-- **Multi-Currency**: Real-time USD / ARS switching with configurable exchange rates.
 - **Add Asset Dialog**: Interactive modal backed by the API, with inline validation errors.
 
 ## 🛠️ Tech Stack
@@ -18,9 +17,9 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 - **Library**: [React](https://react.dev/)
 - **Language**: [TypeScript](https://www.typescriptlang.org/)
 - **Design System**: Nocturne Design Tokens (OKLCH, CSS Custom Properties, Ambient Glows)
-- **Auth**: [Supabase Auth](https://supabase.com/) (Google OAuth)
-- **Backend**: [GM-Tomas/base_project](https://github.com/GM-Tomas/base_project) — Spring Boot
-  REST API. All wealth data (holdings, platforms, snapshots, summary, projections) is served from
+- **Auth**: [Supabase Auth](https://supabase.com/) (email + password)
+- **Backend**: [GM-Tomas/base_project_go](https://github.com/GM-Tomas/base_project_go) — Go REST
+  API. All wealth data (holdings, platforms, snapshots, summary, projections) is served from
   there; nothing is persisted client-side.
 - **Deployment**: [Vercel](https://vercel.com/) Ready
 
@@ -40,15 +39,15 @@ cp .env.example .env.local
    - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`: from the Supabase project's
      Settings > API.
    - `NEXT_PUBLIC_API_BASE_URL`: where the backend is running. For local dev, clone and start
-     [GM-Tomas/base_project](https://github.com/GM-Tomas/base_project) first (`./gradlew
-     bootRun`, defaults to `http://localhost:8080`).
+     [GM-Tomas/base_project_go](https://github.com/GM-Tomas/base_project_go) first (`go run
+     ./cmd/api`, defaults to `http://localhost:8080`).
 
 3. Run the development server:
 ```bash
 npm run dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser. Sign in with Google —
+4. Open [http://localhost:3000](http://localhost:3000) in your browser. Sign in with email/password —
    or, outside production builds, use the "Skip login (dev)" button to preview the UI without a
    session (every request will still 401 without a real token, since the backend requires one).
 
@@ -66,5 +65,6 @@ This project is configured out of the box for zero-config deployment on Vercel.
 1. Import this repository in the [Vercel Dashboard](https://vercel.com/new) — no Root Directory
    override needed, the app is already at the repo root.
 2. Add the three env vars from `.env.example` under Project Settings > Environment Variables —
-   `NEXT_PUBLIC_API_BASE_URL` should point at the deployed backend (Render), not `localhost`.
-3. Click **Deploy**.
+   `NEXT_PUBLIC_API_BASE_URL` must point at the deployed backend's **production** domain (deployment
+   URLs are behind Vercel Authentication and would fail CORS), not `localhost`.
+3. Click **Deploy** (and redeploy whenever a `NEXT_PUBLIC_*` value changes — they are inlined at build time).

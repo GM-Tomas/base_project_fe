@@ -6,19 +6,20 @@ import { ApiError } from '@/lib/api';
 
 const NEW_OPTION = '__new__';
 
+// Rendered only while open (see page.tsx), so the initial state below is recomputed on every opening.
 export const AddAssetModal: React.FC = () => {
-  const { isAddModalOpen, closeAddModal, addHolding, platforms, availableAssetClasses } = useWealth();
+  const { closeAddModal, addHolding, platforms, availableAssetClasses } = useWealth();
 
   const [name, setName] = useState('');
-  const [platform, setPlatform] = useState(platforms[0]?.name || '');
+  // With no options yet (e.g. a brand-new account) the select would visually show "+ Add new…" while
+  // the state stayed '', hiding the text input and making the first asset impossible to save.
+  const [platform, setPlatform] = useState(platforms[0]?.name ?? NEW_OPTION);
   const [newPlatform, setNewPlatform] = useState('');
-  const [assetClass, setAssetClass] = useState(availableAssetClasses[0] || '');
+  const [assetClass, setAssetClass] = useState(availableAssetClasses[0] ?? NEW_OPTION);
   const [newAssetClass, setNewAssetClass] = useState('');
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-
-  if (!isAddModalOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,16 +53,9 @@ export const AddAssetModal: React.FC = () => {
         platform: finalPlatform,
         valueUsd: numValue,
       });
-
-      // Reset and close
-      setName('');
-      setValue('');
-      setNewPlatform('');
-      setNewAssetClass('');
       closeAddModal();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save this asset. Please try again.');
-    } finally {
       setIsSaving(false);
     }
   };

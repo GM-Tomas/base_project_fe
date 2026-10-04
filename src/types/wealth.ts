@@ -24,17 +24,8 @@ export interface AvailableAssetClasses {
   all: string[];
 }
 
-export interface FxRate {
-  available: boolean;
-  value?: number;
-  asOf?: string;
-  source?: string;
-}
-
 export interface NetWorth {
   usd: number;
-  ars: number | null;
-  fxRate: FxRate;
 }
 
 export type YtdBasis = 'YEAR_START_SNAPSHOT' | 'EARLIEST_SNAPSHOT' | 'NO_BASELINE';

@@ -127,7 +127,13 @@ export const DashboardView: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
-            <div style={{ fontSize: '13px', color: 'var(--color-positive)', fontWeight: 500 }}>
+            <div
+              style={{
+                fontSize: '13px',
+                color: ytdGrowthFormatted.startsWith('-') ? 'var(--color-negative)' : 'var(--color-positive)',
+                fontWeight: 500,
+              }}
+            >
               {ytdLabel === 'no history yet' ? 'No history yet' : `${ytdGrowthFormatted} ${ytdLabel}`}
             </div>
             <div style={{ fontSize: '12px', color: 'color-mix(in srgb, var(--color-text) 50%, transparent)' }}>

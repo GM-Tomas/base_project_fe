@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useWealth } from '@/context/WealthContext';
+import { useWealth, WealthProvider } from '@/context/WealthContext';
 import { useAuth } from '@/context/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
@@ -16,7 +16,6 @@ import { AddAssetModal } from '@/components/modals/AddAssetModal';
 const canSkipLogin = process.env.NODE_ENV !== 'production';
 
 export default function HomePage() {
-  const { view, loading: dataLoading, loadError } = useWealth();
   const { user, loading: authLoading } = useAuth();
   const [skipped, setSkipped] = useState(false);
 
@@ -24,6 +23,18 @@ export default function HomePage() {
   if (!user && !(canSkipLogin && skipped)) {
     return <Login onSkip={canSkipLogin ? () => setSkipped(true) : undefined} />;
   }
+
+  // Mounted only once there is a session (and keyed by user): data loads right after sign-in, and
+  // signing out unmounts it, so the next account never sees the previous one's numbers.
+  return (
+    <WealthProvider key={user?.id}>
+      <Dashboard />
+    </WealthProvider>
+  );
+}
+
+function Dashboard() {
+  const { view, loading: dataLoading, loadError, isAddModalOpen } = useWealth();
 
   if (dataLoading) {
     return (
@@ -126,8 +137,8 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* Add Asset Dialog */}
-      <AddAssetModal />
+      {/* Add Asset Dialog — mounted per opening so it starts from the current platforms/classes */}
+      {isAddModalOpen && <AddAssetModal />}
     </div>
   );
 }
