@@ -19,13 +19,15 @@ describe('initialOf', () => {
 
   it('works without Intl.Segmenter, a code point at a time', async () => {
     const segmenter = Object.getOwnPropertyDescriptor(Intl, 'Segmenter')!;
-    Reflect.deleteProperty(Intl, 'Segmenter');
+    expect(Reflect.deleteProperty(Intl, 'Segmenter')).toBe(true);
     try {
       vi.resetModules();
       const { initialOf: withoutSegmenter } = await import('./initial');
       expect(withoutSegmenter('binance')).toBe('B');
       expect(withoutSegmenter('\u{1F600} Tomás')).toBe('\u{1F600}');
       expect(withoutSegmenter(' ')).toBe('?');
+      // The tell-tale of the fallback: half a flag, where a segmenter gives the whole one.
+      expect(withoutSegmenter('\u{1F1E6}\u{1F1F7} Balanz')).toBe('\u{1F1E6}');
     } finally {
       Object.defineProperty(Intl, 'Segmenter', segmenter);
     }
