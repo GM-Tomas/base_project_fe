@@ -12,10 +12,11 @@ import type { Api, HoldingInput } from './api';
 import { ApiError } from './apiError';
 
 // The API's own defaults (base_project_go): the classes offered from the start, the ones counted as
-// liquid, and the Estimate view's two milestones.
+// liquid, the Estimate view's two milestones, and the largest amount a holding can have.
 const DEFAULT_CLASSES = ['Cash', 'Fixed Income', 'Index Fund', 'Equity', 'Crypto'];
 const LIQUID_CLASSES = ['Cash', 'Equity', 'Crypto', 'Index Fund'];
 const MILESTONES = [150_000, 250_000];
+const MAX_VALUE_USD = 1e15;
 
 const PLATFORM_TYPES: Record<string, string> = {
   'Interactive Brokers': 'Broker',
@@ -152,15 +153,17 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     getSummary: async () => summary(),
     getHoldings: async () => holdings.map((h) => ({ ...h })),
     createHolding: async (input: HoldingInput) => {
+      // The API handler's checks and messages (its domain's length limits aside). JSON has no NaN or
+      // Infinity, so the API never gets one; here they're rejected rather than stored.
       const [name, assetClass, platform] = [input.name.trim(), input.assetClass.trim(), input.platform.trim()];
       const errors: { field: string; message: string }[] = [];
-      if (!name) errors.push({ field: 'name', message: 'name must not be blank' });
-      if (!assetClass) errors.push({ field: 'assetClass', message: 'assetClass must not be blank' });
-      if (!platform) errors.push({ field: 'platform', message: 'platform must not be blank' });
-      if (!(Number.isFinite(input.valueUsd) && input.valueUsd > 0)) {
-        errors.push({ field: 'valueUsd', message: 'valueUsd must be greater than 0' });
-      }
-      if (errors.length) throw new ApiError(400, 'Validation failed', errors);
+      if (!name) errors.push({ field: 'name', message: 'Name is required' });
+      if (!assetClass) errors.push({ field: 'assetClass', message: 'Asset class is required' });
+      if (!platform) errors.push({ field: 'platform', message: 'Platform is required' });
+      if (!Number.isFinite(input.valueUsd)) errors.push({ field: 'valueUsd', message: 'Value must be a number' });
+      else if (input.valueUsd < 0) errors.push({ field: 'valueUsd', message: 'Value must not be negative' });
+      else if (input.valueUsd > MAX_VALUE_USD) errors.push({ field: 'valueUsd', message: 'Value is too large' });
+      if (errors.length) throw new ApiError(400, errors.map((e) => e.message).join('; '), errors);
 
       const at = now().toISOString();
       const holding: Holding = {

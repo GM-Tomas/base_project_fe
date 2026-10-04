@@ -6,6 +6,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
+    // Tests run on real data (with fetch and Supabase mocked) unless they opt into mock data themselves,
+    // whatever the shell exports.
+    env: { NEXT_PUBLIC_DATA_SOURCE: 'live' },
     coverage: {
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/test/**', 'src/**/*.test.{ts,tsx}'],

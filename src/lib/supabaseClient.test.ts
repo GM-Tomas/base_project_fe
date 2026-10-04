@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 
 // setup.ts mocks this module for every other test; here the real one runs against a fake SDK.
 vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn(() => ({ auth: {} })) }));
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('supabase client', () => {
   it('is built from the env and never adopts a session from the URL', async () => {
@@ -15,7 +19,6 @@ describe('supabase client', () => {
     expect(createClient).toHaveBeenCalledWith('https://ref.supabase.co', 'sb_publishable_x', {
       auth: { detectSessionInUrl: false },
     });
-    vi.unstubAllEnvs();
   });
 
   it('on mock data, signs in a demo account and never creates a Supabase client', async () => {
@@ -27,6 +30,5 @@ describe('supabase client', () => {
 
     expect(freshCreateClient).not.toHaveBeenCalled();
     await expect(supabase.auth.getSession()).resolves.toMatchObject({ data: { session: { user: { id: 'demo-user' } } } });
-    vi.unstubAllEnvs();
   });
 });

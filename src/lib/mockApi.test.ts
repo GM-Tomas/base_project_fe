@@ -93,16 +93,22 @@ describe('mock API (the data previews run on)', () => {
     expect((await api.getHoldings())[0].valueUsd).toBe(42_350);
   });
 
-  it('validates new holdings like the API', async () => {
+  it("validates new holdings with the API handler's rules and messages", async () => {
     const api = createMockApi();
-    const failure = await api.createHolding({ name: ' ', assetClass: '', platform: ' ', valueUsd: 0 }).catch((e) => e);
+    const failure = await api.createHolding({ name: ' ', assetClass: '', platform: ' ', valueUsd: -1 }).catch((e) => e);
 
     expect(failure).toBeInstanceOf(ApiError);
-    expect(failure).toMatchObject({ status: 400 });
+    expect(failure).toMatchObject({
+      status: 400,
+      message: 'Name is required; Asset class is required; Platform is required; Value must not be negative',
+    });
     expect((failure as ApiError).errors?.map((e) => e.field)).toEqual(['name', 'assetClass', 'platform', 'valueUsd']);
-    await expect(api.createHolding({ name: 'x', assetClass: 'Cash', platform: 'Bank', valueUsd: Number.NaN })).rejects.toBeInstanceOf(
-      ApiError,
-    );
+
+    const valid = { name: 'x', assetClass: 'Cash', platform: 'Bank' };
+    await expect(api.createHolding({ ...valid, valueUsd: 1e15 + 1 })).rejects.toMatchObject({ status: 400, message: 'Value is too large' });
+    await expect(api.createHolding({ ...valid, valueUsd: Number.NaN })).rejects.toMatchObject({ message: 'Value must be a number' });
+    await expect(api.createHolding({ ...valid, valueUsd: 0 })).resolves.toMatchObject({ valueUsd: 0 });
+    await expect(api.createHolding({ ...valid, valueUsd: 1e15 })).resolves.toMatchObject({ valueUsd: 1e15 });
   });
 
   it('records snapshots with the change from the previous one', async () => {
