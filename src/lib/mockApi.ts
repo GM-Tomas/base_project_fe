@@ -43,7 +43,12 @@ const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity:
 
 function groupBy(holdings: Holding[], key: (h: Holding) => string) {
   const groups = new Map<string, Holding[]>();
-  for (const h of holdings) groups.set(key(h), [...(groups.get(key(h)) ?? []), h]);
+  for (const h of holdings) {
+    const name = key(h);
+    const members = groups.get(name);
+    if (members) members.push(h);
+    else groups.set(name, [h]);
+  }
   return [...groups].map(([name, members]) => ({ name, value: total(members), count: members.length }));
 }
 
