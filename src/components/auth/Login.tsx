@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { usesMockData } from '@/lib/dataSource';
 
 export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
   const { signInWithPassword } = useAuth();
@@ -45,7 +46,9 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
             marginBottom: '26px',
           }}
         >
-          Sign in to see your full financial picture.
+          {usesMockData
+            ? 'A preview with demo data: any email and password sign in.'
+            : 'Sign in to see your full financial picture.'}
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>

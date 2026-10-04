@@ -1,10 +1,24 @@
 const isDev = process.env.NODE_ENV !== 'production';
 
+// Vercel previews run on mock data, production never does (src/lib/dataSource.ts); elsewhere, such as
+// local dev, NEXT_PUBLIC_DATA_SOURCE=mock opts in.
+const dataSource =
+  process.env.VERCEL_ENV === 'production'
+    ? 'live'
+    : process.env.VERCEL_ENV === 'preview'
+      ? 'mock'
+      : process.env.NEXT_PUBLIC_DATA_SOURCE === 'mock'
+        ? 'mock'
+        : 'live';
+
 // The Supabase session lives in localStorage, so the CSP's main job is limiting where injected
-// script could load from or send it: only this site, the API and Supabase.
-const apiOrigins = [process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080', process.env.NEXT_PUBLIC_SUPABASE_URL]
-  .filter(Boolean)
-  .map((url) => new URL(url).origin);
+// script could load from or send it: only this site, the API and Supabase (none of those on mock data).
+const apiOrigins =
+  dataSource === 'mock'
+    ? []
+    : [process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080', process.env.NEXT_PUBLIC_SUPABASE_URL]
+        .filter(Boolean)
+        .map((url) => new URL(url).origin);
 
 // ponytail: 'unsafe-inline' scripts — Next's inline bootstrap needs it without per-request nonces;
 // a nonce CSP in proxy.ts would drop it at the cost of making every page dynamic.
@@ -14,7 +28,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  `connect-src 'self' ${apiOrigins.join(' ')}`,
+  ['connect-src', "'self'", ...apiOrigins].join(' '),
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -26,6 +40,7 @@ const csp = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  env: { NEXT_PUBLIC_DATA_SOURCE: dataSource },
   // Vercel already adds HSTS.
   async headers() {
     return [

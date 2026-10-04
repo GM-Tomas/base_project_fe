@@ -1,3 +1,6 @@
+import { ApiError } from './apiError';
+import { usesMockData } from './dataSource';
+import { createMockApi } from './mockApi';
 import { supabase } from './supabaseClient';
 import type {
   AvailableAssetClasses,
@@ -9,6 +12,8 @@ import type {
   WealthSummary,
 } from '@/types/wealth';
 
+export { ApiError };
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
 interface ProblemDetail {
@@ -17,17 +22,6 @@ interface ProblemDetail {
   errors?: { field: string; message: string }[];
 }
 
-export class ApiError extends Error {
-  status: number;
-  errors?: { field: string; message: string }[];
-
-  constructor(status: number, message: string, errors?: { field: string; message: string }[]) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.errors = errors;
-  }
-}
 
 async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const { data } = await supabase.auth.getSession();
@@ -80,7 +74,7 @@ export interface HoldingInput {
   valueUsd: number;
 }
 
-export const api = {
+const liveApi = {
   getSummary: () => request<WealthSummary>('/api/v1/wealth/summary'),
 
   getHoldings: () => request<Holding[]>('/api/v1/holdings'),
@@ -103,3 +97,8 @@ export const api = {
     return request<Projection>(`/api/v1/wealth/estimate?${query}`);
   },
 };
+
+export type Api = typeof liveApi;
+
+// On mock data (Vercel previews, see dataSource.ts) nothing is fetched: the same calls, answered in memory.
+export const api: Api = usesMockData ? createMockApi() : liveApi;

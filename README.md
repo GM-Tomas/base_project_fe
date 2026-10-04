@@ -53,6 +53,15 @@ npm run dev
    session. That only works against a backend started with `AUTH_DEV_USER_ID` (requests without a token
    then act as that dev user); otherwise every request 401s, since the backend requires a real token.
 
+## 🔍 Preview deployments (demo data)
+
+Vercel preview deployments (every branch and pull request) run on **mock data**: a demo account is signed in
+from the start, and every API call is answered in the browser with made-up holdings, platforms and snapshots
+(`src/lib/mockApi.ts`, same rules as the API). Nothing is sent to Supabase or the API, so a preview never
+touches production data and needs no environment variables; a "Demo data" tag marks it, and changes last until
+the tab reloads. Production builds always use the real backend: `next.config.mjs` picks the data source from
+`VERCEL_ENV`. Locally, `NEXT_PUBLIC_DATA_SOURCE=mock npm run dev` shows the same demo without a backend.
+
 ## 👥 Multiple users
 
 Every person signs in with their own Supabase account and only ever sees and changes their own data:

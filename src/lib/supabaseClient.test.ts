@@ -17,4 +17,16 @@ describe('supabase client', () => {
     });
     vi.unstubAllEnvs();
   });
+
+  it('on mock data, signs in a demo account and never creates a Supabase client', async () => {
+    vi.stubEnv('NEXT_PUBLIC_DATA_SOURCE', 'mock');
+    vi.resetModules();
+    const { createClient: freshCreateClient } = await import('@supabase/supabase-js');
+
+    const { supabase } = await vi.importActual<typeof import('./supabaseClient')>('./supabaseClient');
+
+    expect(freshCreateClient).not.toHaveBeenCalled();
+    await expect(supabase.auth.getSession()).resolves.toMatchObject({ data: { session: { user: { id: 'demo-user' } } } });
+    vi.unstubAllEnvs();
+  });
 });
