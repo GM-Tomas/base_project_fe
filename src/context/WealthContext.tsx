@@ -134,7 +134,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, [refresh]);
 
-  // Computed values — all sourced from GET /wealth/summary (SQL-side aggregation), not
+  // Computed values — all sourced from GET /wealth/summary (server-side aggregation), not
   // recomputed from the raw holdings list on every render.
   const netWorthUSD = summary.netWorth.usd;
   const netWorthFormatted = useMemo(() => formatCurrency(netWorthUSD), [netWorthUSD]);
