@@ -185,9 +185,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const selectedPlatformHoldings = useMemo(() => {
     if (!selectedPlatform) return [];
-    // The API treats "Kraken" and "kraken" as one platform, so the drill-down does too.
-    const key = selectedPlatform.toLowerCase();
-    return holdings.filter((h) => h.platform.toLowerCase() === key);
+    return holdings.filter((h) => h.platform === selectedPlatform);
   }, [holdings, selectedPlatform]);
 
   // Actions
