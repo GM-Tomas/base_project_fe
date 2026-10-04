@@ -1,0 +1,595 @@
+import React from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Session } from '@supabase/supabase-js';
+import HomePage from '@/app/page';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { useWealth } from '@/context/WealthContext';
+import { supabase } from '@/lib/supabaseClient';
+import type { Holding, Platform, Projection, Snapshot, WealthSummary } from '@/types/wealth';
+
+// The whole app runs for real; only Supabase (see setup.ts) and the backend (fetch) are faked.
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+const SESSION = {
+  access_token: 'tok',
+  user: { id: 'u1', email: 'ana@example.com', user_metadata: { full_name: 'Ana Pérez' } },
+} as unknown as Session;
+
+const summary = (over: Partial<WealthSummary> = {}): WealthSummary => ({
+  netWorth: { usd: 12345.6 },
+  holdingsCount: 3,
+  ytd: { basis: 'YEAR_START_SNAPSHOT', growthPct: 12.34 },
+  liquidity: { liquidPct: 70, illiquidPct: 30, liquidAssetClasses: ['Equity'] },
+  byAssetClass: [
+    { assetClass: 'Equity', valueUsd: 8000, pct: 64.8, count: 1 },
+    { assetClass: 'Gold', valueUsd: 4345.6, pct: 35.2, count: 2 },
+  ],
+  byPlatform: [
+    { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2 },
+    { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1 },
+    { name: 'Empty', type: 'Bank', valueUsd: 0, pct: 0, count: 0 },
+  ],
+  ...over,
+});
+
+const holding = (id: string, name: string, assetClass: string, platform: string, valueUsd: number): Holding => ({
+  id, name, assetClass, platform, valueUsd, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+});
+
+const HOLDINGS = [
+  holding('h1', 'SPY', 'Equity', 'Balanz', 8000),
+  holding('h2', 'Gold bar', 'Gold', 'Vault', 4000),
+  holding('h3', 'Coins', 'Gold', 'Vault', 345.6),
+];
+
+const PLATFORMS: Platform[] = ['Balanz', 'Vault', 'Empty'].map((name) => ({ name, type: 'Other', createdAt: '' }));
+
+const snapshot = (id: string, capturedAt: string, totalValueUsd: number, changePctFromPrevious: number | null): Snapshot => ({
+  id, capturedAt, totalValueUsd, changePctFromPrevious,
+});
+
+const SNAPSHOTS = [
+  snapshot('s1', '2026-01-15T12:00:00Z', 10000, null),
+  snapshot('s2', '2026-02-15T12:00:00Z', 11000, 10),
+  snapshot('s3', '2026-03-15T12:00:00Z', 11000, 0),
+  snapshot('s4', '2026-04-15T12:00:00Z', 9000, -18.2),
+];
+
+const projection = (over: Partial<Projection> = {}): Projection => ({
+  principalUsd: 12345.6,
+  monthlyContributionUsd: 900,
+  annualYieldPct: 9,
+  years: 12,
+  series: [
+    { year: 0, futureValueUsd: 12345.6, totalContributedUsd: 12345.6, interestEarnedUsd: 0 },
+    { year: 1, futureValueUsd: 25000, totalContributedUsd: 23145.6, interestEarnedUsd: 1854.4 },
+  ],
+  milestones: [
+    { amountUsd: 50000, status: 'REACHABLE', monthsRequired: 30, targetMonth: '2029-03' },
+    { amountUsd: 123456, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null },
+  ],
+  ...over,
+});
+
+type Route = (init: RequestInit) => Response | Promise<Response>;
+let routes: Record<string, Route>;
+let fetchMock: ReturnType<typeof vi.fn>;
+let authListener: (event: string, session: Session | null) => void;
+
+beforeEach(() => {
+  routes = {
+    'GET /api/v1/wealth/summary': () => json(summary()),
+    'GET /api/v1/holdings': () => json(HOLDINGS),
+    'GET /api/v1/platforms': () => json(PLATFORMS),
+    'GET /api/v1/asset-classes': () => json({ defaults: ['Cash'], inUse: ['Equity', 'Gold'], all: ['Cash', 'Equity', 'Gold'] }),
+    'GET /api/v1/wealth/snapshots': () => json(SNAPSHOTS),
+    'GET /api/v1/wealth/estimate': () => json(projection()),
+  };
+  fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
+    const key = `${init.method ?? 'GET'} ${new URL(url).pathname}`;
+    const route = routes[key];
+    if (!route) throw new Error(`unexpected request ${key}`);
+    return route(init);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  vi.mocked(supabase.auth.onAuthStateChange).mockImplementation((cb) => {
+    authListener = cb as typeof authListener;
+    return { data: { subscription: { unsubscribe: vi.fn() } } } as never;
+  });
+});
+
+const requests = (method: string, path: string) =>
+  fetchMock.mock.calls.filter(([url, init]) => (init?.method ?? 'GET') === method && new URL(url).pathname === path);
+
+async function renderApp(session: Session | null = SESSION) {
+  vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session } } as never);
+  const utils = render(
+    <AuthProvider>
+      <HomePage />
+    </AuthProvider>,
+  );
+  if (session) await screen.findByText('$12,346');
+  return utils;
+}
+
+const nav = (label: string) => fireEvent.click(screen.getByRole('button', { name: label }));
+
+describe('auth', () => {
+  it('renders nothing while the session is loading', () => {
+    vi.mocked(supabase.auth.getSession).mockReturnValue(new Promise(() => {}));
+    const { container } = render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('signs in with email and password, showing the error on failure', async () => {
+    const { container } = await renderApp(null);
+    await screen.findByText('Sign in to see your full financial picture.');
+
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValueOnce({ error: { message: 'Invalid login credentials' } } as never);
+    fireEvent.change(container.querySelector('input[type=email]')!, { target: { value: 'ana@example.com' } });
+    fireEvent.change(container.querySelector('input[type=password]')!, { target: { value: 'secret' } });
+    fireEvent.submit(container.querySelector('form')!);
+
+    expect(await screen.findByText('Invalid login credentials')).toBeTruthy();
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({ email: 'ana@example.com', password: 'secret' });
+
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValueOnce({ error: null } as never);
+    fireEvent.submit(container.querySelector('form')!);
+    await waitFor(() => expect(screen.queryByText('Invalid login credentials')).toBeNull());
+
+    act(() => authListener('SIGNED_IN', SESSION));
+    expect(await screen.findByText('$12,346')).toBeTruthy();
+
+    // Signing out (from anywhere) drops back to the login screen.
+    act(() => authListener('SIGNED_OUT', null));
+    expect(await screen.findByText('Sign in to see your full financial picture.')).toBeTruthy();
+  });
+
+  it('lets developers skip login', async () => {
+    await renderApp(null);
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip login (dev)' }));
+    expect(await screen.findByText('$12,346')).toBeTruthy();
+    // No user: the sidebar falls back to a generic name, and the profile has nothing to show.
+    fireEvent.click(screen.getByRole('button', { name: /Account/ }));
+    expect(screen.queryByText('Profile')).toBeNull();
+  });
+
+  it('hooks throw outside their providers', () => {
+    const Auth = () => (useAuth(), null);
+    const Wealth = () => (useWealth(), null);
+    // Expected throws: keep React/jsdom from dumping them to the console.
+    const swallow = (e: ErrorEvent) => e.preventDefault();
+    window.addEventListener('error', swallow);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<Auth />)).toThrow('useAuth must be used within an AuthProvider');
+    expect(() => render(<Wealth />)).toThrow('useWealth must be used within a WealthProvider');
+    window.removeEventListener('error', swallow);
+  });
+});
+
+describe('loading data', () => {
+  it('shows a loading state, then the dashboard', async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText('Loading your data…')).toBeTruthy();
+    expect(await screen.findByText('$12,346')).toBeTruthy();
+    expect(requests('GET', '/api/v1/wealth/summary')[0][1].headers).toEqual({ Authorization: 'Bearer tok' });
+  });
+
+  it('shows the API error message', async () => {
+    routes['GET /api/v1/wealth/summary'] = () => json({ detail: 'Database unavailable' }, 503);
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText(/Couldn.t reach the server: Database unavailable/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it('shows a generic message when the network fails', async () => {
+    routes['GET /api/v1/holdings'] = () => Promise.reject(new TypeError('Failed to fetch'));
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText(/Failed to load your data/)).toBeTruthy();
+  });
+
+  it('signs out when the backend rejects the token', async () => {
+    routes['GET /api/v1/wealth/summary'] = () => json({}, 401);
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText(/Your session expired/)).toBeTruthy();
+    expect(supabase.auth.signOut).toHaveBeenCalled();
+  });
+});
+
+describe('dashboard', () => {
+  it('shows net worth, liquidity, counts and distributions', async () => {
+    await renderApp();
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy();
+    expect(screen.getByText('+12.3% since January')).toBeTruthy();
+    expect(screen.getByText('70%')).toBeTruthy();
+    expect(screen.getByText('30%')).toBeTruthy();
+    expect(screen.getByText('Across 3 accounts')).toBeTruthy();
+    expect(screen.getByText('64.8%')).toBeTruthy();
+    expect(screen.getByText('$8,000 · 64.8%')).toBeTruthy();
+    // Exposure bars are sorted by balance, largest first.
+    const bars = screen.getByText('Where it lives').parentElement!;
+    expect(within(bars).getAllByText(/^(Balanz|Vault|Empty)$/).map((el) => el.textContent)).toEqual(['Balanz', 'Vault', 'Empty']);
+  });
+
+  it.each([
+    ['EARLIEST_SNAPSHOT', -3.5, '-3.5% since your first snapshot'],
+    ['NO_BASELINE', 0, 'No history yet'],
+  ] as const)('labels YTD growth for %s', async (basis, growthPct, label) => {
+    routes['GET /api/v1/wealth/summary'] = () => json(summary({ ytd: { basis, growthPct } }));
+    await renderApp();
+    expect(screen.getByText(label)).toBeTruthy();
+  });
+
+  it('renders an empty donut with no holdings', async () => {
+    routes['GET /api/v1/wealth/summary'] = () => json(summary({ byAssetClass: [], byPlatform: [] }));
+    await renderApp();
+    expect(screen.getByText('What you’re holding'.replace('’', "'"))).toBeTruthy();
+  });
+});
+
+describe('platforms', () => {
+  it('drills into a platform and closes again', async () => {
+    await renderApp();
+    nav('Platforms');
+    expect(screen.getByRole('heading', { name: 'Platforms' })).toBeTruthy();
+
+    fireEvent.click(screen.getByText('Vault'));
+    expect(screen.getByText("Vault · what's there")).toBeTruthy();
+    expect(screen.getByText('Gold bar')).toBeTruthy();
+    expect(screen.getByText('Coins')).toBeTruthy();
+
+    fireEvent.click(screen.getByText('Vault'));
+    expect(screen.queryByText("Vault · what's there")).toBeNull();
+
+    fireEvent.click(screen.getByText('Empty'));
+    expect(screen.getByText('No individual holdings recorded for this platform yet.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByText("Empty · what's there")).toBeNull();
+
+    // Changing view resets the selection.
+    fireEvent.click(screen.getByText('Balanz'));
+    nav('Dashboard');
+    nav('Platforms');
+    expect(screen.queryByText("Balanz · what's there")).toBeNull();
+  });
+});
+
+describe('assets', () => {
+  it('filters by asset class', async () => {
+    await renderApp();
+    nav('Assets');
+    expect(screen.getByText('SPY')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gold' }));
+    expect(screen.queryByText('SPY')).toBeNull();
+    expect(screen.getByText('Gold bar')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cash' }));
+    expect(screen.getByText('No holdings found for the selected category.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByText('SPY')).toBeTruthy();
+  });
+
+  it('deletes a holding and refreshes', async () => {
+    routes['DELETE /api/v1/holdings/h1'] = () => {
+      routes['GET /api/v1/holdings'] = () => json(HOLDINGS.slice(1));
+      return new Response(null, { status: 204 });
+    };
+    await renderApp();
+    nav('Assets');
+
+    const remove = screen.getAllByTitle('Remove asset')[0];
+    fireEvent.mouseEnter(remove);
+    expect(remove.style.color).toBe('var(--color-negative)');
+    fireEvent.mouseLeave(remove);
+    expect(remove.style.color).toBe('var(--color-neutral-600)');
+
+    fireEvent.click(remove);
+    await waitFor(() => expect(screen.queryByText('SPY')).toBeNull());
+    expect(requests('DELETE', '/api/v1/holdings/h1')).toHaveLength(1);
+  });
+
+  it.each([
+    ['an API error', () => json({ detail: 'Holding not found' }, 404), 'Holding not found'],
+    ['a network error', () => Promise.reject(new TypeError('offline')), 'Could not remove this asset'],
+  ])('shows %s when delete fails', async (_name, route, message) => {
+    routes['DELETE /api/v1/holdings/h1'] = route;
+    await renderApp();
+    nav('Assets');
+    fireEvent.click(screen.getAllByTitle('Remove asset')[0]);
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
+});
+
+describe('estimate', () => {
+  it('projects with the current parameters and milestones', async () => {
+    await renderApp();
+    nav('Estimate');
+
+    expect(await screen.findByText('$25,000')).toBeTruthy();
+    expect(screen.getByText('$50k')).toBeTruthy();
+    expect(screen.getByText('Mar 2029')).toBeTruthy();
+    expect(screen.getByText('$123,456')).toBeTruthy();
+    expect(screen.getByText('not within 12y at this pace')).toBeTruthy();
+    expect(new URL(requests('GET', '/api/v1/wealth/estimate')[0][0]).search).toBe('?contribution=900&yieldPct=9&years=12');
+  });
+
+  it('refetches after the sliders settle', async () => {
+    await renderApp();
+    nav('Estimate');
+    await screen.findByText('$25,000');
+
+    const [contribution, yieldPct, years] = screen.getAllByRole('slider');
+    fireEvent.change(contribution, { target: { value: '1000' } });
+    fireEvent.change(yieldPct, { target: { value: '5.5' } });
+    fireEvent.change(years, { target: { value: '1' } });
+
+    expect(screen.getByText('$1,000')).toBeTruthy();
+    expect(screen.getByText('5.5%')).toBeTruthy();
+    expect(screen.getByText('1 year')).toBeTruthy();
+    await waitFor(() =>
+      expect(new URL(requests('GET', '/api/v1/wealth/estimate').at(-1)![0]).search).toBe('?contribution=1000&yieldPct=5.5&years=1'),
+    );
+  });
+
+  it('labels achieved and undated milestones, and handles none', async () => {
+    routes['GET /api/v1/wealth/estimate'] = () =>
+      json(
+        projection({
+          milestones: [
+            { amountUsd: 10000, status: 'ACHIEVED', monthsRequired: 0, targetMonth: null },
+            { amountUsd: 20000, status: 'REACHABLE', monthsRequired: null, targetMonth: null },
+          ],
+        }),
+      );
+    await renderApp();
+    nav('Estimate');
+    expect(await screen.findByText('already there')).toBeTruthy();
+    expect(screen.getByText('$20k')).toBeTruthy();
+  });
+
+  it.each([
+    ['an API error', () => json({ detail: 'years must be between 1 and 50' }, 400), 'years must be between 1 and 50'],
+    ['a network error', () => Promise.reject(new TypeError('offline')), 'Could not calculate the projection'],
+  ])('shows %s', async (_name, route, message) => {
+    routes['GET /api/v1/wealth/estimate'] = route;
+    await renderApp();
+    nav('Estimate');
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.getAllByText('—')).toHaveLength(3);
+  });
+});
+
+describe('history', () => {
+  it('lists checkpoints with their change', async () => {
+    await renderApp();
+    nav('History');
+    expect(screen.getByText('Jan 15, 2026')).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getByText('▲ +10.0%')).toBeTruthy();
+    expect(screen.getByText('– 0.0%')).toBeTruthy();
+    expect(screen.getByText('▼ -18.2%')).toBeTruthy();
+  });
+
+  it('shows a tooltip on hover and focus', async () => {
+    await renderApp();
+    nav('History');
+
+    for (const label of ['Jan 15, 2026: $10,000', 'Feb 15, 2026: $11,000', 'Apr 15, 2026: $9,000']) {
+      const dot = screen.getByLabelText(label);
+      fireEvent.mouseEnter(dot);
+      expect(within(dot).getByText(label.split(': ')[1])).toBeTruthy();
+      fireEvent.mouseLeave(dot);
+      expect(within(dot).queryByText(label.split(': ')[1])).toBeNull();
+    }
+
+    const dot = screen.getByLabelText('Mar 15, 2026: $11,000');
+    fireEvent.focus(dot);
+    expect(within(dot).getByText('$11,000')).toBeTruthy();
+    fireEvent.blur(dot);
+    expect(within(dot).queryByText('$11,000')).toBeNull();
+  });
+
+  it('takes a snapshot and refreshes', async () => {
+    routes['GET /api/v1/wealth/snapshots'] = () => json([]);
+    routes['POST /api/v1/wealth/snapshots'] = () => {
+      routes['GET /api/v1/wealth/snapshots'] = () => json([snapshot('s9', '2026-05-15T12:00:00Z', 12345.6, null)]);
+      return json({}, 201);
+    };
+    await renderApp();
+    nav('History');
+    expect(screen.getByText('No snapshots yet — save one to start tracking your history.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save a snapshot' }));
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeTruthy();
+    expect(await screen.findByText('May 15, 2026')).toBeTruthy();
+  });
+
+  it.each([
+    ['an API error', () => json({ detail: 'A snapshot already exists' }, 409), 'A snapshot already exists'],
+    ['a network error', () => Promise.reject(new TypeError('offline')), 'Could not save a snapshot right now'],
+  ])('shows %s when saving a snapshot fails', async (_name, route, message) => {
+    routes['POST /api/v1/wealth/snapshots'] = route;
+    await renderApp();
+    nav('History');
+    fireEvent.click(screen.getByRole('button', { name: 'Save a snapshot' }));
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save a snapshot' })).toBeTruthy();
+  });
+});
+
+describe('add asset', () => {
+  const open = () => fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
+  const form = () => screen.getByRole('button', { name: 'Save asset' }).closest('form')!;
+  const type = (placeholder: string, value: string) =>
+    fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value } });
+
+  it('creates a holding on an existing platform and class', async () => {
+    routes['POST /api/v1/holdings'] = () => json({}, 201);
+    await renderApp();
+    open();
+    expect(screen.getByText('Add an asset', { selector: '.dialog-title' })).toBeTruthy();
+
+    type('e.g. Vanguard S&P 500 ETF', '  VOO  ');
+    const [platform, assetClass] = screen.getAllByRole('combobox');
+    fireEvent.change(platform, { target: { value: 'Vault' } });
+    fireEvent.change(assetClass, { target: { value: 'Equity' } });
+    type('0.00', '1500.5');
+    fireEvent.submit(form());
+
+    await waitFor(() => expect(screen.queryByText('Save asset')).toBeNull());
+    expect(JSON.parse(requests('POST', '/api/v1/holdings')[0][1].body)).toEqual({
+      name: 'VOO', assetClass: 'Equity', platform: 'Vault', valueUsd: 1500.5,
+    });
+  });
+
+  it('creates a new platform and class', async () => {
+    routes['POST /api/v1/holdings'] = () => json({}, 201);
+    await renderApp();
+    open();
+
+    type('e.g. Vanguard S&P 500 ETF', 'BTC');
+    const [platform, assetClass] = screen.getAllByRole('combobox');
+    fireEvent.change(platform, { target: { value: '__new__' } });
+    fireEvent.change(assetClass, { target: { value: '__new__' } });
+    type('New platform name', ' Binance ');
+    type('New asset class name', ' Crypto ');
+    type('0.00', '10');
+    fireEvent.submit(form());
+
+    await waitFor(() => expect(requests('POST', '/api/v1/holdings')).toHaveLength(1));
+    expect(JSON.parse(requests('POST', '/api/v1/holdings')[0][1].body)).toMatchObject({ platform: 'Binance', assetClass: 'Crypto' });
+  });
+
+  it('starts on "add new" when there are no platforms or classes yet', async () => {
+    routes['GET /api/v1/platforms'] = () => json([]);
+    routes['GET /api/v1/asset-classes'] = () => json({ defaults: [], inUse: [], all: [] });
+    await renderApp();
+    open();
+    expect(screen.getByPlaceholderText('New platform name')).toBeTruthy();
+    expect(screen.getByPlaceholderText('New asset class name')).toBeTruthy();
+  });
+
+  it('validates before sending', async () => {
+    await renderApp();
+    open();
+
+    fireEvent.submit(form());
+    expect(screen.getByText('Please enter an asset name')).toBeTruthy();
+
+    type('e.g. Vanguard S&P 500 ETF', 'BTC');
+    const [platform, assetClass] = screen.getAllByRole('combobox');
+    fireEvent.change(platform, { target: { value: '__new__' } });
+    fireEvent.submit(form());
+    expect(screen.getByText('Please choose or enter a platform')).toBeTruthy();
+
+    type('New platform name', 'Binance');
+    fireEvent.change(assetClass, { target: { value: '__new__' } });
+    fireEvent.submit(form());
+    expect(screen.getByText('Please choose or enter an asset class')).toBeTruthy();
+
+    type('New asset class name', 'Crypto');
+    type('0.00', '0');
+    fireEvent.submit(form());
+    expect(screen.getByText('Please enter a valid positive value')).toBeTruthy();
+
+    expect(requests('POST', '/api/v1/holdings')).toHaveLength(0);
+  });
+
+  it.each([
+    ['an API error', () => json({ detail: 'PlatformName exceeds max length' }, 400), 'PlatformName exceeds max length'],
+    ['a network error', () => Promise.reject(new TypeError('offline')), 'Could not save this asset. Please try again.'],
+  ])('keeps the dialog open on %s', async (_name, route, message) => {
+    routes['POST /api/v1/holdings'] = route;
+    await renderApp();
+    open();
+    type('e.g. Vanguard S&P 500 ETF', 'VOO');
+    type('0.00', '1');
+    fireEvent.submit(form());
+
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save asset' })).toBeTruthy();
+  });
+
+  it('closes with Cancel or the backdrop, but not when clicking inside', async () => {
+    await renderApp();
+
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Save asset')).toBeNull();
+
+    open();
+    fireEvent.click(screen.getByText('Add an asset', { selector: '.dialog-title' }));
+    expect(screen.getByText('Save asset')).toBeTruthy();
+    fireEvent.click(document.querySelector('.dialog-backdrop')!);
+    expect(screen.queryByText('Save asset')).toBeNull();
+  });
+});
+
+describe('profile', () => {
+  it('shows the user and signs out', async () => {
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: /Ana Pérez/ }));
+
+    const dialog = screen.getByText('Profile').closest('.dialog') as HTMLElement;
+    expect(within(dialog).getByText('Ana Pérez')).toBeTruthy();
+    expect(within(dialog).getByText('ana@example.com')).toBeTruthy();
+    expect(within(dialog).getByText('$12,346')).toBeTruthy();
+    expect(within(dialog).getByText('A')).toBeTruthy();
+
+    fireEvent.click(dialog);
+    expect(screen.getByText('Profile')).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
+    expect(supabase.auth.signOut).toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByText('Profile')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Ana Pérez/ }));
+    fireEvent.click(document.querySelector('.dialog-backdrop')!);
+    expect(screen.queryByText('Profile')).toBeNull();
+  });
+
+  it('uses the avatar when the provider gives one', async () => {
+    await renderApp({
+      ...SESSION,
+      user: { id: 'u2', email: 'bo@example.com', user_metadata: { picture: 'https://example.com/bo.png' } },
+    } as unknown as Session);
+
+    const avatars = () => screen.getAllByRole('img', { name: 'bo@example.com' });
+    expect(avatars()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /bo@example.com/ }));
+    expect(avatars()).toHaveLength(2);
+    expect(avatars()[1].getAttribute('src')).toBe('https://example.com/bo.png');
+  });
+});

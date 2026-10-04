@@ -52,6 +52,15 @@ npm run dev
    or, outside production builds, use the "Skip login (dev)" button to preview the UI without a
    session (every request will still 401 without a real token, since the backend requires one).
 
+### Tests
+
+```bash
+npm test                # vitest
+npm run test:coverage   # fails below 85% (statements, branches, functions, lines)
+```
+
+Supabase and the backend (`fetch`) are the only things mocked; the rest of the app renders for real.
+
 ### Building for Production
 
 ```bash
