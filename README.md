@@ -50,7 +50,23 @@ npm run dev
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser. Sign in with email/password —
    or, outside production builds, use the "Skip login (dev)" button to preview the UI without a
-   session (every request will still 401 without a real token, since the backend requires one).
+   session. That only works against a backend started with `AUTH_DEV_USER_ID` (requests without a token
+   then act as that dev user); otherwise every request 401s, since the backend requires a real token.
+
+## 👥 Multiple users
+
+Every person signs in with their own Supabase account and only ever sees and changes their own data:
+
+- **Isolation is enforced by the backend**, which scopes every read and write to the signed-in user (the JWT's
+  `sub`); the frontend never sends a user id. Two accounts can even use the same platform names.
+- **Adding people:** sign-ups are off, so create each account in the Supabase dashboard (Authentication >
+  Users > Add user). Nothing else to configure: a new account starts with an empty dashboard.
+- **Switching accounts on one browser:** signing out (from the profile menu, or from the error screen if the
+  API is unreachable) drops all of the previous account's data from memory; the next account's dashboard is
+  rebuilt from scratch with its own token, and a slow response for the previous account is discarded.
+- **Session safety:** the Supabase client never adopts a session from the URL (`detectSessionInUrl: false`),
+  so a crafted link can't silently sign someone into another account. A `401` from the API only signs out
+  the session that was rejected, and only on this browser.
 
 ### Tests
 
