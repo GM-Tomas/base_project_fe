@@ -78,6 +78,10 @@ function followPlatform(selected: string | null, before: Holding[], after: Holdi
   return after.find((h) => ids.has(h.id))?.platform ?? null;
 }
 
+// How a failed load ends the sentence on the error screen: what the API said, if it answered.
+const reason = (e: unknown) =>
+  e instanceof ApiError ? `: ${e.message}` : '. Check your connection and try again.';
+
 const EMPTY_SUMMARY: WealthSummary = {
   netWorth: { usd: 0 },
   holdingsCount: 0,
@@ -129,8 +133,10 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         api.getSnapshots(),
       ]);
     } catch (e) {
+      // Newer data is already on screen: nothing to report.
+      if (refreshId < refreshShown.current) return;
       // A newer refresh that failed still supersedes older ones: they'd show data from before it.
-      refreshShown.current = Math.max(refreshShown.current, refreshId);
+      refreshShown.current = refreshId;
       throw e;
     }
     const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes] = results;
@@ -152,7 +158,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setLoadError(null);
     refresh()
       .catch((e) => {
-        if (!cancelled) setLoadError(e instanceof ApiError ? e.message : 'Failed to load your data');
+        if (!cancelled) setLoadError(`Couldn't load your data${reason(e)}`);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -222,8 +228,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       await refresh();
     } catch (e) {
-      const reason = e instanceof ApiError ? e.message : 'network error';
-      setLoadError(`your change was saved, but your data couldn't be reloaded (${reason})`);
+      setLoadError(`Your change was saved, but your data couldn't be reloaded${reason(e)}`);
     }
   }, [refresh]);
 

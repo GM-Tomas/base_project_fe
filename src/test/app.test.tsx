@@ -213,7 +213,7 @@ describe('loading data', () => {
         <HomePage />
       </AuthProvider>,
     );
-    expect(await screen.findByText(/Couldn.t reach the server: Database unavailable/)).toBeTruthy();
+    expect(await screen.findByText("Couldn't load your data: Database unavailable")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
@@ -225,7 +225,7 @@ describe('loading data', () => {
         <HomePage />
       </AuthProvider>,
     );
-    expect(await screen.findByText(/Failed to load your data/)).toBeTruthy();
+    expect(await screen.findByText("Couldn't load your data. Check your connection and try again.")).toBeTruthy();
   });
 
   it('signs out when the backend rejects the token', async () => {
@@ -425,6 +425,39 @@ describe('overlapping refreshes', () => {
     });
     expect(screen.getByText('SPY, Gold bar, Coins')).toBeTruthy();
   });
+
+  it("doesn't report an older refresh failing once newer data is on screen", async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    let wealth!: ReturnType<typeof useWealth>;
+    const Probe = () => {
+      wealth = useWealth();
+      return <p>{wealth.holdings.map((h) => h.name).join(', ')}</p>;
+    };
+    render(
+      <WealthProvider>
+        <Probe />
+      </WealthProvider>,
+    );
+    await screen.findByText('SPY, Gold bar, Coins');
+
+    let failOld!: (e: Error) => void;
+    routes['GET /api/v1/holdings'] = () => new Promise<Response>((_, reject) => (failOld = reject));
+    let older!: Promise<void>;
+    act(() => {
+      older = wealth.refresh();
+    });
+    await waitFor(() => expect(failOld).toBeTypeOf('function'));
+
+    routes['GET /api/v1/holdings'] = () => json(HOLDINGS.slice(1));
+    await act(() => wealth.refresh());
+    expect(screen.getByText('Gold bar, Coins')).toBeTruthy();
+
+    await act(async () => {
+      failOld(new TypeError('offline'));
+      await expect(older).resolves.toBeUndefined();
+    });
+    expect(screen.getByText('Gold bar, Coins')).toBeTruthy();
+  });
 });
 
 describe('assets', () => {
@@ -474,7 +507,7 @@ describe('assets', () => {
 
     expect(
       await screen.findByText(
-        "Couldn't reach the server: your change was saved, but your data couldn't be reloaded (network error)",
+        "Your change was saved, but your data couldn't be reloaded. Check your connection and try again.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText('Could not remove this asset')).toBeNull();
@@ -650,7 +683,7 @@ describe('add asset', () => {
 
     expect(
       await screen.findByText(
-        "Couldn't reach the server: your change was saved, but your data couldn't be reloaded (Service Unavailable)",
+        "Your change was saved, but your data couldn't be reloaded: Service Unavailable",
       ),
     ).toBeTruthy();
     expect(screen.queryByText('Could not save this asset. Please try again.')).toBeNull();
@@ -881,7 +914,7 @@ describe('multiple accounts', () => {
         <HomePage />
       </AuthProvider>,
     );
-    await screen.findByText(/Couldn.t reach the server/);
+    await screen.findByText("Couldn't load your data: Database unavailable");
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });

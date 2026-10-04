@@ -70,7 +70,7 @@ function Dashboard() {
           color: 'var(--color-text)',
         }}
       >
-        <div>Couldn&apos;t reach the server: {loadError}</div>
+        <div>{loadError}</div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button className="btn btn-primary" onClick={() => window.location.reload()}>
             Retry
