@@ -4,6 +4,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useWealth } from '@/context/WealthContext';
+import { accountLabel } from '@/lib/account';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -15,9 +16,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
 
   if (!user) return null;
 
-  const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Account';
-  const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
-  const initial = name.charAt(0).toUpperCase();
+  const { name, initial } = accountLabel(user);
 
   // ponytail: portal escapes Sidebar's z-index stacking context, which buried the modal under <main>
   return createPortal(
@@ -26,32 +25,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
         <div className="dialog-title">Profile</div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          {avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatarUrl}
-              alt={name}
-              style={{ width: '52px', height: '52px', borderRadius: '50%', flex: 'none' }}
-            />
-          ) : (
-            <div
-              style={{
-                width: '52px',
-                height: '52px',
-                borderRadius: '50%',
-                background: 'var(--color-accent-800)',
-                color: 'var(--color-accent-200)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '18px',
-                fontWeight: 600,
-                flex: 'none',
-              }}
-            >
-              {initial}
-            </div>
-          )}
+          <div
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: 'var(--color-accent-800)',
+              color: 'var(--color-accent-200)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '18px',
+              fontWeight: 600,
+              flex: 'none',
+            }}
+          >
+            {initial}
+          </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text)' }}>{name}</div>
             {user.email && (

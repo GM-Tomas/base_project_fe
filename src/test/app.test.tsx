@@ -153,6 +153,23 @@ describe('auth', () => {
     expect(await screen.findByText('Sign in to see your full financial picture.')).toBeTruthy();
   });
 
+  it('starts signed out when the stored session cannot be read', async () => {
+    vi.mocked(supabase.auth.getSession).mockRejectedValue(new Error('storage blocked'));
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText('Sign in to see your full financial picture.')).toBeTruthy();
+  });
+
+  it('lets password managers tell accounts apart', async () => {
+    const { container } = await renderApp(null);
+    await screen.findByText('Sign in to see your full financial picture.');
+    expect(container.querySelector('input[type=email]')!.getAttribute('autocomplete')).toBe('username');
+    expect(container.querySelector('input[type=password]')!.getAttribute('autocomplete')).toBe('current-password');
+  });
+
   it('lets developers skip login', async () => {
     await renderApp(null);
     fireEvent.click(await screen.findByRole('button', { name: 'Skip login (dev)' }));
@@ -580,16 +597,125 @@ describe('profile', () => {
     expect(screen.queryByText('Profile')).toBeNull();
   });
 
-  it('uses the avatar when the provider gives one', async () => {
+  it('shows initials, never a remote image, and ignores metadata that is not text', async () => {
+    // user_metadata is editable by its owner: none of this may break the UI or load a remote URL.
     await renderApp({
       ...SESSION,
-      user: { id: 'u2', email: 'bo@example.com', user_metadata: { picture: 'https://example.com/bo.png' } },
+      user: {
+        id: 'u2',
+        email: 'bo@example.com',
+        user_metadata: { picture: 'https://example.com/bo.png', avatar_url: 'https://example.com/bo.png', full_name: 42, name: '  ' },
+      },
     } as unknown as Session);
 
-    const avatars = () => screen.getAllByRole('img', { name: 'bo@example.com' });
-    expect(avatars()).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: /bo@example.com/ }));
-    expect(avatars()).toHaveLength(2);
-    expect(avatars()[1].getAttribute('src')).toBe('https://example.com/bo.png');
+    expect(screen.getAllByText('B')).toHaveLength(2);
+    expect(document.querySelectorAll('img')).toHaveLength(0);
+  });
+});
+
+describe('multiple accounts', () => {
+  const BOB = {
+    access_token: 'tok-bob',
+    user: { id: 'u2', email: 'bob@example.com', user_metadata: {} },
+  } as unknown as Session;
+
+  const bobSummary = summary({
+    netWorth: { usd: 777 },
+    holdingsCount: 1,
+    byAssetClass: [{ assetClass: 'Fixed Income', valueUsd: 777, pct: 100, count: 1 }],
+    byPlatform: [{ name: 'Bob Bank', type: 'Bank', valueUsd: 777, pct: 100, count: 1 }],
+  });
+
+  // Like the real backend: what comes back depends only on whose token the request carries.
+  beforeEach(() => {
+    const perToken = (alice: unknown, bob: unknown) => (init: RequestInit) =>
+      json((init.headers as Record<string, string>).Authorization === 'Bearer tok-bob' ? bob : alice);
+    routes['GET /api/v1/wealth/summary'] = perToken(summary(), bobSummary);
+    routes['GET /api/v1/holdings'] = perToken(HOLDINGS, [holding('b1', 'Bob bond', 'Fixed Income', 'Bob Bank', 777)]);
+    routes['GET /api/v1/platforms'] = perToken(PLATFORMS, [{ name: 'Bob Bank', type: 'Other', createdAt: '' }]);
+    routes['GET /api/v1/wealth/snapshots'] = perToken(SNAPSHOTS, []);
+  });
+
+  const signInAsBob = () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: BOB } } as never);
+    act(() => authListener('SIGNED_IN', BOB));
+  };
+
+  const expectOnlyBob = async () => {
+    expect(await screen.findByText('$777')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /bob@example.com/ })).toBeTruthy();
+    expect(screen.queryByText('$12,346')).toBeNull();
+    expect(screen.queryByText('Ana Pérez')).toBeNull();
+    nav('Assets');
+    expect(screen.getByText('Bob bond')).toBeTruthy();
+    expect(screen.queryByText('SPY')).toBeNull();
+    nav('History');
+    expect(screen.getByText('No snapshots yet — save one to start tracking your history.')).toBeTruthy();
+  };
+
+  it('signing out and in as someone else shows only their data', async () => {
+    await renderApp();
+    nav('Assets');
+    fireEvent.click(screen.getByRole('button', { name: 'Gold' }));
+    expect(screen.getByText('Gold bar')).toBeTruthy();
+
+    act(() => authListener('SIGNED_OUT', null));
+    await screen.findByText('Sign in to see your full financial picture.');
+    const sentBeforeBob = fetchMock.mock.calls.length;
+
+    signInAsBob();
+    await expectOnlyBob();
+    // Nothing carried over from Alice's session (view, filters), and every request since went out as Bob.
+    nav('Assets');
+    expect(screen.getByText('Bob bond')).toBeTruthy();
+    const sinceBob = fetchMock.mock.calls.slice(sentBeforeBob);
+    expect(sinceBob.length).toBeGreaterThan(0);
+    for (const [, init] of sinceBob) expect(init.headers.Authorization).toBe('Bearer tok-bob');
+  });
+
+  it('another tab signing in as someone else swaps the whole dashboard', async () => {
+    await renderApp();
+    signInAsBob();
+    await expectOnlyBob();
+  });
+
+  it("a slow answer for the previous account never shows up under the new one", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const summaries = routes['GET /api/v1/wealth/summary'];
+    routes['GET /api/v1/wealth/summary'] = async (init) => {
+      if ((init.headers as Record<string, string>).Authorization === 'Bearer tok') await gate;
+      return summaries(init);
+    };
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(requests('GET', '/api/v1/wealth/summary')).toHaveLength(1));
+
+    signInAsBob();
+    expect(await screen.findByText('$777')).toBeTruthy();
+
+    await act(async () => release());
+    expect(screen.getByText('$777')).toBeTruthy();
+    expect(screen.queryByText('$12,346')).toBeNull();
+  });
+
+  it('can sign out from the error screen, e.g. to switch accounts', async () => {
+    routes['GET /api/v1/wealth/summary'] = () => json({ detail: 'Database unavailable' }, 503);
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    render(
+      <AuthProvider>
+        <HomePage />
+      </AuthProvider>,
+    );
+    await screen.findByText(/Couldn.t reach the server/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(supabase.auth.signOut).toHaveBeenCalled();
   });
 });

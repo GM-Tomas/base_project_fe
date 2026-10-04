@@ -68,6 +68,7 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
             <input
               className="input"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
@@ -80,6 +81,7 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
             <input
               className="input"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

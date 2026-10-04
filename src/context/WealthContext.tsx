@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams } from '@/types/wealth';
-import { ASSET_CLASS_COLORS, ASSET_CLASS_TAG_CLASSES, PLATFORM_COLORS, PLATFORM_TAG_CLASSES } from '@/lib/constants';
+import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
 import { api, ApiError, HoldingInput } from '@/lib/api';
 
@@ -154,8 +154,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         label: item.assetClass,
         value: item.valueUsd,
         pct: item.pct,
-        color: ASSET_CLASS_COLORS[item.assetClass] || 'var(--color-neutral-400)',
-        tagClass: ASSET_CLASS_TAG_CLASSES[item.assetClass] || 'tag tag-neutral',
+        color: assetClassColor(item.assetClass),
+        tagClass: assetClassTag(item.assetClass),
         pctLabel: item.pct.toFixed(1) + '%',
       })),
     [summary.byAssetClass],
@@ -170,8 +170,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         balanceFormatted: formatCurrency(item.valueUsd),
         pctOfTotal: item.pct,
         pctLabel: item.pct.toFixed(1) + '%',
-        color: PLATFORM_COLORS[item.name] || 'var(--color-neutral-400)',
-        tagClass: PLATFORM_TAG_CLASSES[item.type] || 'tag tag-neutral',
+        color: platformColor(item.name),
+        tagClass: platformTag(item.type),
         initial: item.name.charAt(0) || '?',
         isActive: selectedPlatform === item.name,
       })),

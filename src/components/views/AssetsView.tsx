@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
-import { ASSET_CLASS_TAG_CLASSES } from '@/lib/constants';
+import { assetClassTag } from '@/lib/constants';
 import { ApiError } from '@/lib/api';
 
 export const AssetsView: React.FC = () => {
@@ -80,7 +80,7 @@ export const AssetsView: React.FC = () => {
               </tr>
             ) : (
               filteredHoldings.map((h) => {
-                const tagClass = ASSET_CLASS_TAG_CLASSES[h.assetClass] || 'tag tag-neutral';
+                const tagClass = assetClassTag(h.assetClass);
 
                 return (
                   <tr key={h.id}>

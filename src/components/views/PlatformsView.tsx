@@ -3,7 +3,7 @@
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
-import { ASSET_CLASS_TAG_CLASSES } from '@/lib/constants';
+import { assetClassTag } from '@/lib/constants';
 
 export const PlatformsView: React.FC = () => {
   const {
@@ -130,7 +130,7 @@ export const PlatformsView: React.FC = () => {
                 </thead>
                 <tbody>
                   {selectedPlatformHoldings.map((h) => {
-                    const tagClass = ASSET_CLASS_TAG_CLASSES[h.assetClass] || 'tag tag-neutral';
+                    const tagClass = assetClassTag(h.assetClass);
 
                     return (
                       <tr key={h.id}>
