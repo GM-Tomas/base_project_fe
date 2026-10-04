@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { initialOf } from './initial';
 
 describe('initialOf', () => {
@@ -15,5 +15,19 @@ describe('initialOf', () => {
     ['   ', '?'],
   ])('%j → %j', (name, initial) => {
     expect(initialOf(name)).toBe(initial);
+  });
+
+  it('works without Intl.Segmenter, a code point at a time', async () => {
+    const segmenter = Object.getOwnPropertyDescriptor(Intl, 'Segmenter')!;
+    Reflect.deleteProperty(Intl, 'Segmenter');
+    try {
+      vi.resetModules();
+      const { initialOf: withoutSegmenter } = await import('./initial');
+      expect(withoutSegmenter('binance')).toBe('B');
+      expect(withoutSegmenter('\u{1F600} Tomás')).toBe('\u{1F600}');
+      expect(withoutSegmenter(' ')).toBe('?');
+    } finally {
+      Object.defineProperty(Intl, 'Segmenter', segmenter);
+    }
   });
 });

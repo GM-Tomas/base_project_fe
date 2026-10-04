@@ -1,5 +1,11 @@
-const firstCharacter = (text: string): string | undefined =>
-  new Intl.Segmenter().segment(text)[Symbol.iterator]().next().value?.segment;
+// One segmenter for every call, made on first use. Browsers without Intl.Segmenter (Firefox before 125)
+// get the first code point instead: whole, if not always the whole character.
+let segmenter: Intl.Segmenter | null | undefined;
+
+function firstCharacter(text: string): string | undefined {
+  if (segmenter === undefined) segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter() : null;
+  return segmenter ? segmenter.segment(text)[Symbol.iterator]().next().value?.segment : Array.from(text)[0];
+}
 
 // The first character of a name as a person sees it: a flag, an emoji with its skin tone, a letter with
 // its accent. Capitalized when that keeps it one character ("ß" stays "ß" rather than becoming "SS").

@@ -358,6 +358,25 @@ describe('platform drill-down across refreshes', () => {
     expect(screen.queryByText('Gold bar')).toBeNull();
   });
 
+  it('Retry after a failed reload keeps the view and the selected platform', async () => {
+    await renderApp();
+    nav('Platforms');
+    fireEvent.click(screen.getByText('Vault'));
+
+    routes['POST /api/v1/holdings'] = () => {
+      routes['GET /api/v1/wealth/snapshots'] = () => json({ detail: 'Service Unavailable' }, 503);
+      return json({}, 201);
+    };
+    await addAsset();
+    expect(await screen.findByText("Your change was saved, but your data couldn't be reloaded: Service Unavailable")).toBeTruthy();
+
+    routes['GET /api/v1/wealth/snapshots'] = () => json(SNAPSHOTS);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText("Vault · what's there")).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Platforms' })).toBeTruthy();
+    expect(screen.getByText('Gold bar')).toBeTruthy();
+  });
+
   it('closes the drill-down when its platform is gone', async () => {
     await renderApp();
     nav('Platforms');
