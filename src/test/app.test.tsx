@@ -391,6 +391,40 @@ describe('overlapping refreshes', () => {
     });
     expect(screen.getByText('SPY, Gold bar, Coins, BTC / Binance')).toBeTruthy();
   });
+
+  it('drops an older answer that arrives after a newer refresh failed', async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: SESSION } } as never);
+    let wealth!: ReturnType<typeof useWealth>;
+    const Probe = () => {
+      wealth = useWealth();
+      return <p>{wealth.holdings.map((h) => h.name).join(', ')}</p>;
+    };
+    render(
+      <WealthProvider>
+        <Probe />
+      </WealthProvider>,
+    );
+    await screen.findByText('SPY, Gold bar, Coins');
+
+    let answerOld!: (res: Response) => void;
+    routes['GET /api/v1/holdings'] = () => new Promise<Response>((resolve) => (answerOld = resolve));
+    let older!: Promise<void>;
+    act(() => {
+      older = wealth.refresh();
+    });
+    await waitFor(() => expect(answerOld).toBeTypeOf('function'));
+
+    routes['GET /api/v1/holdings'] = () => json(HOLDINGS);
+    routes['GET /api/v1/wealth/summary'] = () => json({ detail: 'Service Unavailable' }, 503);
+    await act(() => expect(wealth.refresh()).rejects.toThrow('Service Unavailable'));
+
+    // Whatever the newer refresh would have shown, the older answer is from before it.
+    await act(async () => {
+      answerOld(json([holding('h0', 'Stale', 'Cash', 'Old Bank', 1)]));
+      await older;
+    });
+    expect(screen.getByText('SPY, Gold bar, Coins')).toBeTruthy();
+  });
 });
 
 describe('assets', () => {
@@ -427,6 +461,23 @@ describe('assets', () => {
     fireEvent.click(remove);
     await waitFor(() => expect(screen.queryByText('SPY')).toBeNull());
     expect(requests('DELETE', '/api/v1/holdings/h1')).toHaveLength(1);
+  });
+
+  it('says the asset was removed when only reloading afterwards fails', async () => {
+    routes['DELETE /api/v1/holdings/h1'] = () => {
+      routes['GET /api/v1/holdings'] = () => Promise.reject(new TypeError('offline'));
+      return new Response(null, { status: 204 });
+    };
+    await renderApp();
+    nav('Assets');
+    fireEvent.click(screen.getAllByTitle('Remove asset')[0]);
+
+    expect(
+      await screen.findByText(
+        "Couldn't reach the server: your change was saved, but your data couldn't be reloaded (network error)",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Could not remove this asset')).toBeNull();
   });
 
   it.each([
@@ -581,6 +632,29 @@ describe('add asset', () => {
     expect(JSON.parse(requests('POST', '/api/v1/holdings')[0][1].body)).toEqual({
       name: 'VOO', assetClass: 'Equity', platform: 'Vault', valueUsd: 1500.5,
     });
+  });
+
+  it('says the asset was saved when only reloading afterwards fails', async () => {
+    routes['POST /api/v1/holdings'] = () => {
+      routes['GET /api/v1/wealth/snapshots'] = () => json({ detail: 'Service Unavailable' }, 503);
+      return json({}, 201);
+    };
+    await renderApp();
+    open();
+    type('e.g. Vanguard S&P 500 ETF', 'VOO');
+    const [platform, assetClass] = screen.getAllByRole('combobox');
+    fireEvent.change(platform, { target: { value: 'Vault' } });
+    fireEvent.change(assetClass, { target: { value: 'Equity' } });
+    type('0.00', '1');
+    fireEvent.submit(form());
+
+    expect(
+      await screen.findByText(
+        "Couldn't reach the server: your change was saved, but your data couldn't be reloaded (Service Unavailable)",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Could not save this asset. Please try again.')).toBeNull();
+    expect(requests('POST', '/api/v1/holdings')).toHaveLength(1);
   });
 
   it('creates a new platform and class', async () => {

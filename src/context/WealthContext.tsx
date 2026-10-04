@@ -119,13 +119,21 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // complexity of reconciling optimistic state with what the server actually persisted.
   const refresh = useCallback(async () => {
     const refreshId = ++refreshesStarted.current;
-    const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes] = await Promise.all([
-      api.getSummary(),
-      api.getHoldings(),
-      api.getPlatforms(),
-      api.getAssetClasses(),
-      api.getSnapshots(),
-    ]);
+    let results;
+    try {
+      results = await Promise.all([
+        api.getSummary(),
+        api.getHoldings(),
+        api.getPlatforms(),
+        api.getAssetClasses(),
+        api.getSnapshots(),
+      ]);
+    } catch (e) {
+      // A newer refresh that failed still supersedes older ones: they'd show data from before it.
+      refreshShown.current = Math.max(refreshShown.current, refreshId);
+      throw e;
+    }
+    const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes] = results;
     if (refreshId < refreshShown.current) return;
     refreshShown.current = refreshId;
     const before = holdingsRef.current;
@@ -208,27 +216,37 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return holdings.filter((h) => h.platform === selectedPlatform);
   }, [holdings, selectedPlatform]);
 
-  // Actions
+  // Actions. Once a change went through, failing to reload afterwards isn't the change failing: reported
+  // as such, it would invite doing it again (a duplicate holding, say). It's the error screen instead.
+  const reloadAfterChange = useCallback(async () => {
+    try {
+      await refresh();
+    } catch (e) {
+      const reason = e instanceof ApiError ? e.message : 'network error';
+      setLoadError(`your change was saved, but your data couldn't be reloaded (${reason})`);
+    }
+  }, [refresh]);
+
   const addHolding = useCallback(
     async (input: HoldingInput) => {
       await api.createHolding(input);
-      await refresh();
+      await reloadAfterChange();
     },
-    [refresh],
+    [reloadAfterChange],
   );
 
   const deleteHolding = useCallback(
     async (id: string) => {
       await api.deleteHolding(id);
-      await refresh();
+      await reloadAfterChange();
     },
-    [refresh],
+    [reloadAfterChange],
   );
 
   const takeSnapshot = useCallback(async () => {
     await api.createSnapshot();
-    await refresh();
-  }, [refresh]);
+    await reloadAfterChange();
+  }, [reloadAfterChange]);
 
   return (
     <WealthContext.Provider
