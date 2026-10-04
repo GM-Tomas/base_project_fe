@@ -1,15 +1,11 @@
 const isDev = process.env.NODE_ENV !== 'production';
 
-// Vercel previews run on mock data, production never does (src/lib/dataSource.ts); elsewhere, such as
-// local dev, NEXT_PUBLIC_DATA_SOURCE=mock opts in.
+// Vercel previews run on mock data (src/lib/dataSource.ts). Any other production build never does, whatever
+// its variables say; in local development (next dev), NEXT_PUBLIC_DATA_SOURCE=mock opts in. VERCEL_ENV says
+// "preview" for custom environments too (staging, say), so VERCEL_TARGET_ENV decides when present.
+const vercelTarget = process.env.VERCEL_TARGET_ENV || process.env.VERCEL_ENV;
 const dataSource =
-  process.env.VERCEL_ENV === 'production'
-    ? 'live'
-    : process.env.VERCEL_ENV === 'preview'
-      ? 'mock'
-      : process.env.NEXT_PUBLIC_DATA_SOURCE === 'mock'
-        ? 'mock'
-        : 'live';
+  vercelTarget === 'preview' || (isDev && process.env.NEXT_PUBLIC_DATA_SOURCE === 'mock') ? 'mock' : 'live';
 
 // The Supabase session lives in localStorage, so the CSP's main job is limiting where injected
 // script could load from or send it: only this site, the API and Supabase (none of those on mock data).

@@ -1,5 +1,4 @@
 import { ApiError } from './apiError';
-import { usesMockData } from './dataSource';
 import { createMockApi } from './mockApi';
 import { supabase } from './supabaseClient';
 import type {
@@ -100,5 +99,6 @@ const liveApi = {
 
 export type Api = typeof liveApi;
 
-// On mock data (Vercel previews, see dataSource.ts) nothing is fetched: the same calls, answered in memory.
-export const api: Api = usesMockData ? createMockApi() : liveApi;
+// On mock data (Vercel previews, see next.config.mjs) nothing is fetched: the same calls, answered in
+// memory. Spelled out rather than imported, so production builds compile the mock away.
+export const api: Api = process.env.NEXT_PUBLIC_DATA_SOURCE === 'mock' ? createMockApi() : liveApi;
