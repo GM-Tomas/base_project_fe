@@ -21,7 +21,6 @@ interface ProblemDetail {
   errors?: { field: string; message: string }[];
 }
 
-
 async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const { data } = await supabase.auth.getSession();
   const session = data.session;

@@ -36,18 +36,19 @@ export const Header: React.FC = () => {
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <h4 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: 'var(--color-text)' }}>
-          {viewTitles[view] || 'Dashboard'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h4 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: 'var(--color-text)' }}>
+            {viewTitles[view] || 'Dashboard'}
+          </h4>
           {usesMockData && (
             <span
               className="tag tag-accent-2"
               title="A preview: made-up data kept in this tab. Nothing is saved, nothing reaches production."
-              style={{ marginLeft: '10px', verticalAlign: 'middle' }}
             >
               Demo data
             </span>
           )}
-        </h4>
+        </div>
         <div
           style={{
             fontSize: '12.5px',

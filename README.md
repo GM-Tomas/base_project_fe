@@ -60,8 +60,9 @@ from the start, and every API call is answered in the browser with made-up holdi
 (`src/lib/mockApi.ts`, same rules as the API). Nothing is sent to Supabase or the API, so a preview never
 touches production data and needs no environment variables; a "Demo data" tag marks it, and changes last until
 the tab reloads. Every other build uses the real backend, whatever its variables say: `next.config.mjs` picks
-the data source from Vercel's target environment (a custom environment such as staging isn't a preview). Locally,
-`NEXT_PUBLIC_DATA_SOURCE=mock npm run dev` shows the same demo without a backend.
+the data source from Vercel's target environment (`VERCEL_TARGET_ENV`; a custom environment such as staging
+has its own name there, so it isn't a preview). Locally, `NEXT_PUBLIC_DATA_SOURCE=mock npm run dev` shows the
+same demo without a backend.
 
 ## 👥 Multiple users
 

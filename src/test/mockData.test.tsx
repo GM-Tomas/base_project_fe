@@ -24,6 +24,7 @@ describe('on mock data', () => {
     );
     expect(await screen.findByText('$107,420')).toBeTruthy();
     expect(screen.getByText('Demo data')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy(); // the tag stays out of the title
 
     fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
     fireEvent.change(screen.getByPlaceholderText('e.g. Vanguard S&P 500 ETF'), { target: { value: 'Solana' } });

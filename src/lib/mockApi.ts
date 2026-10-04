@@ -40,6 +40,9 @@ const tenths = (n: number) => Math.round(n * 10) / 10;
 const total = (holdings: Holding[]) => cents(holdings.reduce((sum, h) => sum + h.valueUsd, 0));
 const growthPct = (value: number, from: number) => (from > 0 ? tenths(((value - from) / from) * 100) : null);
 const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' }) || a.localeCompare(b);
+const byValueThenName = (a: { name: string; value: number }, b: { name: string; value: number }) =>
+  b.value - a.value || byName(a.name, b.name);
+const platformType = (name: string) => PLATFORM_TYPES[name] ?? 'Other';
 
 function groupBy(holdings: Holding[], key: (h: Holding) => string) {
   const groups = new Map<string, Holding[]>();
@@ -108,11 +111,11 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         liquidAssetClasses: LIQUID_CLASSES,
       },
       byAssetClass: groupBy(holdings, (h) => h.assetClass)
-        .sort((a, b) => b.value - a.value || byName(a.name, b.name))
+        .sort(byValueThenName)
         .map((g) => ({ assetClass: g.name, valueUsd: g.value, pct: pct(g.value), count: g.count })),
       byPlatform: groupBy(holdings, (h) => h.platform)
-        .sort((a, b) => b.value - a.value || byName(a.name, b.name))
-        .map((g) => ({ name: g.name, type: PLATFORM_TYPES[g.name] ?? 'Other', valueUsd: g.value, pct: pct(g.value), count: g.count })),
+        .sort(byValueThenName)
+        .map((g) => ({ name: g.name, type: platformType(g.name), valueUsd: g.value, pct: pct(g.value), count: g.count })),
     };
   };
 
@@ -182,7 +185,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       const first = new Map<string, Holding>();
       for (const h of holdings) if (!first.has(h.platform) || h.createdAt < first.get(h.platform)!.createdAt) first.set(h.platform, h);
       return [...first.values()]
-        .map((h) => ({ name: h.platform, type: PLATFORM_TYPES[h.platform] ?? 'Other', createdAt: h.createdAt }))
+        .map((h) => ({ name: h.platform, type: platformType(h.platform), createdAt: h.createdAt }))
         .sort((a, b) => byName(a.name, b.name));
     },
     getAssetClasses: async (): Promise<AvailableAssetClasses> => {
