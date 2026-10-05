@@ -11,20 +11,24 @@ import type {
 import type { Api, HoldingInput } from './api';
 import { ApiError } from './apiError';
 
-// The API's own defaults (base_project_go): the classes offered from the start, the ones counted as
-// liquid, the Estimate view's two milestones, and the largest amount a holding can have.
+// The API's own defaults and limits (base_project_go): the classes offered from the start, the ones
+// counted as liquid, the Estimate view's two milestones, the largest amount a holding can have, and how
+// many holdings and snapshots an account can keep.
 const DEFAULT_CLASSES = ['Cash', 'Fixed Income', 'Index Fund', 'Equity', 'Crypto'];
 const LIQUID_CLASSES = ['Cash', 'Equity', 'Crypto', 'Index Fund'];
 const MILESTONES = [150_000, 250_000];
 const MAX_VALUE_USD = 1e15;
+const MAX_HOLDINGS = 1000;
+const MAX_SNAPSHOTS = 5000;
 
-const PLATFORM_TYPES: Record<string, string> = {
-  'Interactive Brokers': 'Broker',
-  Balanz: 'Broker',
-  Binance: 'Exchange',
-  Santander: 'Bank',
-  'Mercado Pago': 'Wallet',
-};
+// A Map: platform names are typed by users, and "__proto__" is just another platform.
+const PLATFORM_TYPES = new Map([
+  ['Interactive Brokers', 'Broker'],
+  ['Balanz', 'Broker'],
+  ['Binance', 'Exchange'],
+  ['Santander', 'Bank'],
+  ['Mercado Pago', 'Wallet'],
+]);
 
 const SEED: [name: string, assetClass: string, platform: string, valueUsd: number][] = [
   ['Vanguard S&P 500 ETF (VOO)', 'Index Fund', 'Interactive Brokers', 42_350],
@@ -43,7 +47,12 @@ const growthPct = (value: number, from: number) => (from > 0 ? tenths(((value - 
 const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' }) || a.localeCompare(b);
 const byValueThenName = (a: { name: string; value: number }, b: { name: string; value: number }) =>
   b.value - a.value || byName(a.name, b.name);
-const platformType = (name: string) => PLATFORM_TYPES[name] ?? 'Other';
+const platformType = (name: string) => PLATFORM_TYPES.get(name) ?? 'Other';
+// A label as the API stores it: trimmed, inner whitespace collapsed, in Unicode NFC.
+const label = (raw: string) => raw.trim().replace(/[\t\n\f\r ]+/g, ' ').normalize('NFC');
+// Two platform names are one platform if they match caselessly in any Unicode form (close to the API's
+// full case folding).
+const platformKey = (name: string) => name.normalize('NFD').toUpperCase().toLowerCase().normalize('NFD');
 
 function groupBy(holdings: Holding[], key: (h: Holding) => string) {
   const groups = new Map<string, Holding[]>();
@@ -79,11 +88,10 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     totalValueUsd: cents(88_000 * 1.022 ** i),
   }));
 
-  const withChanges = (): Snapshot[] =>
-    snapshots.map((s, i) => ({
-      ...s,
-      changePctFromPrevious: i === 0 ? null : growthPct(s.totalValueUsd, snapshots[i - 1].totalValueUsd),
-    }));
+  const withChange = (i: number): Snapshot => ({
+    ...snapshots[i],
+    changePctFromPrevious: i === 0 ? null : growthPct(snapshots[i].totalValueUsd, snapshots[i - 1].totalValueUsd),
+  });
 
   const summary = (): WealthSummary => {
     const netWorth = total(holdings);
@@ -153,9 +161,9 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     getSummary: async () => summary(),
     getHoldings: async () => holdings.map((h) => ({ ...h })),
     createHolding: async (input: HoldingInput) => {
-      // The API handler's checks and messages (its domain's length limits aside). JSON has no NaN or
-      // Infinity, so the API never gets one; here they're rejected rather than stored.
-      const [name, assetClass, platform] = [input.name.trim(), input.assetClass.trim(), input.platform.trim()];
+      // The API's checks and messages (its length limits aside). JSON has no NaN or Infinity, so the API
+      // never gets one; here they're rejected rather than stored.
+      const [name, assetClass, platform] = [label(input.name), label(input.assetClass), label(input.platform)];
       const errors: { field: string; message: string }[] = [];
       if (!name) errors.push({ field: 'name', message: 'Name is required' });
       if (!assetClass) errors.push({ field: 'assetClass', message: 'Asset class is required' });
@@ -164,14 +172,17 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       else if (input.valueUsd < 0) errors.push({ field: 'valueUsd', message: 'Value must not be negative' });
       else if (input.valueUsd > MAX_VALUE_USD) errors.push({ field: 'valueUsd', message: 'Value is too large' });
       if (errors.length) throw new ApiError(400, errors.map((e) => e.message).join('; '), errors);
+      if (holdings.length >= MAX_HOLDINGS) {
+        throw new ApiError(409, `You can track up to ${MAX_HOLDINGS} holdings. Remove one to add another.`);
+      }
 
       const at = now().toISOString();
       const holding: Holding = {
         id: `demo-${nextId++}`,
         name,
         assetClass,
-        // Spelled like the platform's existing holdings, as the API does.
-        platform: holdings.find((h) => h.platform.toLowerCase() === platform.toLowerCase())?.platform ?? platform,
+        // Spelled like the platform's earliest holding, as the API does.
+        platform: holdings.find((h) => platformKey(h.platform) === platformKey(platform))?.platform ?? platform,
         valueUsd: cents(input.valueUsd),
         createdAt: at,
         updatedAt: at,
@@ -195,10 +206,16 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       const inUse = [...new Set(holdings.map((h) => h.assetClass))].sort(byName);
       return { defaults: DEFAULT_CLASSES, inUse, all: [...new Set([...DEFAULT_CLASSES, ...inUse])] };
     },
-    getSnapshots: async () => withChanges(),
+    getSnapshots: async () => snapshots.map((_, i) => withChange(i)),
     createSnapshot: async () => {
-      snapshots.push({ id: `demo-snapshot-${snapshots.length + 1}`, capturedAt: now().toISOString(), totalValueUsd: total(holdings) });
-      return withChanges().at(-1)!;
+      // Taken to the second, one per second at most, as the API does.
+      const capturedAt = new Date(Math.floor(now().getTime() / 1000) * 1000).toISOString();
+      if (snapshots.some((s) => s.capturedAt === capturedAt)) {
+        throw new ApiError(409, `A snapshot already exists for ${capturedAt.replace('.000Z', 'Z')}`);
+      }
+      if (snapshots.length >= MAX_SNAPSHOTS) throw new ApiError(409, `You've reached the limit of ${MAX_SNAPSHOTS} snapshots.`);
+      snapshots.push({ id: `demo-snapshot-${snapshots.length + 1}`, capturedAt, totalValueUsd: total(holdings) });
+      return withChange(snapshots.length - 1);
     },
     getEstimate: async (params: EstimateParams) => estimate(params),
   };

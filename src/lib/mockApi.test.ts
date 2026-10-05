@@ -111,6 +111,42 @@ describe('mock API (the data previews run on)', () => {
     await expect(api.createHolding({ ...valid, valueUsd: 1e15 })).resolves.toMatchObject({ valueUsd: 1e15 });
   });
 
+  it('reads labels and platform names like the API', async () => {
+    const api = createMockApi(at('2026-10-04T10:00:00Z'));
+
+    const added = await api.createHolding({ name: ' Gold \t bar ', assetClass: 'Cafe\u0301', platform: 'INTERACTIVE   brokers', valueUsd: 1 });
+    expect(added).toMatchObject({ name: 'Gold bar', assetClass: 'Caf\u00e9', platform: 'Interactive Brokers' });
+
+    // A typed name is just a name, whatever Object.prototype has.
+    await api.createHolding({ name: 'x', assetClass: 'Cash', platform: '__proto__', valueUsd: 1 });
+    await api.createHolding({ name: 'y', assetClass: 'Cash', platform: 'constructor', valueUsd: 1 });
+    expect((await api.getPlatforms()).filter((p) => p.type === 'Other').map((p) => p.name)).toEqual(['__proto__', 'constructor']);
+    expect((await api.getSummary()).byPlatform.find((p) => p.name === '__proto__')).toMatchObject({ type: 'Other', count: 1 });
+  });
+
+  it("keeps to the API's limits: holdings, snapshots, one snapshot a second", async () => {
+    let clock = Date.parse('2026-10-04T10:00:00.250Z');
+    const api = createMockApi(() => new Date(clock));
+
+    for (let i = (await api.getHoldings()).length; i < 1000; i++) {
+      await api.createHolding({ name: `h${i}`, assetClass: 'Cash', platform: 'Santander', valueUsd: 1 });
+    }
+    await expect(api.createHolding({ name: 'one more', assetClass: 'Cash', platform: 'Santander', valueUsd: 1 })).rejects.toMatchObject({
+      status: 409,
+      message: 'You can track up to 1000 holdings. Remove one to add another.',
+    });
+
+    expect(await api.createSnapshot()).toMatchObject({ capturedAt: '2026-10-04T10:00:00.000Z' });
+    clock += 500;
+    await expect(api.createSnapshot()).rejects.toMatchObject({ status: 409, message: 'A snapshot already exists for 2026-10-04T10:00:00Z' });
+    for (let i = (await api.getSnapshots()).length; i < 5000; i++) {
+      clock += 1000;
+      await api.createSnapshot();
+    }
+    clock += 1000;
+    await expect(api.createSnapshot()).rejects.toMatchObject({ status: 409, message: "You've reached the limit of 5000 snapshots." });
+  });
+
   it('records snapshots with the change from the previous one', async () => {
     const api = createMockApi(at('2026-10-04T10:00:00Z'));
 
