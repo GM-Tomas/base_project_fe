@@ -196,8 +196,9 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       holdings.splice(index, 1);
     },
     getPlatforms: async (): Promise<Platform[]> => {
+      // Holdings are kept oldest first, so a platform's first one is its earliest.
       const first = new Map<string, Holding>();
-      for (const h of holdings) if (!first.has(h.platform) || h.createdAt < first.get(h.platform)!.createdAt) first.set(h.platform, h);
+      for (const h of holdings) if (!first.has(h.platform)) first.set(h.platform, h);
       return [...first.values()]
         .map((h) => ({ name: h.platform, type: platformType(h.platform), createdAt: h.createdAt }))
         .sort((a, b) => byName(a.name, b.name));
