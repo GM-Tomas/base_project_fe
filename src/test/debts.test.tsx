@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Debt, Movement, MovementDebt } from '@/types/wealth';
-import { installFakeBackend, json, nav, projection, renderApp, requests, routes, snapshot, summary } from './harness';
+import { installFakeBackend, json, nav, point, projection, renderApp, requests, routes, snapshot, summary } from './harness';
 
 // F3: debts. The Debts view, adding, editing and removing one, paying it (from an asset or not), new charges
 // and interest, its panel, and what debts do to the dashboard, Estimate and History. The backend is faked
@@ -572,8 +572,8 @@ describe('net worth with debts', () => {
         projection({
           debtsUsd: 10_150.4,
           series: [
-            { year: 0, futureValueUsd: 22_496, totalContributedUsd: 22_496, interestEarnedUsd: 0, debtBalanceUsd: 10_150.4, netWorthUsd: 12_345.6 },
-            { year: 1, futureValueUsd: 35_000, totalContributedUsd: 33_296, interestEarnedUsd: 1_704, debtBalanceUsd: 4_000, netWorthUsd: 31_000 },
+            point(0, 22_496, 22_496, { debtBalanceUsd: 10_150.4, netWorthUsd: 12_345.6, realNetWorthUsd: 12_345.6 }),
+            point(1, 35_000, 33_296, { debtBalanceUsd: 4_000, netWorthUsd: 31_000, realNetWorthUsd: 31_000 }),
           ],
         }),
       );
@@ -591,7 +591,7 @@ describe('net worth with debts', () => {
     nav('Estimate');
 
     expect(await screen.findByText('at this pace')).toBeTruthy();
-    expect(screen.queryByText('Your portfolio')).toBeNull();
+    expect(document.querySelector('.chart-legend')).toBeNull();
     expect(document.querySelectorAll('svg path[stroke-dasharray]')).toHaveLength(0);
   });
 

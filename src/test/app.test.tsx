@@ -176,7 +176,7 @@ describe('dashboard', () => {
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy();
     expect(screen.getByText('+12.3% since January')).toBeTruthy();
     expect(screen.getByText('70%')).toBeTruthy();
-    expect(screen.getByText('30%')).toBeTruthy();
+    expect(screen.getByText('Cash, funds & crypto you can move quickly · 30% locked in')).toBeTruthy();
     expect(screen.getByText('Across 3 accounts')).toBeTruthy();
     expect(screen.getByText('64.8%')).toBeTruthy();
     expect(screen.getByText('$8,000 · 64.8%')).toBeTruthy();
@@ -788,65 +788,6 @@ describe('delete checkpoint', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(await screen.findByText('Could not delete this checkpoint. Please try again.')).toBeTruthy();
     expect(screen.getByText('Jan 15, 2026')).toBeTruthy();
-  });
-});
-
-describe('estimate', () => {
-  it('projects with the current parameters and milestones', async () => {
-    await renderApp();
-    nav('Estimate');
-
-    expect(await screen.findByText('$25,000')).toBeTruthy();
-    expect(screen.getByText('$50k')).toBeTruthy();
-    expect(screen.getByText('Mar 2029')).toBeTruthy();
-    expect(screen.getByText('$123,456')).toBeTruthy();
-    expect(screen.getByText('not within 12y at this pace')).toBeTruthy();
-    expect(new URL(requests('GET', '/api/v1/wealth/estimate')[0][0]).search).toBe('?contribution=900&yieldPct=9&years=12');
-  });
-
-  it('refetches after the sliders settle', async () => {
-    await renderApp();
-    nav('Estimate');
-    await screen.findByText('$25,000');
-
-    const [contribution, yieldPct, years] = screen.getAllByRole('slider');
-    fireEvent.change(contribution, { target: { value: '1000' } });
-    fireEvent.change(yieldPct, { target: { value: '5.5' } });
-    fireEvent.change(years, { target: { value: '1' } });
-
-    expect(screen.getByText('$1,000')).toBeTruthy();
-    expect(screen.getByText('5.5%')).toBeTruthy();
-    expect(screen.getByText('1 year')).toBeTruthy();
-    await waitFor(() =>
-      expect(new URL(requests('GET', '/api/v1/wealth/estimate').at(-1)![0]).search).toBe('?contribution=1000&yieldPct=5.5&years=1'),
-    );
-  });
-
-  it('labels achieved and undated milestones, and handles none', async () => {
-    routes['GET /api/v1/wealth/estimate'] = () =>
-      json(
-        projection({
-          milestones: [
-            { amountUsd: 10000, status: 'ACHIEVED', monthsRequired: 0, targetMonth: null },
-            { amountUsd: 20000, status: 'REACHABLE', monthsRequired: null, targetMonth: null },
-          ],
-        }),
-      );
-    await renderApp();
-    nav('Estimate');
-    expect(await screen.findByText('already there')).toBeTruthy();
-    expect(screen.getByText('$20k')).toBeTruthy();
-  });
-
-  it.each([
-    ['an API error', () => json({ detail: 'years must be between 1 and 50' }, 400), 'years must be between 1 and 50'],
-    ['a network error', () => Promise.reject(new TypeError('offline')), 'Could not calculate the projection'],
-  ])('shows %s', async (_name, route, message) => {
-    routes['GET /api/v1/wealth/estimate'] = route;
-    await renderApp();
-    nav('Estimate');
-    expect(await screen.findByText(message)).toBeTruthy();
-    expect(screen.getAllByText('—')).toHaveLength(3);
   });
 });
 

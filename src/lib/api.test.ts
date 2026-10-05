@@ -135,10 +135,39 @@ describe('api', () => {
     await expect(api.getSnapshots()).rejects.toMatchObject({ status: 502, message: 'Request failed with status 502' });
   });
 
-  it('builds the estimate query string', async () => {
-    fetchMock.mockResolvedValue(json({}));
-    await api.getEstimate({ contribution: 900, yieldPct: 9.5, years: 12 });
-    expect(lastCall().url).toBe('http://localhost:8080/api/v1/wealth/estimate?contribution=900&yieldPct=9.5&years=12');
+  it('builds the estimate query string: only what is set', async () => {
+    fetchMock.mockImplementation(async () => json({}));
+    await api.getEstimate({ contribution: 900, years: 12 });
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/wealth/estimate?contribution=900&years=12');
+    await api.getEstimate({
+      contribution: 900,
+      years: 12,
+      yieldPct: -2.5,
+      milestones: [150_000, 1e6],
+      inflationPct: 3,
+      contributionGrowthPct: 5,
+    });
+    expect(lastCall().url).toBe(
+      'http://localhost:8080/api/v1/wealth/estimate?contribution=900&years=12&yieldPct=-2.5&milestones=150000%2C1000000&inflationPct=3&contributionGrowthPct=5',
+    );
+    // No milestones at all is an empty list; no inflation or raise isn't sent.
+    await api.getEstimate({ contribution: 0, years: 1, milestones: [], inflationPct: 0, contributionGrowthPct: 0 });
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/wealth/estimate?contribution=0&years=1&milestones=');
+  });
+
+  it('sets expected returns, and reads and saves preferences', async () => {
+    fetchMock.mockImplementation(async () => json([]));
+    await api.setExpectedReturns([{ holdingId: 'h1', expectedReturnPct: null }]);
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/holdings/expected-returns');
+    expect(lastCall().init.method).toBe('PUT');
+    expect(JSON.parse(String(lastCall().init.body))).toEqual({ items: [{ holdingId: 'h1', expectedReturnPct: null }] });
+
+    fetchMock.mockImplementation(async () => json({ estimate: {} }));
+    await api.getPreferences();
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/preferences');
+    await api.savePreferences({ estimate: { years: 20 } } as never);
+    expect(lastCall().init.method).toBe('PUT');
+    expect(JSON.parse(String(lastCall().init.body))).toEqual({ estimate: { years: 20 } });
   });
 
   it('builds the activity query: only the filters given, kinds comma-separated', async () => {

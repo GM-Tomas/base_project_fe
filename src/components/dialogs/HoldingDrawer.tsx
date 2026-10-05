@@ -9,6 +9,7 @@ import { ActivityList } from '@/components/activity/ActivityList';
 import { assetClassTag } from '@/lib/constants';
 import { formatUsd } from '@/lib/money';
 import { formatDay } from '@/lib/movements';
+import { formatReturn } from '@/lib/returns';
 import type { Holding } from '@/types/wealth';
 import { useHoldingActions } from './useHoldingActions';
 
@@ -44,6 +45,20 @@ export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClo
         <div className="drawer-value">{formatUsd(holding.valueUsd)}</div>
         <div className="text-muted drawer-dates">
           Added {formatDay(holding.createdAt)} · Updated {formatDay(holding.updatedAt)}
+        </div>
+        <div className="drawer-return">
+          {holding.effectiveReturnPct === null ? (
+            <>
+              No expected return yet (counts as 0%).{' '}
+              <button type="button" className="link-btn link-accent" onClick={() => actions.edit(holding)}>
+                Set one
+              </button>
+            </>
+          ) : holding.effectiveReturnPct < 0 ? (
+            `Expected to lose ${formatReturn(-holding.effectiveReturnPct, 2)} a year`
+          ) : (
+            `Expected to grow ${formatReturn(holding.effectiveReturnPct, 2)} a year`
+          )}
         </div>
       </div>
       <div className="drawer-actions">

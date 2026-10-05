@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { HoldingFormDialog } from './HoldingFormDialog';
 import { RecordChangeDialog } from './RecordChangeDialog';
 import { TransferDialog } from './TransferDialog';
+import { ExpectedReturnsDialog } from './ExpectedReturnsDialog';
 import type { Holding } from '@/types/wealth';
 
 /** What a holding's row offers wherever it's listed (Assets, a platform's holdings, its own panel). */
@@ -18,6 +19,8 @@ export function useHoldingActions() {
 
   return {
     add: (platform?: string) => openDialog((close) => <HoldingFormDialog platform={platform} onClose={close} />),
+    /** Every holding's expected return at once. */
+    setReturns: () => openDialog((close) => <ExpectedReturnsDialog onClose={close} />),
     edit: (h: Holding) => openDialog((close) => <HoldingFormDialog holding={h} onClose={close} />),
     record: (h: Holding, kind?: RecordableKind) =>
       openDialog((close) => <RecordChangeDialog holding={h} kind={kind} onClose={close} />),

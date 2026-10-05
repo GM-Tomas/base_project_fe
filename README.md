@@ -9,7 +9,11 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
   each month.
 - **Platforms Grid**: Detailed tracking across all connected financial platforms (brokers, banks, wallets, exchanges) with drilldown inspection.
 - **Assets Explorer**: search (accents and case ignored), class and platform filters, sortable columns, each
-  asset's share of the total and a running total; edit or remove any asset from its row (removing asks first).
+  asset's share of the total, its expected yearly return and a running total; edit or remove any asset from its
+  row (removing asks first).
+- **Expected returns**: say roughly how much each asset grows a year (when adding or editing it, or all at once,
+  grouped by class with "Apply to class"). The dashboard shows the portfolio's return, weighted by value (assets
+  without one count as 0%), what it would earn in a year and how much of the portfolio it's based on.
 - **History**: delete a checkpoint (with confirmation); the next one's change is recomputed by the API. Its
   **Activity** lists every recorded change, newest first, filtered by kind (gains & losses, deposits &
   withdrawals, transfers, debts, added & removed, corrections) and by asset or debt. Each checkpoint shows the
@@ -26,9 +30,12 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
   you're debt-free. **Pay** a debt (from one of your assets, or not), record **new charges** (money that went
   into an asset, maybe) or **interest**, all undoable; editing the balance asks what changed it. Click a debt
   to see its terms, payoff and activity.
-- **Wealth Estimation Engine**: Interactive compound interest and wealth projection simulator with milestone
-  tracking ($150k, $250k targets). With debts, a second line shows the net worth as they're paid off, and the
-  milestones are about it.
+- **Wealth Estimation Engine**: projects the portfolio month by month at its expected return (or a growth of
+  your own), with a monthly saving (a slider, or typed up to $1B), up to 50 years, milestones of your own (up to
+  five), and, folded away, a yearly raise of the saving and inflation to see it in today's dollars. The chart has
+  labeled axes and each year's figures on hover or with the arrow keys; below it, what the expected return is
+  made of, by class and by asset. With debts, a second line shows the net worth as they're paid off, and the
+  milestones are about it. How you leave it is saved for every device.
 - **Historical Snapshots**: Net worth timeline curve and snapshot logging.
 - **Add Asset Dialog**: amounts in any usual format (`1.234,56`, `1,234.56`, `$ 1234`) with a preview of how
   they were read; platform and class fields suggest the existing ones and say when a name is new.

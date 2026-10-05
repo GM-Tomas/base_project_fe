@@ -5,7 +5,8 @@ import type { Session } from '@supabase/supabase-js';
 import HomePage from '@/app/page';
 import { AuthProvider } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
-import type { Holding, Platform, Projection, Snapshot, WealthSummary } from '@/types/wealth';
+import type { Holding, Platform, Projection, ProjectionPoint, Snapshot, WealthSummary } from '@/types/wealth';
+import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 
 // The app tests' harness: the whole app runs for real; only Supabase (see setup.ts) and the backend (fetch)
 // are faked. A test file calls installFakeBackend() once, then changes `routes` to make the backend answer
@@ -24,6 +25,7 @@ export const summary = (over: Partial<WealthSummary> = {}): WealthSummary => ({
   assets: { usd: 12345.6 },
   debts: { usd: 0, count: 0, monthlyPaymentUsd: 0 },
   holdingsCount: 3,
+  expectedReturn: { weightedPct: 5.18, coveragePct: 64.8, annualUsd: 640 },
   ytd: { basis: 'YEAR_START_SNAPSHOT', growthPct: 12.34 },
   liquidity: { liquidPct: 70, illiquidPct: 30, liquidAssetClasses: ['Equity'] },
   byAssetClass: [
@@ -38,12 +40,21 @@ export const summary = (over: Partial<WealthSummary> = {}): WealthSummary => ({
   ...over,
 });
 
-export const holding = (id: string, name: string, assetClass: string, platform: string, valueUsd: number): Holding => ({
-  id, name, assetClass, platform, valueUsd, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+export const holding = (
+  id: string,
+  name: string,
+  assetClass: string,
+  platform: string,
+  valueUsd: number,
+  expectedReturnPct: number | null = null,
+): Holding => ({
+  id, name, assetClass, platform, valueUsd, expectedReturnPct, effectiveReturnPct: expectedReturnPct,
+  createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
 });
 
+// SPY expects 8% a year (the summary's 5.18% for the whole portfolio, 64.8% of it covered).
 export const HOLDINGS = [
-  holding('h1', 'SPY', 'Equity', 'Balanz', 8000),
+  holding('h1', 'SPY', 'Equity', 'Balanz', 8000, 8),
   holding('h2', 'Gold bar', 'Gold', 'Vault', 4000),
   holding('h3', 'Coins', 'Gold', 'Vault', 345.6),
 ];
@@ -61,16 +72,30 @@ export const SNAPSHOTS = [
   snapshot('s4', '2026-04-15T12:00:00Z', 9000, -18.2),
 ];
 
+/** A year of a projection, without debts or inflation (the real values are the same). */
+export const point = (year: number, futureValueUsd: number, totalContributedUsd: number, over: Partial<ProjectionPoint> = {}): ProjectionPoint => ({
+  year,
+  futureValueUsd,
+  totalContributedUsd,
+  interestEarnedUsd: Math.round((futureValueUsd - totalContributedUsd) * 100) / 100,
+  debtBalanceUsd: 0,
+  netWorthUsd: futureValueUsd,
+  realFutureValueUsd: futureValueUsd,
+  realNetWorthUsd: futureValueUsd,
+  ...over,
+});
+
 export const projection = (over: Partial<Projection> = {}): Projection => ({
   principalUsd: 12345.6,
   debtsUsd: 0,
   monthlyContributionUsd: 900,
-  annualYieldPct: 9,
+  annualYieldPct: 5.18,
+  yieldSource: 'PORTFOLIO',
+  portfolioYieldPct: 5.18,
+  inflationPct: 0,
+  contributionGrowthPct: 0,
   years: 12,
-  series: [
-    { year: 0, futureValueUsd: 12345.6, totalContributedUsd: 12345.6, interestEarnedUsd: 0, debtBalanceUsd: 0, netWorthUsd: 12345.6 },
-    { year: 1, futureValueUsd: 25000, totalContributedUsd: 23145.6, interestEarnedUsd: 1854.4, debtBalanceUsd: 0, netWorthUsd: 25000 },
-  ],
+  series: [point(0, 12345.6, 12345.6), point(1, 25000, 23145.6)],
   milestones: [
     { amountUsd: 50000, status: 'REACHABLE', monthsRequired: 30, targetMonth: '2029-03' },
     { amountUsd: 123456, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null },
@@ -94,6 +119,8 @@ export function installFakeBackend() {
       'GET /api/v1/wealth/estimate': () => json(projection()),
       'GET /api/v1/movements': () => json({ items: [], nextCursor: null }),
       'GET /api/v1/debts': () => json([]),
+      'GET /api/v1/preferences': () => json(DEFAULT_PREFERENCES),
+      'PUT /api/v1/preferences': (init) => json(JSON.parse(String(init.body))),
     };
     fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
       const key = `${init.method ?? 'GET'} ${new URL(url).pathname}`;

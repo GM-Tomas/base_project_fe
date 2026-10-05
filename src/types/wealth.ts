@@ -8,6 +8,10 @@ export interface Holding {
   assetClass: AssetClass;
   platform: string;
   valueUsd: number;
+  /** Roughly how much it grows in a year (%), if the user said. */
+  expectedReturnPct: number | null;
+  /** The yearly return it counts with in the portfolio's: its own, for now. */
+  effectiveReturnPct: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,11 +69,21 @@ export interface PlatformBreakdown {
   count: number;
 }
 
+/** What the portfolio is expected to earn in a year: each holding's return weighted by its value. */
+export interface ExpectedReturn {
+  /** Null with nothing to weigh (no holdings, or all worth 0). Holdings without a return count as 0%. */
+  weightedPct: number | null;
+  /** The share of the portfolio's value with a return set. */
+  coveragePct: number;
+  annualUsd: number;
+}
+
 export interface WealthSummary {
   netWorth: NetWorth;
   assets: { usd: number };
   debts: DebtTotals;
   holdingsCount: number;
+  expectedReturn: ExpectedReturn;
   ytd: Ytd;
   liquidity: Liquidity;
   byAssetClass: AssetClassBreakdown[];
@@ -95,6 +109,9 @@ export interface ProjectionPoint {
   /** What's still owed then. */
   debtBalanceUsd: number;
   netWorthUsd: number;
+  /** The same two in today's dollars (deflated at the inflation asked; as above without one). */
+  realFutureValueUsd: number;
+  realNetWorthUsd: number;
 }
 
 export type MilestoneStatus = 'ACHIEVED' | 'REACHABLE' | 'OUT_OF_HORIZON';
@@ -112,7 +129,13 @@ export interface Projection {
   /** What's owed now. */
   debtsUsd: number;
   monthlyContributionUsd: number;
+  /** The growth used: the portfolio's expected return (PORTFOLIO) or the one asked for (CUSTOM). */
   annualYieldPct: number;
+  yieldSource: YieldMode;
+  /** The portfolio's expected return either way; null with nothing to weigh. */
+  portfolioYieldPct: number | null;
+  inflationPct: number;
+  contributionGrowthPct: number;
   years: number;
   series: ProjectionPoint[];
   milestones: Milestone[];
@@ -210,8 +233,31 @@ export type BalanceChangeReason = 'PAYMENT' | 'CHARGE' | 'INTEREST' | 'CORRECTIO
 
 export type ViewType = 'dashboard' | 'platforms' | 'assets' | 'debts' | 'estimate' | 'history';
 
-export interface EstimateParams {
-  contribution: number;
-  yieldPct: number;
+/** How Estimate picks the yearly growth: the portfolio's expected return, or the user's own. */
+export type YieldMode = 'PORTFOLIO' | 'CUSTOM';
+
+/** Estimate as the user left it (saved in the backend, for every device). */
+export interface EstimatePreferences {
+  contributionUsd: number;
   years: number;
+  yieldMode: YieldMode;
+  customYieldPct: number;
+  /** In order, at most 5. */
+  milestonesUsd: number[];
+  inflationPct: number;
+  contributionGrowthPct: number;
+}
+
+export interface Preferences {
+  estimate: EstimatePreferences;
+}
+
+/** GET /wealth/estimate: without yieldPct, the portfolio's expected return. */
+export interface EstimateQuery {
+  contribution: number;
+  years: number;
+  yieldPct?: number;
+  milestones?: number[];
+  inflationPct?: number;
+  contributionGrowthPct?: number;
 }

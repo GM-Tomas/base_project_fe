@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useWealth, WealthProvider } from '@/context/WealthContext';
 import { useAuth } from '@/context/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -12,7 +12,7 @@ import { AssetsView } from '@/components/views/AssetsView';
 import { DebtsView } from '@/components/views/DebtsView';
 import { EstimateView } from '@/components/views/EstimateView';
 import { HistoryView } from '@/components/views/HistoryView';
-import { UiProvider } from '@/context/UiContext';
+import { UiProvider, useUi } from '@/context/UiContext';
 
 const canSkipLogin = process.env.NODE_ENV !== 'production';
 
@@ -35,6 +35,16 @@ export default function HomePage() {
       </UiProvider>
     </WealthProvider>
   );
+}
+
+// Saving Estimate's settings happens in the background: say so when it fails (the next change saves them).
+function PreferencesSaveFailures() {
+  const { preferencesSaveFailures } = useWealth();
+  const { toast } = useUi();
+  useEffect(() => {
+    if (preferencesSaveFailures > 0) toast.error("Couldn't save your Estimate settings. They'll be saved with your next change.");
+  }, [preferencesSaveFailures, toast]);
+  return null;
 }
 
 function Dashboard() {
@@ -116,6 +126,8 @@ function Dashboard() {
           opacity: 0.5,
         }}
       />
+
+      <PreferencesSaveFailures />
 
       {/* Sidebar Navigation */}
       <Sidebar />

@@ -1,6 +1,6 @@
 # F4 — Retorno esperado y proyección ponderada
 
-**Estado:** Lista para implementar · **Repos:** backend + frontend · **Depende de:** F3
+**Estado:** Hecha · **Repos:** backend + frontend · **Depende de:** F3
 
 ## Objetivo
 
@@ -131,18 +131,18 @@ preferencias en memoria.
 ## Tareas
 
 **Backend**
-- [ ] `expectedReturnPct` en modelo, Mongo, DTOs, POST/PATCH; `effectiveReturnPct`.
-- [ ] Carga masiva en transacción.
-- [ ] `ExpectedReturn` del portfolio en el resumen.
-- [ ] Simulación mensual (equivalencia con la fórmula actual), inflación, aumento del aporte, hitos.
-- [ ] Preferencias (repo, servicio, handlers); e2e de aislamiento.
-- [ ] `openapi.json`, README.
+- [x] `expectedReturnPct` en modelo, Mongo, DTOs, POST/PATCH; `effectiveReturnPct`.
+- [x] Carga masiva en transacción.
+- [x] `ExpectedReturn` del portfolio en el resumen.
+- [x] Simulación mensual (equivalencia con la fórmula actual), inflación, aumento del aporte, hitos.
+- [x] Preferencias (repo, servicio, handlers); e2e de aislamiento.
+- [x] `openapi.json`, README.
 
 **Frontend**
-- [ ] `api.ts` + mock + tests.
-- [ ] Campo y columna de retorno, tarjeta del dashboard, carga masiva.
-- [ ] Estimate (selector, hitos, avanzadas, desglose, ejes, tooltip) con preferencias.
-- [ ] Tests de flujos.
+- [x] `api.ts` + mock + tests.
+- [x] Campo y columna de retorno, tarjeta del dashboard, carga masiva.
+- [x] Estimate (selector, hitos, avanzadas, desglose, ejes, tooltip) con preferencias.
+- [x] Tests de flujos.
 
 ## Pruebas
 
@@ -163,3 +163,25 @@ preferencias en memoria.
 - **Promedio ponderado sobre el total**, como se pidió. Proyectar cada asset con su tasa da otro número
   (el compuesto de un promedio no es el promedio de los compuestos); si se quiere, es una opción futura.
 - **Preferencias en el backend** y no en `localStorage`: se comparten entre dispositivos y F7 las reutiliza.
+- **Simulación mensual en la API** (`float64`, redondeo a centavos en cada punto): cada mes rinde la tasa
+  anual/12 y después entra el aporte (anualidad vencida), así que sin aumento coincide con la fórmula
+  cerrada anterior; hay un test de equivalencia de 50 años en la API y en el mock (`src/lib/projection.ts`).
+- **Hitos sobre el neto nominal**, también cuando el gráfico muestra dólares de hoy: "Mar 2031" es cuándo el
+  saldo llega a ese monto en esa fecha.
+- **El slider de crecimiento va de −10 % a 30 %** (la API acepta −100 a 100): cubre los casos reales sin que
+  cada paso sea imperceptible. Inflación y aumento del aporte son campos de porcentaje (0 a 50) dentro de
+  **More options**, plegado salvo que alguno tenga valor.
+- **Preferencias**: si no se pueden leer, Estimate arranca con los valores por defecto (no hay pantalla de
+  error); si no se pueden guardar, un toast lo dice y el próximo cambio las vuelve a mandar; al cerrar sesión
+  se guarda lo pendiente. `PUT /preferences` reemplaza el documento entero (lo que falta toma su valor por
+  defecto): F7 tiene que mandar el documento completo, como ya hace el frontend.
+- **Carga masiva**: cada ítem tiene que traer `expectedReturnPct` (`null` lo borra) para que un campo que falta
+  no borre un retorno sin querer; un `holdingId` repetido es `400`; un id que no es UUID, `404` como uno
+  ajeno. Los que no cambian no se escriben. Cambiar un retorno no registra movimiento.
+- **Dashboard**: *Ready to spend* y *Locked in* pasan a ser una sola tarjeta (*"86% · 14% locked in"*) para
+  dejar lugar a **Expected return**.
+- **Redondeo como la API**: el frontend redondea "mitad lejos del cero" sobre el número escrito (1.005 → 1.01),
+  como `decimal` en Go, y no sobre su valor binario.
+- **Return/yr** ordena dejando al final los assets sin retorno, en los dos sentidos.
+- **Estimate se recalcula cuando cambian los datos** (un asset nuevo cambia el punto de partida), no solo los
+  parámetros.

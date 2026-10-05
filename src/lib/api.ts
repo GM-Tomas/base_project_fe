@@ -6,12 +6,13 @@ import type {
   BalanceChangeReason,
   Debt,
   DebtKind,
-  EstimateParams,
+  EstimateQuery,
   Holding,
   Movement,
   MovementKind,
   MovementPage,
   Platform,
+  Preferences,
   Projection,
   Snapshot,
   ValueChangeReason,
@@ -77,15 +78,27 @@ export interface HoldingInput {
   assetClass: string;
   platform: string;
   valueUsd: number;
+  /** Roughly how much it grows in a year (%, -100 to 100). */
+  expectedReturnPct?: number;
 }
 
-/** PATCH /holdings/{id}: only the fields sent change; a new value is recorded as valueChangeReason says. */
-export type HoldingPatch = Partial<HoldingInput> & {
+/**
+ * PATCH /holdings/{id}: only the fields sent change; a new value is recorded as valueChangeReason says. A null
+ * expectedReturnPct clears it.
+ */
+export type HoldingPatch = Partial<Omit<HoldingInput, 'expectedReturnPct'>> & {
+  expectedReturnPct?: number | null;
   valueChangeReason?: ValueChangeReason;
   /** YYYY-MM-DD; now when absent. */
   occurredAt?: string;
   note?: string;
 };
+
+/** PUT /holdings/expected-returns: each holding once; null clears its return. */
+export interface ExpectedReturnItem {
+  holdingId: string;
+  expectedReturnPct: number | null;
+}
 
 /** POST /debts: only name and balanceUsd are required. */
 export interface DebtInput {
@@ -163,6 +176,8 @@ const liveApi = {
   updateHolding: (id: string, patch: HoldingPatch) =>
     request<Holding>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteHolding: (id: string) => request<void>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  setExpectedReturns: (items: ExpectedReturnItem[]) =>
+    request<Holding[]>('/api/v1/holdings/expected-returns', { method: 'PUT', body: JSON.stringify({ items }) }),
 
   getDebts: () => request<Debt[]>('/api/v1/debts'),
   createDebt: (body: DebtInput) => request<Debt>('/api/v1/debts', { method: 'POST', body: JSON.stringify(body) }),
@@ -193,14 +208,18 @@ const liveApi = {
   createSnapshot: () => request<Snapshot>('/api/v1/wealth/snapshots', { method: 'POST' }),
   deleteSnapshot: (id: string) => request<void>(`/api/v1/wealth/snapshots/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  getEstimate: (params: EstimateParams) => {
-    const query = new URLSearchParams({
-      contribution: String(params.contribution),
-      yieldPct: String(params.yieldPct),
-      years: String(params.years),
-    });
+  getEstimate: (params: EstimateQuery) => {
+    const query = new URLSearchParams({ contribution: String(params.contribution), years: String(params.years) });
+    if (params.yieldPct !== undefined) query.set('yieldPct', String(params.yieldPct));
+    if (params.milestones) query.set('milestones', params.milestones.join(','));
+    if (params.inflationPct) query.set('inflationPct', String(params.inflationPct));
+    if (params.contributionGrowthPct) query.set('contributionGrowthPct', String(params.contributionGrowthPct));
     return request<Projection>(`/api/v1/wealth/estimate?${query}`);
   },
+
+  getPreferences: () => request<Preferences>('/api/v1/preferences'),
+  savePreferences: (preferences: Preferences) =>
+    request<Preferences>('/api/v1/preferences', { method: 'PUT', body: JSON.stringify(preferences) }),
 };
 
 export type Api = typeof liveApi;

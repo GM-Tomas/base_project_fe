@@ -1,19 +1,23 @@
 import type {
   AvailableAssetClasses,
-  EstimateParams,
+  EstimateQuery,
   Holding,
   Milestone,
   Platform,
+  Preferences,
   Projection,
   Snapshot,
   WealthSummary,
 } from '@/types/wealth';
-import type { Api, HoldingInput, HoldingPatch, MovementInput, MovementQuery } from './api';
+import type { Api, ExpectedReturnItem, HoldingInput, HoldingPatch, MovementInput, MovementQuery } from './api';
 import { ApiError } from './apiError';
 import { debtBalances, monthAfter } from './amortization';
 import { normalizeLabel as label, platformKey } from './labels';
 import { createMockDebts } from './mockDebts';
 import { createMockLedger, type MockDebt, type MockLedger } from './mockLedger';
+import { DEFAULT_ESTIMATE, DEFAULT_PREFERENCES, estimateProblems, MAX_MILESTONES, normalizeEstimate } from './preferences';
+import { simulate } from './projection';
+import { expectedReturnOf, RETURN_RANGE, round2, validReturn } from './returns';
 
 // The API's own defaults and limits (base_project_go): the classes offered from the start, the ones
 // counted as liquid, the Estimate view's two milestones, the largest amount a holding can have, and how
@@ -34,14 +38,15 @@ const PLATFORM_TYPES = new Map([
   ['Mercado Pago', 'Wallet'],
 ]);
 
-const SEED: [name: string, assetClass: string, platform: string, valueUsd: number][] = [
-  ['Vanguard S&P 500 ETF (VOO)', 'Index Fund', 'Interactive Brokers', 42_350],
-  ['Apple (AAPL)', 'Equity', 'Interactive Brokers', 12_800],
-  ['Bitcoin', 'Crypto', 'Binance', 18_450],
-  ['Ethereum', 'Crypto', 'Binance', 6_120],
-  ['US Treasury 2027', 'Fixed Income', 'Balanz', 15_000],
-  ['Savings account', 'Cash', 'Santander', 9_500],
-  ['Emergency fund', 'Cash', 'Mercado Pago', 3_200],
+// [name, class, platform, value, expected yearly return (null: not set)]
+const SEED: [name: string, assetClass: string, platform: string, valueUsd: number, returnPct: number | null][] = [
+  ['Vanguard S&P 500 ETF (VOO)', 'Index Fund', 'Interactive Brokers', 42_350, 8],
+  ['Apple (AAPL)', 'Equity', 'Interactive Brokers', 12_800, 10],
+  ['Bitcoin', 'Crypto', 'Binance', 18_450, 20],
+  ['Ethereum', 'Crypto', 'Binance', 6_120, 20],
+  ['US Treasury 2027', 'Fixed Income', 'Balanz', 15_000, 4.5],
+  ['Savings account', 'Cash', 'Santander', 9_500, 0.5],
+  ['Emergency fund', 'Cash', 'Mercado Pago', 3_200, null],
 ];
 
 // What the demo's holdings were worth when added (the rest, their value now), and what happened to them
@@ -133,8 +138,18 @@ function holdingErrors(fields: Partial<Record<keyof HoldingInput, unknown>>): Fi
     else if (value < 0) errors.push({ field: 'valueUsd', message: 'Value must not be negative' });
     else if (value > MAX_VALUE_USD) errors.push({ field: 'valueUsd', message: 'Value is too large' });
   }
+  // A yearly return; null (a PATCH clearing it) is fine.
+  const pct = fields.expectedReturnPct;
+  if (pct !== undefined && pct !== null && !(typeof pct === 'number' && validReturn(pct))) {
+    errors.push({ field: 'expectedReturnPct', message: RETURN_RANGE });
+  }
   return errors;
 }
+
+const withReturn = (pct: number | null | undefined) => {
+  const own = pct === undefined || pct === null ? null : round2(pct);
+  return { expectedReturnPct: own, effectiveReturnPct: own };
+};
 
 const rejectInvalid = (errors: FieldError[]) => {
   if (errors.length) throw new ApiError(400, errors.map((e) => e.message).join('; '), errors);
@@ -177,9 +192,9 @@ function seedActivity(ledger: MockLedger, holdings: Holding[], debts: MockDebt[]
 export function createMockApi(now: () => Date = () => new Date()): Api {
   let nextId = 1;
   const started = now();
-  const holdings: Holding[] = SEED.map(([name, assetClass, platform, valueUsd], i) => {
+  const holdings: Holding[] = SEED.map(([name, assetClass, platform, valueUsd, returnPct], i) => {
     const at = new Date(Date.UTC(started.getUTCFullYear() - 1, i, 15)).toISOString();
-    return { id: `demo-${nextId++}`, name, assetClass, platform, valueUsd, createdAt: at, updatedAt: at };
+    return { id: `demo-${nextId++}`, name, assetClass, platform, valueUsd, ...withReturn(returnPct), createdAt: at, updatedAt: at };
   });
   const debts: MockDebt[] = SEED_DEBTS.map(({ month, opening, ...debt }) => {
     const at = new Date(Date.UTC(started.getUTCFullYear() - 1, month, 15)).toISOString();
@@ -213,7 +228,16 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       },
       add: (): Holding => {
         const at = now().toISOString();
-        const holding = { id: `demo-${nextId++}`, name, assetClass, platform: spelled(platform), valueUsd: cents(input.valueUsd), createdAt: at, updatedAt: at };
+        const holding = {
+          id: `demo-${nextId++}`,
+          name,
+          assetClass,
+          platform: spelled(platform),
+          valueUsd: cents(input.valueUsd),
+          ...withReturn(input.expectedReturnPct),
+          createdAt: at,
+          updatedAt: at,
+        };
         holdings.push(holding);
         return holding;
       },
@@ -253,6 +277,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         monthlyPaymentUsd: cents(debts.reduce((sum, d) => sum + (d.monthlyPaymentUsd ?? 0), 0)),
       },
       holdingsCount: holdings.length,
+      expectedReturn: expectedReturnOf(holdings),
       ytd:
         baseline && ytdGrowth !== null
           ? {
@@ -276,45 +301,115 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     };
   };
 
-  // The portfolio (the assets) grows; each debt is paid off on its own terms; the net worth is what's left.
-  const estimate = ({ contribution, yieldPct, years }: EstimateParams): Projection => {
+  // The API's checks of an estimate's parameters (WealthHandler.GetEstimate), all reported at once.
+  const estimateErrors = (q: EstimateQuery) => {
+    const errors: FieldError[] = [];
+    const inRange = (v: number | undefined, min: number, max: number) => v === undefined || (v >= min && v <= max);
+    if (!inRange(q.contribution, 0, 1e9)) errors.push({ field: 'contribution', message: 'contribution must be between 0 and 1000000000' });
+    if (!inRange(q.yieldPct, -100, 100)) errors.push({ field: 'yieldPct', message: 'yieldPct must be between -100 and 100' });
+    if (!Number.isInteger(q.years) || !inRange(q.years, 1, 50)) errors.push({ field: 'years', message: 'years must be between 1 and 50' });
+    if (q.milestones && (q.milestones.length > MAX_MILESTONES || !q.milestones.every((m) => inRange(m, 0, 1e15)))) {
+      errors.push({ field: 'milestones', message: 'milestones must be up to 5 comma-separated amounts between 0 and 1000000000000000' });
+    }
+    if (!inRange(q.inflationPct, 0, 50)) errors.push({ field: 'inflationPct', message: 'inflationPct must be between 0 and 50' });
+    if (!inRange(q.contributionGrowthPct, 0, 50)) {
+      errors.push({ field: 'contributionGrowthPct', message: 'contributionGrowthPct must be between 0 and 50' });
+    }
+    return errors;
+  };
+
+  // The portfolio (the assets) grows month by month, at the portfolio's expected return unless told
+  // otherwise; each debt is paid off on its own terms; the net worth is what's left. Milestones are on the
+  // nominal net worth.
+  const estimate = (q: EstimateQuery): Projection => {
+    rejectInvalid(estimateErrors(q));
     const principal = total(holdings);
-    const r = yieldPct / 100 / 12;
-    const futureValue = (months: number) =>
-      Math.max(0, r === 0 ? principal + contribution * months : principal * (1 + r) ** months + contribution * (((1 + r) ** months - 1) / r));
-    const owedBy = Array.from({ length: years * 12 + 1 }, () => 0);
-    for (const d of debts) debtBalances(d, years * 12).forEach((balance, m) => (owedBy[m] = cents(owedBy[m] + balance)));
+    const portfolio = expectedReturnOf(holdings).weightedPct;
+    const yieldPct = q.yieldPct ?? portfolio ?? 0;
+    const [inflationPct, contributionGrowthPct] = [q.inflationPct ?? 0, q.contributionGrowthPct ?? 0];
+    const months = simulate({ principal, contribution: q.contribution, yieldPct, years: q.years, contributionGrowthPct, inflationPct });
+    const owedBy = Array.from({ length: q.years * 12 + 1 }, () => 0);
+    for (const d of debts) debtBalances(d, q.years * 12).forEach((balance, m) => (owedBy[m] = cents(owedBy[m] + balance)));
     const milestone = (amountUsd: number): Milestone => {
-      for (let month = 0; month <= years * 12; month++) {
-        if (futureValue(month) - owedBy[month] >= amountUsd) {
-          return month === 0
-            ? { amountUsd, status: 'ACHIEVED', monthsRequired: 0, targetMonth: null }
-            : { amountUsd, status: 'REACHABLE', monthsRequired: month, targetMonth: monthAfter(now(), month) };
-        }
-      }
-      return { amountUsd, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null };
+      const month = months.findIndex((state, m) => cents(state.value) - owedBy[m] >= amountUsd);
+      if (month < 0) return { amountUsd, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null };
+      return month === 0
+        ? { amountUsd, status: 'ACHIEVED', monthsRequired: 0, targetMonth: null }
+        : { amountUsd, status: 'REACHABLE', monthsRequired: month, targetMonth: monthAfter(now(), month) };
     };
     return {
       principalUsd: principal,
       debtsUsd: owed(),
-      monthlyContributionUsd: contribution,
+      monthlyContributionUsd: q.contribution,
       annualYieldPct: yieldPct,
-      years,
-      series: Array.from({ length: years + 1 }, (_, year) => {
-        const fv = cents(futureValue(year * 12));
-        const contributed = cents(principal + contribution * year * 12);
+      yieldSource: q.yieldPct === undefined ? 'PORTFOLIO' : 'CUSTOM',
+      portfolioYieldPct: portfolio,
+      inflationPct,
+      contributionGrowthPct,
+      years: q.years,
+      series: Array.from({ length: q.years + 1 }, (_, year) => {
+        const state = months[year * 12];
+        const fv = cents(state.value);
+        const contributed = cents(state.contributed);
         const debt = owedBy[year * 12];
+        const netWorth = cents(fv - debt);
         return {
           year,
           futureValueUsd: fv,
           totalContributedUsd: contributed,
           interestEarnedUsd: cents(fv - contributed),
           debtBalanceUsd: debt,
-          netWorthUsd: cents(fv - debt),
+          netWorthUsd: netWorth,
+          realFutureValueUsd: cents(fv / state.deflator),
+          realNetWorthUsd: cents(netWorth / state.deflator),
         };
       }),
-      milestones: MILESTONES.map(milestone),
+      milestones: [...(q.milestones ?? DEFAULT_ESTIMATE.milestonesUsd)].sort((a, b) => a - b).map(milestone),
     };
+  };
+
+  // What the user saved (PUT /preferences replaces it whole; what it leaves out takes its default).
+  let preferences: Preferences | null = null;
+  const savePreferences = async (sent: Preferences): Promise<Preferences> => {
+    const e = { ...DEFAULT_ESTIMATE, ...sent.estimate };
+    // JSON's 1.5 isn't an int: the API can't even read the body.
+    if (!Number.isInteger(e.years)) throw new ApiError(400, 'Malformed JSON body');
+    rejectInvalid(estimateProblems(e));
+    preferences = { estimate: normalizeEstimate(e) };
+    return structuredClone(preferences);
+  };
+
+  // PUT /holdings/expected-returns: checked as the handler checks the items (every problem at once), then
+  // all of them or, if one isn't the user's, none.
+  const setExpectedReturns = async (items: ExpectedReturnItem[] | undefined): Promise<Holding[]> => {
+    if (!items) rejectInvalid([{ field: 'items', message: 'items is required' }]);
+    if (items!.length > MAX_HOLDINGS) rejectInvalid([{ field: 'items', message: `items can't have more than ${MAX_HOLDINGS} entries` }]);
+    const errors: FieldError[] = [];
+    const seen = new Set<string>();
+    items!.forEach((item, i) => {
+      const field = `items[${i}]`;
+      if (!item.holdingId?.trim()) errors.push({ field: `${field}.holdingId`, message: `${field}.holdingId is required` });
+      else if (seen.has(item.holdingId)) errors.push({ field: `${field}.holdingId`, message: `${field}.holdingId appears more than once` });
+      seen.add(item.holdingId);
+      const pct = item.expectedReturnPct as number | null | undefined;
+      if (pct === undefined) {
+        errors.push({ field: `${field}.expectedReturnPct`, message: `${field}.expectedReturnPct is required (null clears it)` });
+      } else if (pct !== null && !validReturn(pct)) {
+        errors.push({ field: `${field}.expectedReturnPct`, message: `${field}.${RETURN_RANGE}` });
+      }
+    });
+    rejectInvalid(errors);
+    const found = items!.map((item) => {
+      const h = holdings.find((x) => x.id === item.holdingId);
+      if (!h) throw new ApiError(404, `Holding ${item.holdingId} not found`);
+      return h;
+    });
+    const at = now().toISOString();
+    items!.forEach((item, i) => {
+      const next = withReturn(item.expectedReturnPct);
+      if (found[i].expectedReturnPct !== next.expectedReturnPct) Object.assign(found[i], next, { updatedAt: at });
+    });
+    return found.map((h) => ({ ...h }));
   };
 
   return {
@@ -331,7 +426,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     },
     updateHolding: async (id: string, patch: HoldingPatch) => {
       // Only what's sent changes; sending what's there writes nothing (updatedAt stays). A new value is
-      // recorded as what valueChangeReason says it was.
+      // recorded as what valueChangeReason says it was; a new return alone records nothing.
       rejectInvalid(holdingErrors(patch));
       const edit = ledger.checkEdit(patch.valueChangeReason, patch.occurredAt, patch.note);
       const holding = holdings.find((h) => h.id === id);
@@ -342,8 +437,9 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         ...(patch.assetClass !== undefined && { assetClass: label(patch.assetClass) }),
         ...(patch.platform !== undefined && { platform: spelled(label(patch.platform)) }),
         ...(patch.valueUsd !== undefined && { valueUsd: cents(patch.valueUsd) }),
+        ...(patch.expectedReturnPct !== undefined && withReturn(patch.expectedReturnPct)),
       };
-      const changed = (['name', 'assetClass', 'platform', 'valueUsd'] as const).some((k) => updated[k] !== holding[k]);
+      const changed = (['name', 'assetClass', 'platform', 'valueUsd', 'expectedReturnPct'] as const).some((k) => updated[k] !== holding[k]);
       if (!changed) return { ...holding };
       const previous = holding.valueUsd;
       if (updated.valueUsd !== previous) ledger.roomForOneMore();
@@ -396,6 +492,9 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       if (index < 0) throw new ApiError(404, `Snapshot ${id} not found`);
       snapshots.splice(index, 1);
     },
-    getEstimate: async (params: EstimateParams) => estimate(params),
+    getEstimate: async (params: EstimateQuery) => estimate(params),
+    setExpectedReturns,
+    getPreferences: async () => structuredClone(preferences ?? DEFAULT_PREFERENCES),
+    savePreferences,
   };
 }

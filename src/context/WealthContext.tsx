@@ -1,11 +1,24 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
-import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams, Movement, Debt } from '@/types/wealth';
+import {
+  Holding,
+  Platform,
+  Snapshot,
+  WealthSummary,
+  AssetClass,
+  ViewType,
+  Movement,
+  Debt,
+  EstimatePreferences,
+  ExpectedReturn,
+  Preferences,
+} from '@/types/wealth';
 import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
 import { initialOf } from '@/lib/initial';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
-import { api, ApiError, DebtInput, DebtPatch, HoldingInput, HoldingPatch, MovementInput } from '@/lib/api';
+import { api, ApiError, DebtInput, DebtPatch, ExpectedReturnItem, HoldingInput, HoldingPatch, MovementInput } from '@/lib/api';
+import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
 
 interface ClassDistributionItem {
@@ -40,7 +53,10 @@ interface WealthContextType {
   debts: Debt[];
   platforms: Platform[];
   snapshots: Snapshot[];
-  estimateParams: EstimateParams;
+  /** How the user left Estimate: saved for every device, a second after each change. */
+  estimatePrefs: EstimatePreferences;
+  /** Goes up each time saving the preferences fails (the change stays on screen, and is saved with the next). */
+  preferencesSaveFailures: number;
   loading: boolean;
   loadError: string | null;
   /** Goes up each time fresh data is on screen: what's fetched apart (an activity list) reloads with it. */
@@ -54,6 +70,8 @@ interface WealthContextType {
   debtsUSD: number;
   /** The debts' monthly payments, those that have one. */
   monthlyDebtPaymentsUSD: number;
+  /** What the portfolio is expected to earn in a year (each holding's return weighted by value). */
+  expectedReturn: ExpectedReturn;
   ytdGrowthFormatted: string;
   ytdLabel: string;
   liquidityPct: number;
@@ -69,10 +87,13 @@ interface WealthContextType {
   /** Platforms view, with that platform's holdings open. */
   openPlatform: (platform: string) => void;
   setAssetsTable: React.Dispatch<React.SetStateAction<AssetsTableState>>;
-  setEstimateParams: React.Dispatch<React.SetStateAction<EstimateParams>>;
+  /** Changes how Estimate is set up (saved a second later). */
+  setEstimatePrefs: (change: (prefs: EstimatePreferences) => EstimatePreferences) => void;
   addHolding: (holding: HoldingInput) => Promise<void>;
   updateHolding: (id: string, patch: HoldingPatch) => Promise<void>;
   deleteHolding: (id: string) => Promise<void>;
+  /** Sets many holdings' expected returns at once, all or none. */
+  setExpectedReturns: (items: ExpectedReturnItem[]) => Promise<void>;
   takeSnapshot: () => Promise<void>;
   deleteSnapshot: (id: string) => Promise<void>;
   addDebt: (input: DebtInput) => Promise<Debt>;
@@ -87,6 +108,8 @@ interface WealthContextType {
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined);
+
+const PREFERENCES_SAVE_DELAY_MS = 1000;
 
 // The API spells a platform as on its earliest holding, so deleting that holding (say, from another
 // device) can change how a selected platform is spelled. Follow it through the holdings it still has; with
@@ -105,6 +128,7 @@ const EMPTY_SUMMARY: WealthSummary = {
   assets: { usd: 0 },
   debts: { usd: 0, count: 0, monthlyPaymentUsd: 0 },
   holdingsCount: 0,
+  expectedReturn: { weightedPct: null, coveragePct: 0, annualUsd: 0 },
   ytd: { basis: 'NO_BASELINE', growthPct: 0 },
   liquidity: { liquidPct: 0, illiquidPct: 0, liquidAssetClasses: [] },
   byAssetClass: [],
@@ -133,11 +157,10 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
 
-  const [estimateParams, setEstimateParams] = useState<EstimateParams>({
-    contribution: 900,
-    yieldPct: 9,
-    years: 12,
-  });
+  const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
+  const preferencesRef = useRef<Preferences>(DEFAULT_PREFERENCES);
+  const [preferencesSaveFailures, setPreferencesSaveFailures] = useState(0);
+  const pendingSave = useRef<{ timer: ReturnType<typeof setTimeout>; preferences: Preferences } | null>(null);
 
   // Every read comes from the backend now (Fase 6 cutover) — no localStorage, no client-side
   // aggregation. A mutation is followed by a full refresh rather than an optimistic update: this
@@ -179,12 +202,17 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, []);
 
   // The first load, and Retry on the error screen, which reloads in place: the view and selection stay.
+  // Preferences that can't be read aren't worth an error screen: Estimate starts from the defaults.
   const load = useCallback(
     async (isCurrent: () => boolean = () => true) => {
       setLoading(true);
       setLoadError(null);
       try {
-        await refresh();
+        const [saved] = await Promise.all([api.getPreferences().catch(() => null), refresh()]);
+        if (saved && isCurrent() && !pendingSave.current) {
+          preferencesRef.current = saved;
+          setPreferences(saved);
+        }
       } catch (e) {
         if (isCurrent()) setLoadError(`Couldn't load your data${reason(e)}`);
       } finally {
@@ -202,6 +230,36 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, [load]);
 
+  // Preferences are saved a second after the last change, whole (PUT replaces them); leaving (signing out)
+  // saves what's pending at once.
+  const savePreferences = useCallback((next: Preferences) => {
+    api.savePreferences(next).catch(() => setPreferencesSaveFailures((n) => n + 1));
+  }, []);
+  const setEstimatePrefs = useCallback(
+    (change: (prefs: EstimatePreferences) => EstimatePreferences) => {
+      const next = { ...preferencesRef.current, estimate: change(preferencesRef.current.estimate) };
+      preferencesRef.current = next;
+      setPreferences(next);
+      if (pendingSave.current) clearTimeout(pendingSave.current.timer);
+      const timer = setTimeout(() => {
+        pendingSave.current = null;
+        savePreferences(next);
+      }, PREFERENCES_SAVE_DELAY_MS);
+      pendingSave.current = { timer, preferences: next };
+    },
+    [savePreferences],
+  );
+  useEffect(
+    () => () => {
+      const pending = pendingSave.current;
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      pendingSave.current = null;
+      savePreferences(pending.preferences);
+    },
+    [savePreferences],
+  );
+
   // Computed values — all sourced from GET /wealth/summary (server-side aggregation), not
   // recomputed from the raw holdings list on every render.
   const netWorthUSD = summary.netWorth.usd;
@@ -209,6 +267,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const assetsUSD = summary.assets.usd;
   const debtsUSD = summary.debts.usd;
   const monthlyDebtPaymentsUSD = summary.debts.monthlyPaymentUsd;
+  const expectedReturn = summary.expectedReturn;
   const ytdGrowthFormatted = useMemo(() => formatPercentage(summary.ytd.growthPct), [summary.ytd.growthPct]);
   const ytdLabel = useMemo(() => {
     if (summary.ytd.basis === 'YEAR_START_SNAPSHOT') return 'since January';
@@ -286,6 +345,19 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       await reloadAfterChange();
     },
     [reloadAfterChange],
+  );
+
+  const setExpectedReturns = useCallback(
+    async (items: ExpectedReturnItem[]) => {
+      try {
+        await api.setExpectedReturns(items);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) refresh().catch(() => {});
+        throw e;
+      }
+      await reloadAfterChange();
+    },
+    [refresh, reloadAfterChange],
   );
 
   const takeSnapshot = useCallback(async () => {
@@ -380,7 +452,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         debts,
         platforms,
         snapshots,
-        estimateParams,
+        estimatePrefs: preferences.estimate,
+        preferencesSaveFailures,
         loading,
         loadError,
         dataVersion,
@@ -390,6 +463,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         assetsUSD,
         debtsUSD,
         monthlyDebtPaymentsUSD,
+        expectedReturn,
         ytdGrowthFormatted,
         ytdLabel,
         liquidityPct,
@@ -409,10 +483,11 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setSelectedPlatform(platform);
         },
         setAssetsTable,
-        setEstimateParams,
+        setEstimatePrefs,
         addHolding,
         updateHolding,
         deleteHolding,
+        setExpectedReturns,
         takeSnapshot,
         deleteSnapshot,
         addDebt,

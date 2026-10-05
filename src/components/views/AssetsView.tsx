@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Search } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsUpDown, Percent, Search } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
 import { assetClassTag } from '@/lib/constants';
@@ -10,12 +10,14 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
 import { HoldingRowActions } from '@/components/dialogs/HoldingRowActions';
 import { useOpenFromRow, useOpenHolding } from '@/components/dialogs/HoldingDrawer';
+import { formatReturn } from '@/lib/returns';
 
 const COLUMNS: { key: AssetSortKey; label: string }[] = [
   { key: 'name', label: 'Name' },
   { key: 'assetClass', label: 'Class' },
   { key: 'platform', label: 'Platform' },
   { key: 'valueUsd', label: 'Value' },
+  { key: 'effectiveReturnPct', label: 'Return/yr' },
 ];
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : '—');
@@ -86,6 +88,10 @@ export const AssetsView: React.FC = () => {
             </option>
           ))}
         </select>
+        <button type="button" className="btn btn-secondary toolbar-end" onClick={actions.setReturns}>
+          <Percent size={14} aria-hidden />
+          Set expected returns
+        </button>
       </div>
 
       {/* Class chips */}
@@ -167,6 +173,9 @@ export const AssetsView: React.FC = () => {
                   </td>
                   <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
                     {formatCurrency(h.valueUsd)}
+                  </td>
+                  <td style={{ padding: '12px 10px', fontVariantNumeric: 'tabular-nums' }} className="text-nowrap">
+                    {h.effectiveReturnPct === null ? <span className="text-muted">—</span> : formatReturn(h.effectiveReturnPct, 2)}
                   </td>
                   <td style={{ padding: '12px 10px', fontVariantNumeric: 'tabular-nums' }} className="text-muted">
                     {pctOf(h.valueUsd, totalAssets)}

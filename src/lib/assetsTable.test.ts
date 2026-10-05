@@ -3,16 +3,16 @@ import type { Holding } from '@/types/wealth';
 import { INITIAL_ASSETS_TABLE, selectAssets, sumValues, toggleSort, type AssetsTableState } from './assetsTable';
 import { matchesQuery, normalizeForSearch } from './search';
 
-const holding = (name: string, assetClass: string, platform: string, valueUsd: number): Holding => ({
-  id: name, name, assetClass, platform, valueUsd, createdAt: '', updatedAt: '',
+const holding = (name: string, assetClass: string, platform: string, valueUsd: number, returnPct: number | null = null): Holding => ({
+  id: name, name, assetClass, platform, valueUsd, expectedReturnPct: returnPct, effectiveReturnPct: returnPct, createdAt: '', updatedAt: '',
 });
 
 const HOLDINGS = [
-  holding('Café Martínez shares', 'Equity', 'Balanz', 500),
-  holding('Bitcoin', 'Crypto', 'Binance', 18_450),
-  holding('ethereum', 'Crypto', 'Binance', 6_120),
+  holding('Café Martínez shares', 'Equity', 'Balanz', 500, 9),
+  holding('Bitcoin', 'Crypto', 'Binance', 18_450, 20),
+  holding('ethereum', 'Crypto', 'Binance', 6_120, 20),
   holding('Savings', 'Cash', 'Santander', 9_500),
-  holding('Apple', 'Equity', 'Balanz', 500),
+  holding('Apple', 'Equity', 'Balanz', 500, -5),
 ];
 
 const names = (table: Partial<AssetsTableState>) => selectAssets(HOLDINGS, { ...INITIAL_ASSETS_TABLE, ...table }).map((h) => h.name);
@@ -50,6 +50,9 @@ describe('selectAssets', () => {
     expect(names({ sort: { key: 'platform', dir: 'asc' } })).toEqual(['Apple', 'Café Martínez shares', 'Bitcoin', 'ethereum', 'Savings']);
     expect(names({ sort: { key: 'assetClass', dir: 'asc' } })).toEqual(['Savings', 'Bitcoin', 'ethereum', 'Apple', 'Café Martínez shares']);
     expect(names({ sort: { key: 'valueUsd', dir: 'asc' } })).toEqual(['Apple', 'Café Martínez shares', 'ethereum', 'Savings', 'Bitcoin']);
+    // Those without a return last, either way.
+    expect(names({ sort: { key: 'effectiveReturnPct', dir: 'desc' } })).toEqual(['Bitcoin', 'ethereum', 'Café Martínez shares', 'Apple', 'Savings']);
+    expect(names({ sort: { key: 'effectiveReturnPct', dir: 'asc' } })).toEqual(['Apple', 'Café Martínez shares', 'Bitcoin', 'ethereum', 'Savings']);
   });
 
   it("doesn't touch the list it's given", () => {
@@ -65,6 +68,7 @@ describe('toggleSort', () => {
     expect(toggleSort({ key: 'valueUsd', dir: 'asc' }, 'valueUsd')).toEqual({ key: 'valueUsd', dir: 'desc' });
     expect(toggleSort({ key: 'valueUsd', dir: 'desc' }, 'name')).toEqual({ key: 'name', dir: 'asc' });
     expect(toggleSort({ key: 'name', dir: 'asc' }, 'valueUsd')).toEqual({ key: 'valueUsd', dir: 'desc' });
+    expect(toggleSort({ key: 'name', dir: 'asc' }, 'effectiveReturnPct')).toEqual({ key: 'effectiveReturnPct', dir: 'desc' });
   });
 });
 

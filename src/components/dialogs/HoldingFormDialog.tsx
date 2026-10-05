@@ -9,12 +9,16 @@ import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FormError } from '@/components/ui/FormError';
 import { DateInput } from '@/components/ui/DateInput';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { PercentInput } from '@/components/ui/PercentInput';
 import { ApiError, errorMessage } from '@/lib/apiError';
 import type { HoldingPatch } from '@/lib/api';
 import type { Holding, ValueChangeReason } from '@/types/wealth';
 import { formatUsd, parseAmount } from '@/lib/money';
 import { normalizeLabel, platformKey } from '@/lib/labels';
 import { dateProblem, occurredAtFor, today } from '@/lib/movements';
+import { parsePercent } from '@/lib/returns';
+
+export const RETURN_HINT = "Roughly how much it grows in a year. Leave empty if you don't know (counts as 0%).";
 
 // What the platform field says about what's typed: nothing for an existing platform, which one it is when
 // only the case differs (the API keeps the existing spelling), or that it's new.
@@ -58,9 +62,11 @@ export interface HoldingFormDialogProps {
 // value says what it was (a market move unless told otherwise) and when (now unless another day is picked).
 function changes(
   holding: Holding,
-  fields: { name: string; platform: string; assetClass: string; value: string; reason: ValueChangeReason; date: string },
+  fields: { name: string; platform: string; assetClass: string; value: string; reason: ValueChangeReason; date: string; returnPct: string },
 ): HoldingPatch {
   const patch: HoldingPatch = {};
+  const pct = parsePercent(fields.returnPct);
+  if (pct.error === undefined && pct.value !== holding.expectedReturnPct) patch.expectedReturnPct = pct.value;
   if (normalizeLabel(fields.name) !== holding.name) patch.name = fields.name.trim();
   if (normalizeLabel(fields.assetClass) !== holding.assetClass) patch.assetClass = fields.assetClass.trim();
   if (normalizeLabel(fields.platform) !== holding.platform) patch.platform = fields.platform.trim();
@@ -83,16 +89,20 @@ export function HoldingFormDialog({ onClose, platform: presetPlatform = '', hold
   const [platform, setPlatform] = useState(holding?.platform ?? presetPlatform);
   const [assetClass, setAssetClass] = useState(holding?.assetClass ?? '');
   const [value, setValue] = useState(holding ? String(holding.valueUsd) : '');
+  const [returnPct, setReturnPct] = useState(holding?.expectedReturnPct != null ? String(holding.expectedReturnPct) : '');
   const [reason, setReason] = useState<ValueChangeReason>('MARKET');
   const [date, setDate] = useState(today);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const platformNames = platforms.map((p) => p.name);
-  const patch = holding && changes(holding, { name, platform, assetClass, value, reason, date });
+  const patch = holding && changes(holding, { name, platform, assetClass, value, reason, date, returnPct });
   const newValue = patch?.valueUsd;
-  // Editing, Save waits for something to change (an amount it can't read counts: Save says what's wrong).
-  const unchanged = !!patch && Object.keys(patch).length === 0 && parseAmount(value).error === undefined;
+  const parsedReturn = parsePercent(returnPct);
+  // Editing, Save waits for something to change (an amount or a return it can't read counts: Save says
+  // what's wrong).
+  const unchanged =
+    !!patch && Object.keys(patch).length === 0 && parseAmount(value).error === undefined && parsedReturn.error === undefined;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +115,9 @@ export function HoldingFormDialog({ onClose, platform: presetPlatform = '', hold
           ? 'Please choose or enter an asset class'
           : !value.trim()
             ? 'Please enter a value'
-            : (amount.error ?? (newValue !== undefined ? dateProblem(date) : undefined));
+            : (amount.error ??
+              (parsedReturn.error !== undefined ? `Expected return: ${parsedReturn.error}` : undefined) ??
+              (newValue !== undefined ? dateProblem(date) : undefined));
     if (problem !== undefined) {
       setError(problem);
       return;
@@ -122,6 +134,7 @@ export function HoldingFormDialog({ onClose, platform: presetPlatform = '', hold
           assetClass: assetClass.trim(),
           platform: platform.trim(),
           valueUsd: amount.value!,
+          ...(parsedReturn.value != null && { expectedReturnPct: parsedReturn.value }),
         });
       }
     } catch (err) {
@@ -171,7 +184,10 @@ export function HoldingFormDialog({ onClose, platform: presetPlatform = '', hold
           />
         </div>
 
-        <MoneyInput label="Value (USD)" value={value} onChange={setValue} />
+        <div className="form-grid-2">
+          <MoneyInput label="Value (USD)" value={value} onChange={setValue} />
+          <PercentInput label="Expected yearly return (optional)" value={returnPct} onChange={setReturnPct} hint={RETURN_HINT} />
+        </div>
 
         {holding && newValue !== undefined && (
           <div className="form-reason">

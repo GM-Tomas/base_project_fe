@@ -1,7 +1,7 @@
 import type { Holding } from '@/types/wealth';
 import { matchesQuery } from './search';
 
-export type AssetSortKey = 'name' | 'assetClass' | 'platform' | 'valueUsd';
+export type AssetSortKey = 'name' | 'assetClass' | 'platform' | 'valueUsd' | 'effectiveReturnPct';
 export type SortDirection = 'asc' | 'desc';
 
 /** What the Assets table shows: kept while the user moves between views. */
@@ -25,7 +25,12 @@ export const INITIAL_ASSETS_TABLE: AssetsTableState = {
 
 const byText = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' }) || a.localeCompare(b);
 
-/** The holdings the table shows, filtered and sorted (ties by name, so the order is stable). */
+const isNumeric = (key: AssetSortKey): key is 'valueUsd' | 'effectiveReturnPct' => key === 'valueUsd' || key === 'effectiveReturnPct';
+
+/**
+ * The holdings the table shows, filtered and sorted (ties by name, so the order is stable). Those without a
+ * return go last, whichever the direction.
+ */
 export function selectAssets(holdings: Holding[], table: AssetsTableState): Holding[] {
   const shown = holdings.filter(
     (h) =>
@@ -36,15 +41,18 @@ export function selectAssets(holdings: Holding[], table: AssetsTableState): Hold
   const { key, dir } = table.sort;
   const sign = dir === 'asc' ? 1 : -1;
   return shown.sort((a, b) => {
-    const order = key === 'valueUsd' ? a.valueUsd - b.valueUsd : byText(a[key], b[key]);
+    if (key === 'effectiveReturnPct' && (a.effectiveReturnPct === null) !== (b.effectiveReturnPct === null)) {
+      return a.effectiveReturnPct === null ? 1 : -1;
+    }
+    const order = isNumeric(key) ? (a[key] ?? 0) - (b[key] ?? 0) : byText(a[key], b[key]);
     return order * sign || byText(a.name, b.name);
   });
 }
 
-/** Clicking a column: sorts by it, or flips its direction if it already sorts. Amounts start largest first. */
+/** Clicking a column: sorts by it, or flips its direction if it already sorts. Numbers start largest first. */
 export function toggleSort(sort: AssetsTableState['sort'], key: AssetSortKey): AssetsTableState['sort'] {
   if (sort.key === key) return { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' };
-  return { key, dir: key === 'valueUsd' ? 'desc' : 'asc' };
+  return { key, dir: isNumeric(key) ? 'desc' : 'asc' };
 }
 
 export const sumValues = (holdings: Holding[]) => Math.round(holdings.reduce((sum, h) => sum + h.valueUsd, 0) * 100) / 100;

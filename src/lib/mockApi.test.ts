@@ -247,7 +247,10 @@ describe('mock API (the data previews run on)', () => {
       interestEarnedUsd: 0,
       debtBalanceUsd: 0,
       netWorthUsd: 167_420,
+      realFutureValueUsd: 167_420,
+      realNetWorthUsd: 167_420,
     });
+    expect(flat).toMatchObject({ yieldSource: 'CUSTOM', annualYieldPct: 0, portfolioYieldPct: 9.59, inflationPct: 0, contributionGrowthPct: 0 });
     expect(flat.milestones).toEqual([
       { amountUsd: 150_000, status: 'REACHABLE', monthsRequired: 43, targetMonth: '2030-05' },
       { amountUsd: 250_000, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null },
@@ -271,5 +274,144 @@ describe('mock API (the data previews run on)', () => {
       monthsRequired: 0,
       targetMonth: null,
     });
+  });
+
+  it('weighs the demo portfolio\'s expected returns, and projects at them unless told otherwise', async () => {
+    const api = createMockApi(at('2026-10-04T10:00:00Z'));
+
+    // (42,350×8 + 12,800×10 + (18,450+6,120)×20 + 15,000×4.5 + 9,500×0.5) / 107,420; the emergency fund has none.
+    expect((await api.getSummary()).expectedReturn).toEqual({ weightedPct: 9.59, coveragePct: 97, annualUsd: 10_304.5 });
+    const portfolio = await api.getEstimate({ contribution: 0, years: 1, milestones: [] });
+    expect(portfolio).toMatchObject({ yieldSource: 'PORTFOLIO', annualYieldPct: 9.59, portfolioYieldPct: 9.59, milestones: [] });
+    expect(portfolio.series[1].futureValueUsd).toBeCloseTo(107_420 * (1 + 0.0959 / 12) ** 12, 1);
+
+    // A raise each year, and inflation for today's dollars.
+    const adjusted = await api.getEstimate({ contribution: 100, years: 2, yieldPct: 0, contributionGrowthPct: 10, inflationPct: 12 });
+    expect(adjusted.series[2].totalContributedUsd).toBe(107_420 + 1_200 + 1_320);
+    expect(adjusted.series[1].realFutureValueUsd).toBe(Math.round(((107_420 + 1_200) / 1.01 ** 12) * 100) / 100);
+    expect(adjusted.series[2].realNetWorthUsd).toBeLessThan(adjusted.series[2].netWorthUsd);
+
+    // Milestones of one's own, in order.
+    const mine = await api.getEstimate({ contribution: 0, years: 1, yieldPct: 0, milestones: [1e6, 50_000] });
+    expect(mine.milestones.map((m) => [m.amountUsd, m.status])).toEqual([
+      [50_000, 'ACHIEVED'],
+      [1e6, 'OUT_OF_HORIZON'],
+    ]);
+
+    // The API's checks, all at once.
+    const failure = await api
+      .getEstimate({ contribution: -1, years: 51, yieldPct: 101, milestones: [1, 2, 3, 4, 5, 6], inflationPct: 51, contributionGrowthPct: -1 })
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      status: 400,
+      message:
+        'contribution must be between 0 and 1000000000; yieldPct must be between -100 and 100; years must be between 1 and 50; ' +
+        'milestones must be up to 5 comma-separated amounts between 0 and 1000000000000000; inflationPct must be between 0 and 50; ' +
+        'contributionGrowthPct must be between 0 and 50',
+    });
+
+    // Nothing owned: nothing to weigh, 0%.
+    for (const h of await api.getHoldings()) await api.deleteHolding(h.id);
+    expect((await api.getSummary()).expectedReturn).toEqual({ weightedPct: null, coveragePct: 0, annualUsd: 0 });
+    expect(await api.getEstimate({ contribution: 0, years: 1 })).toMatchObject({ annualYieldPct: 0, portfolioYieldPct: null });
+  });
+
+  it("keeps each holding's expected return, set one by one or all at once", async () => {
+    let clock = Date.parse('2026-10-04T10:00:00Z');
+    const api = createMockApi(() => new Date(clock));
+    const [voo, apple] = await api.getHoldings();
+    expect(voo).toMatchObject({ expectedReturnPct: 8, effectiveReturnPct: 8 });
+
+    const added = await api.createHolding({ name: 'Gold', assetClass: 'Gold', platform: 'Vault', valueUsd: 100, expectedReturnPct: 3.456 });
+    expect(added).toMatchObject({ expectedReturnPct: 3.46, effectiveReturnPct: 3.46 });
+    await expect(
+      api.createHolding({ name: 'x', assetClass: 'Cash', platform: 'Bank', valueUsd: 1, expectedReturnPct: 100.01 }),
+    ).rejects.toMatchObject({ status: 400, message: 'expectedReturnPct must be between -100 and 100' });
+
+    // A new return alone is a change, without a movement; null clears it.
+    clock += 60_000;
+    const before = (await api.getMovements()).items.length;
+    expect(await api.updateHolding(voo.id, { expectedReturnPct: -2.5 })).toMatchObject({
+      expectedReturnPct: -2.5,
+      updatedAt: '2026-10-04T10:01:00.000Z',
+    });
+    expect(await api.updateHolding(voo.id, { expectedReturnPct: null })).toMatchObject({ expectedReturnPct: null, effectiveReturnPct: null });
+    expect((await api.getMovements()).items).toHaveLength(before);
+
+    // All at once: in the order asked, unchanged ones untouched.
+    clock += 60_000;
+    const set = await api.setExpectedReturns([
+      { holdingId: apple.id, expectedReturnPct: 10 },
+      { holdingId: voo.id, expectedReturnPct: 7 },
+    ]);
+    expect(set.map((h) => [h.name, h.expectedReturnPct, h.updatedAt])).toEqual([
+      ['Apple (AAPL)', 10, apple.updatedAt],
+      ['Vanguard S&P 500 ETF (VOO)', 7, '2026-10-04T10:02:00.000Z'],
+    ]);
+
+    // The handler's checks (every problem at once), then all or none.
+    const fails = (items: unknown) => api.setExpectedReturns(items as never).catch((e) => e);
+    expect(await fails(undefined)).toMatchObject({ status: 400, message: 'items is required' });
+    expect(await fails(Array.from({ length: 1001 }, () => ({ holdingId: 'x', expectedReturnPct: 1 })))).toMatchObject({
+      message: "items can't have more than 1000 entries",
+    });
+    expect(await fails([{ holdingId: ' ', expectedReturnPct: 1 }, { holdingId: voo.id }, { holdingId: voo.id, expectedReturnPct: 101 }])).toMatchObject({
+      status: 400,
+      message:
+        'items[0].holdingId is required; items[1].expectedReturnPct is required (null clears it); ' +
+        'items[2].holdingId appears more than once; items[2].expectedReturnPct must be between -100 and 100',
+    });
+    expect(await fails([{ holdingId: voo.id, expectedReturnPct: 1 }, { holdingId: 'gone', expectedReturnPct: 1 }])).toMatchObject({
+      status: 404,
+      message: 'Holding gone not found',
+    });
+    expect((await api.getHoldings())[0]).toMatchObject({ expectedReturnPct: 7 });
+  });
+
+  it('keeps the preferences: the defaults, then what is saved, as the API checks them', async () => {
+    const api = createMockApi(at('2026-10-04T10:00:00Z'));
+    const defaults = await api.getPreferences();
+    expect(defaults.estimate).toEqual({
+      contributionUsd: 900,
+      years: 12,
+      yieldMode: 'PORTFOLIO',
+      customYieldPct: 9,
+      milestonesUsd: [150_000, 250_000],
+      inflationPct: 0,
+      contributionGrowthPct: 0,
+    });
+    defaults.estimate.years = 1; // a copy
+    expect((await api.getPreferences()).estimate.years).toBe(12);
+
+    // What's left out takes its default; amounts and percentages as the API keeps them.
+    const saved = await api.savePreferences({
+      estimate: { contributionUsd: 1_500.555, years: 20, yieldMode: 'CUSTOM', customYieldPct: 6.256, milestonesUsd: [5e5, 1e5] },
+    } as never);
+    expect(saved.estimate).toEqual({
+      contributionUsd: 1_500.56,
+      years: 20,
+      yieldMode: 'CUSTOM',
+      customYieldPct: 6.26,
+      milestonesUsd: [1e5, 5e5],
+      inflationPct: 0,
+      contributionGrowthPct: 0,
+    });
+    expect(await api.getPreferences()).toEqual(saved);
+
+    const failure = await api
+      .savePreferences({
+        estimate: { contributionUsd: -1, years: 51, yieldMode: 'MAGIC', customYieldPct: 101, milestonesUsd: [1, 2, 3, 4, 5, -6], inflationPct: 51, contributionGrowthPct: -1 },
+      } as never)
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      status: 400,
+      message:
+        'contributionUsd must be between 0 and 1000000000; years must be between 1 and 50; yieldMode must be one of PORTFOLIO, CUSTOM; ' +
+        'customYieldPct must be between -100 and 100; at most 5 milestones; milestones must be amounts between 0 and 1000000000000000; ' +
+        'inflationPct must be between 0 and 50; contributionGrowthPct must be between 0 and 50',
+    });
+    expect(failure.errors[0].field).toBe('estimate.contributionUsd');
+    await expect(api.savePreferences({ estimate: { years: 1.5 } } as never)).rejects.toMatchObject({ message: 'Malformed JSON body' });
+    expect(await api.getPreferences()).toEqual(saved);
   });
 });

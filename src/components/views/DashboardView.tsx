@@ -6,6 +6,8 @@ import { useUi } from '@/context/UiContext';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
 import { formatCurrency } from '@/lib/calculations';
+import { formatReturn } from '@/lib/returns';
+import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -165,16 +167,12 @@ export const DashboardView: React.FC = () => {
             <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--color-text)' }}>
               {liquidityPct}%
             </div>
-            <div className="card-body">Cash, funds & crypto you can move quickly</div>
+            <div className="card-body">
+              Cash, funds & crypto you can move quickly · {illiquidPct}% locked in
+            </div>
           </div>
 
-          <div className="card elev-sm">
-            <div className="card-kicker">Locked in</div>
-            <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--color-neutral-300)' }}>
-              {illiquidPct}%
-            </div>
-            <div className="card-body">Term deposits & fixed income</div>
-          </div>
+          <ExpectedReturnCard />
 
           <button type="button" className="card elev-sm card-button" onClick={() => setView('debts')}>
             <div className="card-kicker">You owe</div>
@@ -331,3 +329,42 @@ export const DashboardView: React.FC = () => {
     </div>
   );
 };
+
+// What the portfolio is expected to earn in a year, and how much of it that's based on: a way to set the
+// returns when some are missing.
+function ExpectedReturnCard() {
+  const { expectedReturn, holdings } = useWealth();
+  const actions = useHoldingActions();
+  const { weightedPct, coveragePct, annualUsd } = expectedReturn;
+  const setReturns = (
+    <button type="button" className="link-btn link-accent" onClick={actions.setReturns}>
+      Set returns
+    </button>
+  );
+
+  return (
+    <div className="card elev-sm">
+      <div className="card-kicker">Expected return</div>
+      <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--color-text)' }}>
+        {weightedPct === null ? '—' : `${formatReturn(weightedPct)} / yr`}
+      </div>
+      <div className="card-body">
+        {holdings.length === 0 ? (
+          'What your assets earn in a year, once you add them'
+        ) : coveragePct === 0 ? (
+          <>Say roughly what each asset earns to see it. {setReturns}</>
+        ) : (
+          <>
+            ≈ {formatCurrency(annualUsd)} a year
+            {coveragePct < 100 && (
+              <>
+                {' '}
+                · Based on {formatReturn(coveragePct)} of your portfolio. {setReturns}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
