@@ -1,11 +1,11 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
-import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams } from '@/types/wealth';
+import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams, Movement } from '@/types/wealth';
 import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
 import { initialOf } from '@/lib/initial';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
-import { api, ApiError, HoldingInput, HoldingPatch } from '@/lib/api';
+import { api, ApiError, HoldingInput, HoldingPatch, MovementInput } from '@/lib/api';
 import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
 
 interface ClassDistributionItem {
@@ -41,6 +41,8 @@ interface WealthContextType {
   estimateParams: EstimateParams;
   loading: boolean;
   loadError: string | null;
+  /** Goes up each time fresh data is on screen: what's fetched apart (an activity list) reloads with it. */
+  dataVersion: number;
 
   // Computed Values
   netWorthUSD: number;
@@ -66,6 +68,10 @@ interface WealthContextType {
   deleteHolding: (id: string) => Promise<void>;
   takeSnapshot: () => Promise<void>;
   deleteSnapshot: (id: string) => Promise<void>;
+  /** Records a gain, loss, deposit, withdrawal or transfer; resolves to it once data is reloaded. */
+  recordMovement: (input: MovementInput) => Promise<Movement>;
+  /** Undoes a movement: its effect on values is reverted and it's gone from the activity. */
+  revertMovement: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
 }
@@ -112,6 +118,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
 
   const [estimateParams, setEstimateParams] = useState<EstimateParams>({
     contribution: 900,
@@ -153,6 +160,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setAssetClasses(assetClassesRes.all);
     setSnapshots(snapshotsRes);
     setSelectedPlatform((selected) => followPlatform(selected, before, holdingsRes));
+    setDataVersion((v) => v + 1);
   }, []);
 
   // The first load, and Retry on the error screen, which reloads in place: the view and selection stay.
@@ -275,6 +283,42 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [reloadAfterChange],
   );
 
+  // A movement the API refused because what's on screen is out of date (a holding removed or changed on
+  // another device, a movement already undone) reloads it, so the next try starts from what's there.
+  const reloadIfStale = useCallback(
+    (e: unknown) => {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 409)) refresh().catch(() => {});
+      return e;
+    },
+    [refresh],
+  );
+
+  const recordMovement = useCallback(
+    async (input: MovementInput) => {
+      let movement: Movement;
+      try {
+        movement = await api.createMovement(input);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+      return movement;
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
+  const revertMovement = useCallback(
+    async (id: string) => {
+      try {
+        await api.deleteMovement(id);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
   return (
     <WealthContext.Provider
       value={{
@@ -287,6 +331,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         estimateParams,
         loading,
         loadError,
+        dataVersion,
 
         netWorthUSD,
         netWorthFormatted,
@@ -315,6 +360,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteHolding,
         takeSnapshot,
         deleteSnapshot,
+        recordMovement,
+        revertMovement,
         refresh,
         retry: () => load(),
       }}

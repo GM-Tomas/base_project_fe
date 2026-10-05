@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Plus } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
 import { assetClassTag } from '@/lib/constants';
@@ -9,6 +9,8 @@ import { sumValues } from '@/lib/assetsTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { IconButton } from '@/components/ui/IconButton';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
+import { HoldingRowActions } from '@/components/dialogs/HoldingRowActions';
+import { useOpenFromRow, useOpenHolding } from '@/components/dialogs/HoldingDrawer';
 
 export const PlatformsView: React.FC = () => {
   const {
@@ -18,6 +20,8 @@ export const PlatformsView: React.FC = () => {
     selectedPlatformHoldings,
   } = useWealth();
   const actions = useHoldingActions();
+  const openHolding = useOpenHolding();
+  const openFromRow = useOpenFromRow();
 
   if (platformDistribution.length === 0) {
     return (
@@ -49,10 +53,14 @@ export const PlatformsView: React.FC = () => {
       >
         {platformDistribution.map((p) => {
           const isSelected = selectedPlatform === p.name;
+          const toggle = () => setSelectedPlatform(isSelected ? null : p.name);
           return (
             <div
               key={p.name}
-              onClick={() => setSelectedPlatform(isSelected ? null : p.name)}
+              // The name is the card's button; a click anywhere else on it does the same.
+              onClick={(e) => {
+                if (!(e.target as HTMLElement).closest('button')) toggle();
+              }}
               style={{
                 background: 'var(--color-surface)',
                 borderRadius: 'var(--radius-md)',
@@ -83,22 +91,22 @@ export const PlatformsView: React.FC = () => {
                   {p.initial}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontWeight: 500,
-                      fontSize: '15px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      color: 'var(--color-text)',
-                    }}
+                  <button
+                    type="button"
+                    className="card-name-btn"
+                    aria-pressed={isSelected}
+                    aria-label={`${p.name}: show what's there`}
+                    onClick={toggle}
                   >
                     {p.name}
-                  </div>
+                  </button>
                   <span className={p.tagClass} style={{ marginTop: '2px' }}>
                     {p.type}
                   </span>
                 </div>
+                <IconButton label={`Transfer from ${p.name}`} onClick={() => actions.transfer({ platform: p.name })}>
+                  <ArrowLeftRight size={15} aria-hidden />
+                </IconButton>
               </div>
 
               <div
@@ -143,6 +151,14 @@ export const PlatformsView: React.FC = () => {
               <Plus size={14} aria-hidden />
               Add asset here
             </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => actions.transfer({ platform: selectedPlatform })}
+              disabled={selectedPlatformHoldings.length === 0}
+            >
+              <ArrowLeftRight size={14} aria-hidden />
+              Transfer from here
+            </button>
             <button className="btn btn-ghost" onClick={() => setSelectedPlatform(null)}>
               Close
             </button>
@@ -160,7 +176,7 @@ export const PlatformsView: React.FC = () => {
                     <th>Instrument</th>
                     <th>Class</th>
                     <th>Value</th>
-                    <th style={{ width: '72px' }}>
+                    <th style={{ width: '132px' }}>
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -170,8 +186,12 @@ export const PlatformsView: React.FC = () => {
                     const tagClass = assetClassTag(h.assetClass);
 
                     return (
-                      <tr key={h.id}>
-                        <td style={{ padding: '12px 10px', fontWeight: 500 }}>{h.name}</td>
+                      <tr key={h.id} className="row-clickable" onClick={(e) => openFromRow(e, h)}>
+                        <td style={{ padding: '12px 10px', fontWeight: 500 }}>
+                          <button type="button" className="link-btn" data-holding-name onClick={() => openHolding(h)}>
+                            {h.name}
+                          </button>
+                        </td>
                         <td style={{ padding: '12px 10px' }}>
                           <span className={tagClass}>{h.assetClass}</span>
                         </td>
@@ -179,14 +199,7 @@ export const PlatformsView: React.FC = () => {
                           {formatCurrency(h.valueUsd)}
                         </td>
                         <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                          <div className="row-actions">
-                            <IconButton label={`Edit ${h.name}`} onClick={() => actions.edit(h)}>
-                              <Pencil size={15} aria-hidden />
-                            </IconButton>
-                            <IconButton label={`Remove ${h.name}`} tone="danger" onClick={() => actions.remove(h)}>
-                              <Trash2 size={15} aria-hidden />
-                            </IconButton>
-                          </div>
+                          <HoldingRowActions holding={h} />
                         </td>
                       </tr>
                     );

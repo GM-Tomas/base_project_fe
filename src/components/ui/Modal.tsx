@@ -2,6 +2,7 @@
 
 import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -15,11 +16,13 @@ export interface ModalProps {
   /** Where focus goes when it opens: the first control otherwise. */
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   className?: string;
+  /** A panel along the right edge (a holding's details) instead of a dialog in the middle, with a ✕. */
+  variant?: 'dialog' | 'drawer';
 }
 
 // Every dialog of the app: a portal over the page, announced as a modal dialog named by its title. Focus
 // moves in when it opens, stays inside (Tab cycles), and goes back to what opened it when it closes.
-export function Modal({ title, onClose, children, busy = false, initialFocusRef, className }: ModalProps) {
+export function Modal({ title, onClose, children, busy = false, initialFocusRef, className, variant = 'dialog' }: ModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   // A click only closes it if the press started on the backdrop too: selecting text in a field and letting
@@ -59,9 +62,16 @@ export function Modal({ title, onClose, children, busy = false, initialFocusRef,
     }
   };
 
+  const drawer = variant === 'drawer';
+  const heading = (
+    <h2 id={titleId} className="dialog-title">
+      {title}
+    </h2>
+  );
+
   return createPortal(
     <div
-      className="dialog-backdrop"
+      className={drawer ? 'dialog-backdrop drawer-backdrop' : 'dialog-backdrop'}
       onMouseDown={(e) => {
         pressedOnBackdrop.current = e.target === e.currentTarget;
       }}
@@ -72,16 +82,23 @@ export function Modal({ title, onClose, children, busy = false, initialFocusRef,
     >
       <div
         ref={dialogRef}
-        className={className ? `dialog ${className}` : 'dialog'}
+        className={['dialog', drawer && 'drawer', className].filter(Boolean).join(' ')}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId} className="dialog-title">
-          {title}
-        </h2>
+        {drawer ? (
+          <div className="dialog-header">
+            {heading}
+            <button type="button" className="icon-btn" aria-label="Close" title="Close" onClick={onClose} disabled={busy}>
+              <X size={16} aria-hidden />
+            </button>
+          </div>
+        ) : (
+          heading
+        )}
         {children}
       </div>
     </div>,

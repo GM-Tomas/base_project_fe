@@ -1,14 +1,15 @@
 'use client';
 
 import React from 'react';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Pencil, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsUpDown, Search } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
 import { assetClassTag } from '@/lib/constants';
 import { ALL, INITIAL_ASSETS_TABLE, selectAssets, sumValues, toggleSort, type AssetSortKey } from '@/lib/assetsTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { IconButton } from '@/components/ui/IconButton';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
+import { HoldingRowActions } from '@/components/dialogs/HoldingRowActions';
+import { useOpenFromRow, useOpenHolding } from '@/components/dialogs/HoldingDrawer';
 
 const COLUMNS: { key: AssetSortKey; label: string }[] = [
   { key: 'name', label: 'Name' },
@@ -22,6 +23,8 @@ const pctOf = (part: number, whole: number) => (whole > 0 ? `${((part / whole) *
 export const AssetsView: React.FC = () => {
   const { holdings, platforms, availableAssetClasses, assetsTable, setAssetsTable, openPlatform } = useWealth();
   const actions = useHoldingActions();
+  const openHolding = useOpenHolding();
+  const openFromRow = useOpenFromRow();
 
   const update = (patch: Partial<typeof assetsTable>) => setAssetsTable((table) => ({ ...table, ...patch }));
   // A filter on a class or platform that's gone since (its last asset was removed) shows everything.
@@ -141,15 +144,19 @@ export const AssetsView: React.FC = () => {
                 })}
                 {/* The share of all assets: sorts like Value, so it has no sort of its own. */}
                 <th>Share</th>
-                <th style={{ width: '72px' }}>
+                <th style={{ width: '132px' }}>
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((h) => (
-                <tr key={h.id}>
-                  <td style={{ padding: '12px 10px', fontWeight: 500 }}>{h.name}</td>
+                <tr key={h.id} className="row-clickable" onClick={(e) => openFromRow(e, h)}>
+                  <td style={{ padding: '12px 10px', fontWeight: 500 }}>
+                    <button type="button" className="link-btn" data-holding-name onClick={() => openHolding(h)}>
+                      {h.name}
+                    </button>
+                  </td>
                   <td style={{ padding: '12px 10px' }}>
                     <span className={assetClassTag(h.assetClass)}>{h.assetClass}</span>
                   </td>
@@ -165,14 +172,7 @@ export const AssetsView: React.FC = () => {
                     {pctOf(h.valueUsd, totalAssets)}
                   </td>
                   <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                    <div className="row-actions">
-                      <IconButton label={`Edit ${h.name}`} onClick={() => actions.edit(h)}>
-                        <Pencil size={15} aria-hidden />
-                      </IconButton>
-                      <IconButton label={`Remove ${h.name}`} tone="danger" onClick={() => actions.remove(h)}>
-                        <Trash2 size={15} aria-hidden />
-                      </IconButton>
-                    </div>
+                    <HoldingRowActions holding={h} />
                   </td>
                 </tr>
               ))}

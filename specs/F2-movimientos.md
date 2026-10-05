@@ -1,6 +1,6 @@
 # F2 — Movimientos: ganancias, pérdidas, aportes, retiros y transferencias
 
-**Estado:** Lista para implementar · **Repos:** backend + frontend · **Depende de:** F1
+**Estado:** Hecha · **Repos:** backend + frontend · **Depende de:** F1
 
 ## Objetivo
 
@@ -22,8 +22,8 @@ asset con su historial, actividad general en History, deshacer. Transacciones de
 
 ### F2-R1 · Ganancia o pérdida en un asset
 
-1. Desde la fila de un asset (acción **Gain/loss**) o su detalle: monto > 0, fecha (por defecto hoy, no
-   futura), nota opcional (≤ 200 caracteres).
+1. Desde la fila de un asset (acción **Record a change**, ícono ±) o su detalle: monto > 0, fecha (por
+   defecto hoy, no futura), nota opcional (≤ 200 caracteres).
 2. La ganancia suma al valor del asset y la pérdida resta, en la misma operación que guarda el movimiento.
 3. Una pérdida mayor que el valor actual se rechaza: `409 insufficient-balance` —
    *"Bitcoin is worth $1,000.00: a loss can't be larger than that."*
@@ -43,7 +43,8 @@ asset con su historial, actividad general en History, deshacer. Transacciones de
    tarjeta y el detalle de una plataforma (origen = esa plataforma) y el detalle de un asset.
 2. Origen y destino se eligen en dos niveles: **plataforma → asset**. Si la plataforma tiene un solo
    asset, se elige solo. El destino puede ser un asset existente o **"A new asset on…"** (nombre, clase y
-   plataforma; por defecto el nombre y la clase del origen).
+   plataforma; por defecto el nombre y la clase del origen), también en una plataforma nueva
+   (**"A new platform…"**).
 3. Monto > 0, **comisión** opcional ≥ 0 y ≤ monto, fecha, nota. El origen baja `monto`; el destino sube
    `monto − comisión`.
 4. Validaciones: origen ≠ destino (`"Pick a different destination"`); monto ≤ valor del origen
@@ -72,8 +73,8 @@ asset con su historial, actividad general en History, deshacer. Transacciones de
 ### F2-R6 · Detalle de un asset
 
 1. Clic en una fila de Assets (o en el nombre en el detalle de una plataforma) abre un panel lateral con:
-   nombre, plataforma, clase, valor, creado/actualizado, acciones (**Edit**, **Gain/loss**, **Transfer**,
-   **Remove**) y su actividad (más nueva primero, **Load more** de a 50).
+   nombre, plataforma, clase, valor, creado/actualizado, acciones (**Record a change**, **Transfer**,
+   **Edit**, **Remove**) y su actividad (más nueva primero, **Load more** de a 50).
 2. Escape o la ✕ lo cierran y devuelven el foco a la fila.
 
 ### F2-R7 · Actividad
@@ -213,8 +214,9 @@ saldo se verifica al deshacer).
 
 #### Cambios en endpoints existentes
 
-- `POST /holdings`: además guarda `OPENING`, en la misma transacción. La cuota de holdings se sigue
-  respetando exactamente (si la confirmación posterior al alta lo retira, retira también su `OPENING`).
+- `POST /holdings`: además guarda `OPENING`, en la misma transacción. La cuota de holdings se verifica
+  dentro de esa transacción: el `OPENING` cuenta en `quotas`, lo que serializa las altas simultáneas de un
+  usuario y deja la cuota exacta (ya no hace falta la confirmación posterior al alta).
 - `DELETE /holdings/{id}`: guarda `CLOSING` y borra el holding en una transacción.
 - `PATCH /holdings/{id}`: si `valueUsd` cambia, acepta `valueChangeReason`: `MARKET` (por defecto) |
   `CASH_FLOW` | `CORRECTION`, y opcionalmente `occurredAt` y `note` para el movimiento. Valor + movimiento
@@ -251,22 +253,23 @@ orden y paginación por cursor, `exists`/`revertible`.
 ## Tareas
 
 **Backend**
-- [ ] Replica set en `compose.yaml` y `Makefile`; README (local, tests, standalone existente).
-- [ ] `TransactionManager` (puerto, adaptador Mongo, error 503, advertencia al arrancar) + tests.
-- [ ] Dominio `Movement`, `MovementKind`, efectos y reversión (100 % cubierto).
-- [ ] `MovementRepository` (guardar, buscar por id, listar con filtros y cursor, borrar) + índices.
-- [ ] `quotas` (incremento condicional dentro de la transacción).
-- [ ] `MovementService`: crear (4 tipos + transferencia, destino nuevo), listar, deshacer.
-- [ ] Holdings: `OPENING`/`CLOSING`/motivo del cambio de valor en transacción.
-- [ ] Handlers, `openapi.json`, README (endpoints, colecciones, cuotas).
-- [ ] e2e: aislamiento de movimientos (listar, deshacer, transferir con holdings ajenos → `404`).
+- [x] Replica set en `compose.yaml` y `Makefile`; README (local, tests, standalone existente).
+- [x] `TransactionManager` (puerto, adaptador Mongo, error 503, advertencia al arrancar) + tests.
+- [x] Dominio `Movement`, `MovementKind`, efectos y reversión (100 % cubierto).
+- [x] `MovementRepository` (guardar, buscar por id, listar con filtros y cursor, borrar) + índices.
+- [x] `quotas` (incremento condicional dentro de la transacción).
+- [x] `MovementService`: crear (4 tipos + transferencia, destino nuevo), listar, deshacer.
+- [x] Holdings: `OPENING`/`CLOSING`/motivo del cambio de valor en transacción.
+- [x] Handlers, `openapi.json`, README (endpoints, colecciones, cuotas).
+- [x] e2e: aislamiento de movimientos (listar, deshacer, transferir con holdings ajenos → `404`).
 
 **Frontend**
-- [ ] `api.ts` + mock + tests del mock.
-- [ ] `RecordChangeDialog`, `TransferDialog`, motivo en Edit, `DateInput`.
-- [ ] `HoldingDrawer`, `ActivityList`, Activity en History, Undo en toasts.
-- [ ] Acciones en filas, tarjetas y detalle de plataformas.
-- [ ] Tests de flujos.
+- [x] `api.ts` + mock (`lib/mockLedger.ts`, con actividad de ejemplo coherente con los valores del demo) +
+  tests del mock.
+- [x] `RecordChangeDialog`, `TransferDialog`, motivo en Edit, `DateInput`, `SegmentedControl`.
+- [x] `HoldingDrawer`, `ActivityList`, Activity en History, Undo en toasts.
+- [x] Acciones en filas, tarjetas y detalle de plataformas.
+- [x] Tests de flujos (`src/test/movements.test.tsx`, y un movimiento sobre los datos del demo).
 
 ## Pruebas
 
@@ -289,3 +292,18 @@ orden y paginación por cursor, `exists`/`revertible`.
   saldos a medio mover si el proceso muere, y en Vercel puede morir en cualquier momento.
 - **Riesgo**: quien corre Mongo local standalone ve `503` al registrar movimientos hasta pasar a replica
   set. Mitigación: mensaje explícito, advertencia al arrancar y README.
+- **Una transferencia a un holding nuevo no genera `OPENING`**: el holding nace con 0 y la propia
+  transferencia es su primer movimiento; deshacerla lo deja en 0 (no lo borra).
+- **Ids que no son UUID** en el body (`holdingId`, `fromHoldingId`, `toHoldingId`) responden `404` como
+  un holding inexistente, igual que en las rutas. El filtro `holdingId` de `GET /movements` sí responde
+  `400` (`"holdingId must be a holding's id"`); un `cursor` que la API no dio, `400`
+  (`"cursor is not one this API gave"`).
+- **Fecha de hoy = sin `occurredAt`**: los diálogos no mandan la fecha cuando es hoy, así la API guarda el
+  instante exacto y los cambios del día quedan en el orden en que se hicieron; otro día se manda como
+  `YYYY-MM-DD` (12:00 UTC).
+- **La UI evita los 409 previsibles**: el diálogo muestra el valor resultante y no deja enviar una pérdida,
+  un retiro o una transferencia mayor que el valor del asset (ni una comisión mayor que el monto); si la API
+  igual responde `404`/`409` (algo cambió en otro dispositivo), se muestra su mensaje y se recargan los
+  datos.
+- **Nombres en la UI**: la acción de R1/R2 se llama **Record a change** (no "Gain/loss": también registra
+  depósitos y retiros).

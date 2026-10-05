@@ -99,6 +99,43 @@ export interface Projection {
   milestones: Milestone[];
 }
 
+export type MovementKind = 'OPENING' | 'CLOSING' | 'GAIN' | 'LOSS' | 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'ADJUSTMENT';
+
+/** A holding as a movement remembers it, and whether it still exists. */
+export interface MovementHolding {
+  id: string;
+  name: string;
+  platform: string;
+  assetClass: string;
+  exists: boolean;
+}
+
+/** One recorded change of value (GET /movements). */
+export interface Movement {
+  id: string;
+  kind: MovementKind;
+  occurredAt: string;
+  createdAt: string;
+  amountUsd: number;
+  feeUsd: number | null;
+  /** The holding it's about; for a transfer, where the money left. */
+  holding: MovementHolding | null;
+  /** A transfer's destination. */
+  toHolding: MovementHolding | null;
+  previousValueUsd: number | null;
+  newValueUsd: number | null;
+  note: string | null;
+  revertible: boolean;
+}
+
+export interface MovementPage {
+  items: Movement[];
+  nextCursor: string | null;
+}
+
+/** What an edit of a holding's value was: a gain or loss, money in or out, or a correction. */
+export type ValueChangeReason = 'MARKET' | 'CASH_FLOW' | 'CORRECTION';
+
 export type ViewType = 'dashboard' | 'platforms' | 'assets' | 'estimate' | 'history';
 
 export interface EstimateParams {

@@ -46,6 +46,20 @@ describe('on mock data', () => {
     fireEvent.submit(document.querySelector('form')!);
     expect(await screen.findByText('$108,420')).toBeTruthy();
 
+    // Movements too: a gain changes the value and joins the demo's activity, and can be undone.
+    fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a change to Bitcoin' }));
+    fireEvent.change(screen.getByLabelText('Amount (USD)'), { target: { value: '580' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record gain' }));
+    expect(await screen.findByText('8 assets · $109,000')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    const activity = await screen.findByRole('list', { name: 'Activity' });
+    expect(within(activity).getAllByRole('listitem')).toHaveLength(16);
+    expect(within(activity).getByText('+$580.00')).toBeTruthy();
+    fireEvent.click(within(activity).getByRole('button', { name: 'Undo gain of $580.00 on Bitcoin' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Undo this change?' })).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Activity' })).queryByText('+$580.00')).toBeNull());
+
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
   });
 });

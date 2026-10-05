@@ -8,7 +8,15 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 - **Platforms Grid**: Detailed tracking across all connected financial platforms (brokers, banks, wallets, exchanges) with drilldown inspection.
 - **Assets Explorer**: search (accents and case ignored), class and platform filters, sortable columns, each
   asset's share of the total and a running total; edit or remove any asset from its row (removing asks first).
-- **History**: delete a checkpoint (with confirmation); the next one's change is recomputed by the API.
+- **History**: delete a checkpoint (with confirmation); the next one's change is recomputed by the API. Its
+  **Activity** lists every recorded change, newest first, filtered by kind (gains & losses, deposits &
+  withdrawals, transfers, added & removed, corrections) and by asset.
+- **Movements**: record a gain, loss, deposit or withdrawal on an asset, or **transfer** between assets and
+  platforms (to an existing asset or a new one, with an optional fee), with a preview of the values after it.
+  Editing a value asks what it was (a market move, money in or out, or a correction). Anything recorded can
+  be undone, from its toast or from the activity.
+- **Asset panel**: click an asset (in Assets or in a platform's holdings) to see it with its actions and its
+  activity.
 - **Wealth Estimation Engine**: Interactive compound interest and wealth projection simulator with milestone tracking ($150k, $250k targets).
 - **Historical Snapshots**: Net worth timeline curve and snapshot logging.
 - **Add Asset Dialog**: amounts in any usual format (`1.234,56`, `1,234.56`, `$ 1234`) with a preview of how
@@ -68,7 +76,8 @@ npm run dev
 
 Vercel preview deployments (every branch and pull request) run on **mock data**: a demo account is signed in
 from the start, and every API call is answered in the browser with made-up holdings, platforms and snapshots
-(`src/lib/mockApi.ts`, same rules as the API). Nothing is sent to Supabase or the API, so a preview never
+(`src/lib/mockApi.ts` and `src/lib/mockLedger.ts`, same rules and messages as the API, with some made-up
+activity that adds up to the demo's values). Nothing is sent to Supabase or the API, so a preview never
 touches production data and needs no environment variables; a "Demo data" tag marks it, and changes last until
 the tab reloads. Every other build uses the real backend, whatever its variables say: `next.config.mjs` picks
 the data source from Vercel's target environment (`VERCEL_TARGET_ENV`; a custom environment such as staging

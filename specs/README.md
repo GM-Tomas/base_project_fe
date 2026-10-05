@@ -30,7 +30,7 @@ Estas specs cubren los dos repositorios:
 |---|---|---|---|
 | F0 — Fundaciones de UX | Hecha | — | ✔ |
 | F1 — Editar y eliminar | Hecha | ✔ | ✔ |
-| F2 — Movimientos | Lista para implementar | ✔ | ✔ |
+| F2 — Movimientos | Hecha | ✔ | ✔ |
 | F3 — Deudas | Lista para implementar | ✔ | ✔ |
 | F4 — Retorno esperado y proyección | Lista para implementar | ✔ | ✔ |
 | F5 — Personalización | Lista para implementar | ✔ | ✔ |

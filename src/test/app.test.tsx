@@ -6,117 +6,27 @@ import HomePage from '@/app/page';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { useWealth, WealthProvider } from '@/context/WealthContext';
 import { supabase } from '@/lib/supabaseClient';
-import type { Holding, Platform, Projection, Snapshot, WealthSummary } from '@/types/wealth';
+import type { Holding, WealthSummary } from '@/types/wealth';
+import {
+  authListener,
+  fetchMock,
+  holding,
+  HOLDINGS,
+  installFakeBackend,
+  json,
+  nav,
+  PLATFORMS,
+  projection,
+  renderApp,
+  requests,
+  routes,
+  SESSION,
+  snapshot,
+  SNAPSHOTS,
+  summary,
+} from './harness';
 
-// The whole app runs for real; only Supabase (see setup.ts) and the backend (fetch) are faked.
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-
-const SESSION = {
-  access_token: 'tok',
-  user: { id: 'u1', email: 'ana@example.com', user_metadata: { full_name: 'Ana Pérez' } },
-} as unknown as Session;
-
-const summary = (over: Partial<WealthSummary> = {}): WealthSummary => ({
-  netWorth: { usd: 12345.6 },
-  holdingsCount: 3,
-  ytd: { basis: 'YEAR_START_SNAPSHOT', growthPct: 12.34 },
-  liquidity: { liquidPct: 70, illiquidPct: 30, liquidAssetClasses: ['Equity'] },
-  byAssetClass: [
-    { assetClass: 'Equity', valueUsd: 8000, pct: 64.8, count: 1 },
-    { assetClass: 'Gold', valueUsd: 4345.6, pct: 35.2, count: 2 },
-  ],
-  byPlatform: [
-    { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2 },
-    { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1 },
-    { name: 'Empty', type: 'Bank', valueUsd: 0, pct: 0, count: 0 },
-  ],
-  ...over,
-});
-
-const holding = (id: string, name: string, assetClass: string, platform: string, valueUsd: number): Holding => ({
-  id, name, assetClass, platform, valueUsd, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
-});
-
-const HOLDINGS = [
-  holding('h1', 'SPY', 'Equity', 'Balanz', 8000),
-  holding('h2', 'Gold bar', 'Gold', 'Vault', 4000),
-  holding('h3', 'Coins', 'Gold', 'Vault', 345.6),
-];
-
-const PLATFORMS: Platform[] = ['Balanz', 'Vault', 'Empty'].map((name) => ({ name, type: 'Other', createdAt: '' }));
-
-const snapshot = (id: string, capturedAt: string, totalValueUsd: number, changePctFromPrevious: number | null): Snapshot => ({
-  id, capturedAt, totalValueUsd, changePctFromPrevious,
-});
-
-const SNAPSHOTS = [
-  snapshot('s1', '2026-01-15T12:00:00Z', 10000, null),
-  snapshot('s2', '2026-02-15T12:00:00Z', 11000, 10),
-  snapshot('s3', '2026-03-15T12:00:00Z', 11000, 0),
-  snapshot('s4', '2026-04-15T12:00:00Z', 9000, -18.2),
-];
-
-const projection = (over: Partial<Projection> = {}): Projection => ({
-  principalUsd: 12345.6,
-  monthlyContributionUsd: 900,
-  annualYieldPct: 9,
-  years: 12,
-  series: [
-    { year: 0, futureValueUsd: 12345.6, totalContributedUsd: 12345.6, interestEarnedUsd: 0 },
-    { year: 1, futureValueUsd: 25000, totalContributedUsd: 23145.6, interestEarnedUsd: 1854.4 },
-  ],
-  milestones: [
-    { amountUsd: 50000, status: 'REACHABLE', monthsRequired: 30, targetMonth: '2029-03' },
-    { amountUsd: 123456, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null },
-  ],
-  ...over,
-});
-
-type Route = (init: RequestInit) => Response | Promise<Response>;
-let routes: Record<string, Route>;
-let fetchMock: ReturnType<typeof vi.fn>;
-let authListener: (event: string, session: Session | null) => void;
-
-beforeEach(() => {
-  routes = {
-    'GET /api/v1/wealth/summary': () => json(summary()),
-    'GET /api/v1/holdings': () => json(HOLDINGS),
-    'GET /api/v1/platforms': () => json(PLATFORMS),
-    'GET /api/v1/asset-classes': () => json({ defaults: ['Cash'], inUse: ['Equity', 'Gold'], all: ['Cash', 'Equity', 'Gold'] }),
-    'GET /api/v1/wealth/snapshots': () => json(SNAPSHOTS),
-    'GET /api/v1/wealth/estimate': () => json(projection()),
-  };
-  fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
-    const key = `${init.method ?? 'GET'} ${new URL(url).pathname}`;
-    const route = routes[key];
-    if (!route) throw new Error(`unexpected request ${key}`);
-    return route(init);
-  });
-  vi.stubGlobal('fetch', fetchMock);
-
-  vi.mocked(supabase.auth.onAuthStateChange).mockImplementation((cb) => {
-    authListener = cb as typeof authListener;
-    return { data: { subscription: { unsubscribe: vi.fn() } } } as never;
-  });
-});
-
-const requests = (method: string, path: string) =>
-  fetchMock.mock.calls.filter(([url, init]) => (init?.method ?? 'GET') === method && new URL(url).pathname === path);
-
-async function renderApp(session: Session | null = SESSION) {
-  vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session } } as never);
-  const utils = render(
-    <AuthProvider>
-      <HomePage />
-    </AuthProvider>,
-  );
-  if (session) await screen.findByText('$12,346');
-  return utils;
-}
-
-const nav = (label: string) => fireEvent.click(screen.getByRole('button', { name: label }));
+installFakeBackend();
 
 describe('auth', () => {
   it('renders nothing while the session is loading', () => {

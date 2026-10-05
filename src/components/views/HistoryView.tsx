@@ -9,10 +9,51 @@ import { errorMessage } from '@/lib/apiError';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { IconButton } from '@/components/ui/IconButton';
+import { ActivityList } from '@/components/activity/ActivityList';
+import { KIND_GROUPS } from '@/lib/movements';
 import type { Snapshot } from '@/types/wealth';
 
 const formatCheckpointLabel = (capturedAt: string) =>
   new Date(capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+// Everything recorded, newest first: what kind of change, and on which asset.
+function ActivitySection() {
+  const { holdings } = useWealth();
+  const [group, setGroup] = useState<string | null>(null);
+  const [holdingId, setHoldingId] = useState('');
+  const kinds = KIND_GROUPS.find((g) => g.label === group)?.kinds;
+  // A filter on an asset that's gone since shows everything.
+  const asset = holdings.some((h) => h.id === holdingId) ? holdingId : '';
+  const byName = [...holdings].sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <div className="card elev-sm" style={{ padding: '18px 20px' }}>
+      <div className="card-kicker">Activity</div>
+      <div className="activity-filters">
+        <div className="chips" role="group" aria-label="Kind of change">
+          {[null, ...KIND_GROUPS.map((g) => g.label)].map((label) => (
+            <button key={label ?? 'all'} type="button" className="chip" aria-pressed={group === label} onClick={() => setGroup(label)}>
+              {label ?? 'All'}
+            </button>
+          ))}
+        </div>
+        <select className="input activity-asset" aria-label="Filter by asset" value={asset} onChange={(e) => setHoldingId(e.target.value)}>
+          <option value="">All assets</option>
+          {byName.map((h) => (
+            <option key={h.id} value={h.id}>
+              {h.name} · {h.platform}
+            </option>
+          ))}
+        </select>
+      </div>
+      <ActivityList
+        kinds={kinds}
+        holdingId={asset || undefined}
+        empty={group || asset ? 'Nothing recorded matches this filter' : 'Nothing recorded yet: gains, losses, deposits and transfers show up here.'}
+      />
+    </div>
+  );
+}
 
 export const HistoryView: React.FC = () => {
   const { snapshots, takeSnapshot, deleteSnapshot } = useWealth();
@@ -255,6 +296,8 @@ export const HistoryView: React.FC = () => {
           </table>
         </div>
       )}
+
+      <ActivitySection />
     </div>
   );
 };

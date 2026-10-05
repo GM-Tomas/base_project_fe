@@ -141,6 +141,25 @@ describe('api', () => {
     expect(lastCall().url).toBe('http://localhost:8080/api/v1/wealth/estimate?contribution=900&yieldPct=9.5&years=12');
   });
 
+  it('builds the activity query: only the filters given, kinds comma-separated', async () => {
+    fetchMock.mockImplementation(async () => json({ items: [], nextCursor: null }));
+    await api.getMovements();
+    await api.getMovements({ holdingId: 'h 1', kinds: ['GAIN', 'LOSS'], from: '2026-01-01', to: '2026-03-31', limit: 20, cursor: 'c/1' });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://localhost:8080/api/v1/movements',
+      'http://localhost:8080/api/v1/movements?holdingId=h+1&kind=GAIN%2CLOSS&from=2026-01-01&to=2026-03-31&limit=20&cursor=c%2F1',
+    ]);
+  });
+
+  it('records and undoes movements', async () => {
+    fetchMock.mockResolvedValueOnce(json({ id: 'm1' }, 201)).mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await expect(api.createMovement({ kind: 'GAIN', holdingId: 'h1', amountUsd: 5 })).resolves.toEqual({ id: 'm1' });
+    expect(lastCall().init.method).toBe('POST');
+    expect(JSON.parse(lastCall().init.body as string)).toEqual({ kind: 'GAIN', holdingId: 'h1', amountUsd: 5 });
+    await api.deleteMovement('m/1');
+    expect(lastCall()).toMatchObject({ url: 'http://localhost:8080/api/v1/movements/m%2F1', init: { method: 'DELETE' } });
+  });
+
   it('hits the remaining read endpoints', async () => {
     fetchMock.mockImplementation(async () => json({}));
     await api.getPlatforms();

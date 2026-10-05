@@ -8,9 +8,10 @@ import type {
   Snapshot,
   WealthSummary,
 } from '@/types/wealth';
-import type { Api, HoldingInput, HoldingPatch } from './api';
+import type { Api, HoldingInput, HoldingPatch, MovementInput, MovementQuery } from './api';
 import { ApiError } from './apiError';
 import { normalizeLabel as label, platformKey } from './labels';
+import { createMockLedger, type MockLedger } from './mockLedger';
 
 // The API's own defaults and limits (base_project_go): the classes offered from the start, the ones
 // counted as liquid, the Estimate view's two milestones, the largest amount a holding can have, and how
@@ -40,6 +41,29 @@ const SEED: [name: string, assetClass: string, platform: string, valueUsd: numbe
   ['Savings account', 'Cash', 'Santander', 9_500],
   ['Emergency fund', 'Cash', 'Mercado Pago', 3_200],
 ];
+
+// What the demo's holdings were worth when added (the rest, their value now), and what happened to them
+// since — days ago, newest last — so that each one ends up at its value above.
+const SEED_OPENING = new Map([
+  ['Vanguard S&P 500 ETF (VOO)', 40_000],
+  ['Apple (AAPL)', 13_500],
+  ['Bitcoin', 15_000],
+  ['Ethereum', 6_200],
+  ['US Treasury 2027', 14_700],
+  ['Savings account', 10_000],
+  ['Emergency fund', 2_000],
+]);
+type SeedMovement = { kind: 'GAIN' | 'LOSS' | 'DEPOSIT' | 'TRANSFER' | 'ADJUSTMENT'; holding: string; amountUsd: number; daysAgo: number; note?: string; to?: string; edit?: true };
+const SEED_ACTIVITY: SeedMovement[] = [
+  { kind: 'ADJUSTMENT', holding: 'Ethereum', amountUsd: 80, daysAgo: 75, note: 'Fixed a typo', edit: true },
+  { kind: 'GAIN', holding: 'Vanguard S&P 500 ETF (VOO)', amountUsd: 2_350, daysAgo: 41, edit: true },
+  { kind: 'GAIN', holding: 'US Treasury 2027', amountUsd: 300, daysAgo: 33, note: 'Coupon' },
+  { kind: 'LOSS', holding: 'Apple (AAPL)', amountUsd: 700, daysAgo: 27 },
+  { kind: 'DEPOSIT', holding: 'Savings account', amountUsd: 700, daysAgo: 20, note: 'Salary' },
+  { kind: 'GAIN', holding: 'Bitcoin', amountUsd: 3_450, daysAgo: 12 },
+  { kind: 'TRANSFER', holding: 'Savings account', to: 'Emergency fund', amountUsd: 1_200, daysAgo: 6 },
+];
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 const tenths = (n: number) => Math.round(n * 10) / 10;
@@ -94,10 +118,34 @@ function monthsLater(now: Date, months: number) {
   return `${year}-${String((totalMonths % 12) + 1).padStart(2, '0')}`;
 }
 
-// The API's answers for a demo account, kept in memory: made-up holdings and nine monthly snapshots,
-// changed by what the user does in this tab, gone on reload. Same rules as the API where the UI shows
-// them: one spelling per platform, totals and percentages, YTD from the first snapshot of the year,
-// compound monthly projections.
+// The demo's activity log: each holding's OPENING when it was added, then SEED_ACTIVITY.
+function seedActivity(ledger: MockLedger, holdings: Holding[], started: Date) {
+  const named = (name: string) => holdings.find((h) => h.name === name)!;
+  for (const h of holdings) {
+    ledger.seed({
+      kind: 'OPENING', occurredAt: h.createdAt, createdAt: h.createdAt, amountUsd: SEED_OPENING.get(h.name) ?? h.valueUsd,
+      feeUsd: null, holding: h, previousValueUsd: null, newValueUsd: null, note: null,
+    });
+  }
+  const values = new Map(holdings.map((h) => [h.name, SEED_OPENING.get(h.name) ?? h.valueUsd]));
+  for (const m of SEED_ACTIVITY) {
+    const at = new Date(started.getTime() - m.daysAgo * DAY_MS).toISOString();
+    const previous = values.get(m.holding)!;
+    const next = m.kind === 'LOSS' || m.kind === 'TRANSFER' || m.kind === 'ADJUSTMENT' ? previous - m.amountUsd : previous + m.amountUsd;
+    values.set(m.holding, next);
+    if (m.to) values.set(m.to, values.get(m.to)! + m.amountUsd);
+    ledger.seed({
+      kind: m.kind, occurredAt: at, createdAt: at, amountUsd: m.amountUsd, feeUsd: m.kind === 'TRANSFER' ? 0 : null,
+      holding: named(m.holding), toHolding: m.to ? named(m.to) : undefined,
+      previousValueUsd: m.edit ? previous : null, newValueUsd: m.edit ? next : null, note: m.note ?? null,
+    });
+  }
+}
+
+// The API's answers for a demo account, kept in memory: made-up holdings, their activity and nine monthly
+// snapshots, changed by what the user does in this tab, gone on reload. Same rules as the API where the UI
+// shows them: one spelling per platform, totals and percentages, YTD from the first snapshot of the year,
+// compound monthly projections, movements and what they do to values.
 export function createMockApi(now: () => Date = () => new Date()): Api {
   let nextId = 1;
   const started = now();
@@ -114,6 +162,27 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
   // A platform as the API spells it: like its earliest holding (holdings are kept oldest first), else as given.
   const spelled = (platform: string) =>
     holdings.find((h) => platformKey(h.platform) === platformKey(platform))?.platform ?? platform;
+
+  // A holding validated as POST /holdings validates one, added once its cap is checked.
+  const newHolding = (input: HoldingInput) => {
+    rejectInvalid(holdingErrors(input));
+    const [name, assetClass, platform] = [label(input.name), label(input.assetClass), label(input.platform)];
+    return {
+      checkCap: () => {
+        if (holdings.length >= MAX_HOLDINGS) {
+          throw new ApiError(409, `You can track up to ${MAX_HOLDINGS} holdings. Remove one to add another.`);
+        }
+      },
+      add: (): Holding => {
+        const at = now().toISOString();
+        const holding = { id: `demo-${nextId++}`, name, assetClass, platform: spelled(platform), valueUsd: cents(input.valueUsd), createdAt: at, updatedAt: at };
+        holdings.push(holding);
+        return holding;
+      },
+    };
+  };
+  const ledger = createMockLedger({ holdings, now, newHolding: (input) => newHolding({ ...input, valueUsd: 0 }) });
+  seedActivity(ledger, holdings, started);
 
   // Ids are never reused, also after a snapshot is deleted.
   let nextSnapshotId = snapshots.length + 1;
@@ -191,28 +260,19 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     getSummary: async () => summary(),
     getHoldings: async () => holdings.map((h) => ({ ...h })),
     createHolding: async (input: HoldingInput) => {
-      rejectInvalid(holdingErrors(input));
-      const [name, assetClass, platform] = [label(input.name), label(input.assetClass), label(input.platform)];
-      if (holdings.length >= MAX_HOLDINGS) {
-        throw new ApiError(409, `You can track up to ${MAX_HOLDINGS} holdings. Remove one to add another.`);
-      }
-
-      const at = now().toISOString();
-      const holding: Holding = {
-        id: `demo-${nextId++}`,
-        name,
-        assetClass,
-        platform: spelled(platform),
-        valueUsd: cents(input.valueUsd),
-        createdAt: at,
-        updatedAt: at,
-      };
-      holdings.push(holding);
+      // Added with its OPENING; the cap, then the activity quota, as the API checks them.
+      const fresh = newHolding(input);
+      fresh.checkCap();
+      ledger.roomForOneMore();
+      const holding = fresh.add();
+      ledger.opened(holding);
       return { ...holding };
     },
     updateHolding: async (id: string, patch: HoldingPatch) => {
-      // Only what's sent changes; sending what's there writes nothing (updatedAt stays).
+      // Only what's sent changes; sending what's there writes nothing (updatedAt stays). A new value is
+      // recorded as what valueChangeReason says it was.
       rejectInvalid(holdingErrors(patch));
+      const edit = ledger.checkEdit(patch.valueChangeReason, patch.occurredAt, patch.note);
       const holding = holdings.find((h) => h.id === id);
       if (!holding) throw new ApiError(404, `Holding ${id} not found`);
       const updated: Holding = {
@@ -223,14 +283,22 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         ...(patch.valueUsd !== undefined && { valueUsd: cents(patch.valueUsd) }),
       };
       const changed = (['name', 'assetClass', 'platform', 'valueUsd'] as const).some((k) => updated[k] !== holding[k]);
-      if (changed) Object.assign(holding, updated, { updatedAt: now().toISOString() });
+      if (!changed) return { ...holding };
+      const previous = holding.valueUsd;
+      if (updated.valueUsd !== previous) ledger.roomForOneMore();
+      Object.assign(holding, updated, { updatedAt: now().toISOString() });
+      if (holding.valueUsd !== previous) ledger.edited(holding, previous, edit);
       return { ...holding };
     },
     deleteHolding: async (id: string) => {
       const index = holdings.findIndex((h) => h.id === id);
       if (index < 0) throw new ApiError(404, `Holding ${id} not found`);
+      ledger.closed(holdings[index]);
       holdings.splice(index, 1);
     },
+    getMovements: async (query?: MovementQuery) => ledger.list(query),
+    createMovement: async (input: MovementInput) => ledger.record(input),
+    deleteMovement: async (id: string) => ledger.revert(id),
     getPlatforms: async (): Promise<Platform[]> => {
       // Holdings are kept oldest first, so a platform's first one is its earliest.
       const first = new Map<string, Holding>();

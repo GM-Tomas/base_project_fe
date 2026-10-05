@@ -5,9 +5,13 @@ import type {
   AvailableAssetClasses,
   EstimateParams,
   Holding,
+  Movement,
+  MovementKind,
+  MovementPage,
   Platform,
   Projection,
   Snapshot,
+  ValueChangeReason,
   WealthSummary,
 } from '@/types/wealth';
 
@@ -72,8 +76,42 @@ export interface HoldingInput {
   valueUsd: number;
 }
 
-/** PATCH /holdings/{id}: only the fields sent change. */
-export type HoldingPatch = Partial<HoldingInput>;
+/** PATCH /holdings/{id}: only the fields sent change; a new value is recorded as valueChangeReason says. */
+export type HoldingPatch = Partial<HoldingInput> & {
+  valueChangeReason?: ValueChangeReason;
+  /** YYYY-MM-DD; now when absent. */
+  occurredAt?: string;
+  note?: string;
+};
+
+interface MovementCommon {
+  amountUsd: number;
+  /** YYYY-MM-DD; now when absent. */
+  occurredAt?: string;
+  note?: string;
+}
+
+/** POST /movements: a gain, loss, deposit or withdrawal on a holding, or a transfer between two. */
+export type MovementInput =
+  | (MovementCommon & { kind: 'GAIN' | 'LOSS' | 'DEPOSIT' | 'WITHDRAWAL'; holdingId: string })
+  | (MovementCommon & {
+      kind: 'TRANSFER';
+      fromHoldingId: string;
+      toHoldingId?: string;
+      toNewHolding?: { name: string; assetClass: string; platform: string };
+      feeUsd?: number;
+    });
+
+/** GET /movements: newest first, a page at a time. */
+export interface MovementQuery {
+  holdingId?: string;
+  kinds?: MovementKind[];
+  /** Instants (ISO) or dates (YYYY-MM-DD). */
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+}
 
 const liveApi = {
   getSummary: () => request<WealthSummary>('/api/v1/wealth/summary'),
@@ -84,6 +122,21 @@ const liveApi = {
   updateHolding: (id: string, patch: HoldingPatch) =>
     request<Holding>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteHolding: (id: string) => request<void>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  getMovements: (query: MovementQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.holdingId) params.set('holdingId', query.holdingId);
+    if (query.kinds?.length) params.set('kind', query.kinds.join(','));
+    if (query.from) params.set('from', query.from);
+    if (query.to) params.set('to', query.to);
+    if (query.limit) params.set('limit', String(query.limit));
+    if (query.cursor) params.set('cursor', query.cursor);
+    const search = params.toString();
+    return request<MovementPage>(`/api/v1/movements${search ? `?${search}` : ''}`);
+  },
+  createMovement: (input: MovementInput) =>
+    request<Movement>('/api/v1/movements', { method: 'POST', body: JSON.stringify(input) }),
+  deleteMovement: (id: string) => request<void>(`/api/v1/movements/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getPlatforms: () => request<Platform[]>('/api/v1/platforms'),
   getAssetClasses: () => request<AvailableAssetClasses>('/api/v1/asset-classes'),
