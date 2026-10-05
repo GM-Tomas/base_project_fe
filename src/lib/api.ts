@@ -72,12 +72,17 @@ export interface HoldingInput {
   valueUsd: number;
 }
 
+/** PATCH /holdings/{id}: only the fields sent change. */
+export type HoldingPatch = Partial<HoldingInput>;
+
 const liveApi = {
   getSummary: () => request<WealthSummary>('/api/v1/wealth/summary'),
 
   getHoldings: () => request<Holding[]>('/api/v1/holdings'),
   createHolding: (body: HoldingInput) =>
     request<Holding>('/api/v1/holdings', { method: 'POST', body: JSON.stringify(body) }),
+  updateHolding: (id: string, patch: HoldingPatch) =>
+    request<Holding>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteHolding: (id: string) => request<void>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getPlatforms: () => request<Platform[]>('/api/v1/platforms'),
@@ -85,6 +90,7 @@ const liveApi = {
 
   getSnapshots: () => request<Snapshot[]>('/api/v1/wealth/snapshots'),
   createSnapshot: () => request<Snapshot>('/api/v1/wealth/snapshots', { method: 'POST' }),
+  deleteSnapshot: (id: string) => request<void>(`/api/v1/wealth/snapshots/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getEstimate: (params: EstimateParams) => {
     const query = new URLSearchParams({

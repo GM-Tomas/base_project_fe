@@ -464,6 +464,56 @@ input[type="range"]::-moz-range-thumb {
     ) no-repeat bottom / 100% 1px;
 }
 
+.table tfoot td.table-total {
+  padding: 12px 10px 4px;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+}
+
+/* Sortable column headers: the whole header is the button */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.th-sort:hover { color: var(--color-text); }
+
+/* A button that reads as a link (a platform name that opens it) */
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-underline-offset: 3px;
+}
+.link-btn:hover { color: var(--color-accent); text-decoration: underline; }
+
+.search-field {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+}
+.search-field > svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-neutral-500);
+  pointer-events: none;
+}
+.search-field > .input { padding-left: 34px; }
+
 /* Dialog / Modal */
 .dialog-backdrop {
   position: fixed;

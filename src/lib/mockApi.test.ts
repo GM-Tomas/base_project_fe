@@ -85,12 +85,52 @@ describe('mock API (the data previews run on)', () => {
 
     await api.deleteHolding(added.id);
     expect((await api.getHoldings()).map((h) => h.name)).not.toContain('Gold bar');
-    await expect(api.deleteHolding(added.id)).rejects.toMatchObject({ status: 404, message: 'Holding not found' });
+    await expect(api.deleteHolding(added.id)).rejects.toMatchObject({ status: 404, message: `Holding ${added.id} not found` });
 
     // Copies, not the store itself.
     const [first] = await api.getHoldings();
     first.valueUsd = 1;
     expect((await api.getHoldings())[0].valueUsd).toBe(42_350);
+  });
+
+  it('edits only what is sent, like PATCH /holdings/{id}', async () => {
+    let clock = Date.parse('2026-10-04T10:00:00Z');
+    const api = createMockApi(() => new Date(clock));
+    const [voo] = await api.getHoldings();
+    clock += 60_000;
+
+    // Moved to a platform the account spells differently: the existing spelling wins.
+    const edited = await api.updateHolding(voo.id, { name: '  VOO  ', platform: 'binance', valueUsd: 50_000.005 });
+    expect(edited).toMatchObject({ name: 'VOO', platform: 'Binance', assetClass: 'Index Fund', valueUsd: 50_000.01 });
+    expect(edited.updatedAt).toBe('2026-10-04T10:01:00.000Z');
+    expect(edited.createdAt).toBe(voo.createdAt);
+    expect((await api.getSummary()).netWorth.usd).toBe(115_070.01);
+
+    // Nothing new: nothing written.
+    clock += 60_000;
+    expect(await api.updateHolding(voo.id, {})).toEqual(edited);
+    expect(await api.updateHolding(voo.id, { name: 'VOO', valueUsd: 50_000.01 })).toEqual(edited);
+
+    // The API's messages; null is a missing required field.
+    const failure = await api.updateHolding(voo.id, { name: ' ', platform: null, valueUsd: -1 } as never).catch((e) => e);
+    expect(failure).toMatchObject({ status: 400, message: 'Name is required; Platform is required; Value must not be negative' });
+    await expect(api.updateHolding(voo.id, { valueUsd: null } as never)).rejects.toMatchObject({ message: 'Value is required' });
+    await expect(api.updateHolding(voo.id, { valueUsd: 1e16 })).rejects.toMatchObject({ message: 'Value is too large' });
+    await expect(api.updateHolding('nope', { name: 'x' })).rejects.toMatchObject({ status: 404, message: 'Holding nope not found' });
+  });
+
+  it('deletes snapshots, and never reuses their ids', async () => {
+    const api = createMockApi(at('2026-10-04T10:00:00Z'));
+    const [first, second] = await api.getSnapshots();
+
+    await api.deleteSnapshot(first.id);
+    const history = await api.getSnapshots();
+    expect(history).toHaveLength(8);
+    expect(history[0]).toMatchObject({ id: second.id, changePctFromPrevious: null });
+    await expect(api.deleteSnapshot(first.id)).rejects.toMatchObject({ status: 404, message: `Snapshot ${first.id} not found` });
+
+    const taken = await api.createSnapshot();
+    expect(history.map((s) => s.id)).not.toContain(taken.id);
   });
 
   it("validates new holdings with the API handler's rules and messages", async () => {

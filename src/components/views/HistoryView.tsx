@@ -1,18 +1,22 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { useUi } from '@/context/UiContext';
 import { generateLinePath, formatCurrency, formatPercentage } from '@/lib/calculations';
 import { errorMessage } from '@/lib/apiError';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { IconButton } from '@/components/ui/IconButton';
+import type { Snapshot } from '@/types/wealth';
 
 const formatCheckpointLabel = (capturedAt: string) =>
   new Date(capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 export const HistoryView: React.FC = () => {
-  const { snapshots, takeSnapshot } = useWealth();
-  const { toast } = useUi();
+  const { snapshots, takeSnapshot, deleteSnapshot } = useWealth();
+  const { openDialog, toast } = useUi();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [hovered, setHovered] = useState<number | null>(null);
@@ -28,6 +32,24 @@ export const HistoryView: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const confirmDelete = (s: Snapshot) => {
+    const when = formatCheckpointLabel(s.capturedAt);
+    openDialog((close) => (
+      <ConfirmDialog
+        title="Delete checkpoint?"
+        message={`The checkpoint of ${when} (${formatCurrency(s.totalValueUsd)}) will be removed from your history.`}
+        confirmLabel="Delete"
+        busyLabel="Deleting…"
+        failureMessage="Could not delete this checkpoint. Please try again."
+        onClose={close}
+        onConfirm={async () => {
+          await deleteSnapshot(s.id);
+          toast.success('Checkpoint deleted');
+        }}
+      />
+    ));
   };
 
   const historyValues = useMemo(() => snapshots.map((s) => s.totalValueUsd), [snapshots]);
@@ -52,6 +74,7 @@ export const HistoryView: React.FC = () => {
       const isDown = (change ?? 0) < 0;
 
       return {
+        snapshot: s,
         label: formatCheckpointLabel(s.capturedAt),
         valueFormatted: formatCurrency(s.totalValueUsd),
         changeFormatted: change === null ? '—' : (isUp ? '▲ ' : isDown ? '▼ ' : '– ') + formatPercentage(change),
@@ -197,11 +220,14 @@ export const HistoryView: React.FC = () => {
                 <th>Checkpoint</th>
                 <th>Net worth</th>
                 <th>Change</th>
+                <th style={{ width: '48px' }}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {snapshotRows.map((r, i) => (
-                <tr key={i}>
+              {snapshotRows.map((r) => (
+                <tr key={r.snapshot.id}>
                   <td style={{ padding: '12px 10px', fontWeight: 500 }}>{r.label}</td>
                   <td style={{ padding: '12px 10px' }} className="text-nowrap">
                     {r.valueFormatted}
@@ -217,6 +243,11 @@ export const HistoryView: React.FC = () => {
                     >
                       {r.changeFormatted}
                     </span>
+                  </td>
+                  <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                    <IconButton label={`Delete checkpoint of ${r.label}`} tone="danger" onClick={() => confirmDelete(r.snapshot)}>
+                      <Trash2 size={15} aria-hidden />
+                    </IconButton>
                   </td>
                 </tr>
               ))}

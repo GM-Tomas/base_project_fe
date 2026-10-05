@@ -5,7 +5,8 @@ import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, Estim
 import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
 import { initialOf } from '@/lib/initial';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
-import { api, ApiError, HoldingInput } from '@/lib/api';
+import { api, ApiError, HoldingInput, HoldingPatch } from '@/lib/api';
+import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
 
 interface ClassDistributionItem {
   label: AssetClass;
@@ -33,7 +34,7 @@ interface WealthContextType {
   // State
   view: ViewType;
   selectedPlatform: string | null;
-  assetFilter: string;
+  assetsTable: AssetsTableState;
   holdings: Holding[];
   platforms: Platform[];
   snapshots: Snapshot[];
@@ -50,18 +51,21 @@ interface WealthContextType {
   illiquidPct: number;
   classDistribution: ClassDistributionItem[];
   platformDistribution: PlatformCardItem[];
-  filteredHoldings: Holding[];
   selectedPlatformHoldings: Holding[];
   availableAssetClasses: AssetClass[];
 
   // Actions
   setView: (view: ViewType) => void;
   setSelectedPlatform: (platform: string | null) => void;
-  setAssetFilter: (filter: string) => void;
+  /** Platforms view, with that platform's holdings open. */
+  openPlatform: (platform: string) => void;
+  setAssetsTable: React.Dispatch<React.SetStateAction<AssetsTableState>>;
   setEstimateParams: React.Dispatch<React.SetStateAction<EstimateParams>>;
   addHolding: (holding: HoldingInput) => Promise<void>;
+  updateHolding: (id: string, patch: HoldingPatch) => Promise<void>;
   deleteHolding: (id: string) => Promise<void>;
   takeSnapshot: () => Promise<void>;
+  deleteSnapshot: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
 }
@@ -92,7 +96,8 @@ const EMPTY_SUMMARY: WealthSummary = {
 export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [view, setViewState] = useState<ViewType>('dashboard');
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
-  const [assetFilter, setAssetFilter] = useState<string>('All');
+  // The Assets table's search, filters and order outlive a trip to another view (but not the account).
+  const [assetsTable, setAssetsTable] = useState<AssetsTableState>(INITIAL_ASSETS_TABLE);
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const holdingsRef = useRef<Holding[]>([]);
@@ -218,11 +223,6 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [summary.byPlatform, selectedPlatform],
   );
 
-  const filteredHoldings = useMemo(() => {
-    if (assetFilter === 'All') return holdings;
-    return holdings.filter((h) => h.assetClass === assetFilter);
-  }, [holdings, assetFilter]);
-
   const selectedPlatformHoldings = useMemo(() => {
     if (!selectedPlatform) return [];
     return holdings.filter((h) => h.platform === selectedPlatform);
@@ -246,6 +246,14 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [reloadAfterChange],
   );
 
+  const updateHolding = useCallback(
+    async (id: string, patch: HoldingPatch) => {
+      await api.updateHolding(id, patch);
+      await reloadAfterChange();
+    },
+    [reloadAfterChange],
+  );
+
   const deleteHolding = useCallback(
     async (id: string) => {
       await api.deleteHolding(id);
@@ -259,12 +267,20 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     await reloadAfterChange();
   }, [reloadAfterChange]);
 
+  const deleteSnapshot = useCallback(
+    async (id: string) => {
+      await api.deleteSnapshot(id);
+      await reloadAfterChange();
+    },
+    [reloadAfterChange],
+  );
+
   return (
     <WealthContext.Provider
       value={{
         view,
         selectedPlatform,
-        assetFilter,
+        assetsTable,
         holdings,
         platforms,
         snapshots,
@@ -280,7 +296,6 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         illiquidPct,
         classDistribution,
         platformDistribution,
-        filteredHoldings,
         selectedPlatformHoldings,
         availableAssetClasses: assetClasses,
 
@@ -289,11 +304,17 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setSelectedPlatform(null);
         },
         setSelectedPlatform,
-        setAssetFilter,
+        openPlatform: (platform) => {
+          setViewState('platforms');
+          setSelectedPlatform(platform);
+        },
+        setAssetsTable,
         setEstimateParams,
         addHolding,
+        updateHolding,
         deleteHolding,
         takeSnapshot,
+        deleteSnapshot,
         refresh,
         retry: () => load(),
       }}

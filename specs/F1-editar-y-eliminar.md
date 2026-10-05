@@ -1,6 +1,6 @@
 # F1 — Editar y eliminar
 
-**Estado:** Lista para implementar · **Repos:** backend + frontend · **Depende de:** F0
+**Estado:** Hecha · **Repos:** backend + frontend · **Depende de:** F0
 
 ## Objetivo
 
@@ -46,10 +46,12 @@ plataforma entera (F5).
 
 1. **Búsqueda** por texto en nombre, plataforma y clase, sin distinguir mayúsculas ni acentos ("cafe"
    encuentra "Café").
-2. **Filtros**: clase (chips, como hoy) y plataforma (selector "All platforms"). Se combinan entre sí y con
-   la búsqueda.
-3. **Orden** por columna (Name, Class, Platform, Value, Share): clic en el encabezado alterna
-   ascendente/descendente; `aria-sort` refleja el estado. Por defecto: valor descendente.
+2. **Filtros**: clase (chips, como hoy) y plataforma (selector *Filter by platform*, "All platforms"). Se
+   combinan entre sí y con la búsqueda. Un filtro sobre una clase o plataforma que ya no existe vuelve a
+   "All".
+3. **Orden** por columna (Name, Class, Platform, Value): clic en el encabezado alterna
+   ascendente/descendente; `aria-sort` refleja el estado. Por defecto: valor descendente. (Share ordena igual
+   que Value, así que no tiene orden propio.)
 4. Columna **Share**: el valor del asset como % del total de assets.
 5. **Pie de tabla** con el conjunto filtrado: *"3 assets · $24,570 · 21.4% of your assets"*.
 6. Búsqueda, filtros y orden se conservan al ir a otra vista y volver (durante la sesión).
@@ -124,19 +126,20 @@ plataforma entera (F5).
 ## Tareas
 
 **Backend**
-- [ ] `HoldingRepository.FindById` (Mongo + mocks) con aislamiento por usuario.
-- [ ] `UpdateHolding` en el servicio + `PATCH /holdings/{id}` con `dto.Optional`.
-- [ ] `DeleteSnapshot` en el servicio + `DELETE /wealth/snapshots/{id}`.
-- [ ] CORS con `PATCH` y `PUT`.
-- [ ] `openapi.json`, catálogo de endpoints del README.
-- [ ] e2e multi-usuario: PATCH de un holding ajeno y DELETE de un snapshot ajeno → `404` sin cambios.
+- [x] `HoldingRepository.FindById` (Mongo + mocks) con aislamiento por usuario, y `Update` (sin *upsert*:
+  una edición que compite con un borrado responde `404` en vez de resucitar el holding).
+- [x] `UpdateHolding` en el servicio + `PATCH /holdings/{id}` con `dto.Optional`.
+- [x] `DeleteSnapshot` en el servicio + `DELETE /wealth/snapshots/{id}`.
+- [x] CORS con `PATCH` y `PUT`.
+- [x] `openapi.json`, catálogo de endpoints del README.
+- [x] e2e multi-usuario: PATCH de un holding ajeno y DELETE de un snapshot ajeno → `404` sin cambios.
 
 **Frontend**
-- [ ] `api.ts` + mock + tests del mock.
-- [ ] Edit en `HoldingFormDialog`; acciones en Assets y Platforms; Add asset here.
-- [ ] Tabla de assets (búsqueda, filtros, orden, Share, pie, link a plataforma, estado persistente).
-- [ ] Delete checkpoint en History.
-- [ ] Tests de flujos en `app.test.tsx`.
+- [x] `api.ts` + mock + tests del mock.
+- [x] Edit en `HoldingFormDialog`; acciones en Assets y Platforms (`useHoldingActions`); Add asset here.
+- [x] Tabla de assets (búsqueda, filtros, orden, Share, pie, link a plataforma, estado persistente).
+- [x] Delete checkpoint en History.
+- [x] Tests de flujos en `app.test.tsx` y de la lógica en `lib/assetsTable.test.ts`.
 
 ## Pruebas
 

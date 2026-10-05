@@ -8,7 +8,7 @@ import type {
   Snapshot,
   WealthSummary,
 } from '@/types/wealth';
-import type { Api, HoldingInput } from './api';
+import type { Api, HoldingInput, HoldingPatch } from './api';
 import { ApiError } from './apiError';
 import { normalizeLabel as label, platformKey } from './labels';
 
@@ -61,6 +61,33 @@ function groupBy(holdings: Holding[], key: (h: Holding) => string) {
   return [...groups].map(([name, members]) => ({ name, value: total(members), count: members.length }));
 }
 
+type FieldError = { field: string; message: string };
+
+// The API's checks and messages for the holding fields that were sent (its length limits aside). JSON has
+// no NaN or Infinity, so the API never gets one; here they're rejected rather than stored. null, which a
+// PATCH could send, is a missing required field.
+function holdingErrors(fields: Partial<Record<keyof HoldingInput, unknown>>): FieldError[] {
+  const errors: FieldError[] = [];
+  const text: [keyof HoldingInput, string][] = [['name', 'Name'], ['assetClass', 'Asset class'], ['platform', 'Platform']];
+  for (const [field, title] of text) {
+    if (!(field in fields)) continue;
+    const value = fields[field];
+    if (typeof value !== 'string' || !label(value)) errors.push({ field, message: `${title} is required` });
+  }
+  if ('valueUsd' in fields) {
+    const value = fields.valueUsd;
+    if (value === null) errors.push({ field: 'valueUsd', message: 'Value is required' });
+    else if (typeof value !== 'number' || !Number.isFinite(value)) errors.push({ field: 'valueUsd', message: 'Value must be a number' });
+    else if (value < 0) errors.push({ field: 'valueUsd', message: 'Value must not be negative' });
+    else if (value > MAX_VALUE_USD) errors.push({ field: 'valueUsd', message: 'Value is too large' });
+  }
+  return errors;
+}
+
+const rejectInvalid = (errors: FieldError[]) => {
+  if (errors.length) throw new ApiError(400, errors.map((e) => e.message).join('; '), errors);
+};
+
 function monthsLater(now: Date, months: number) {
   const totalMonths = now.getUTCMonth() + months;
   const year = now.getUTCFullYear() + Math.floor(totalMonths / 12);
@@ -83,6 +110,13 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     capturedAt: new Date(Date.UTC(started.getUTCFullYear(), started.getUTCMonth() - 9 + i, 1, 12)).toISOString(),
     totalValueUsd: cents(88_000 * 1.022 ** i),
   }));
+
+  // A platform as the API spells it: like its earliest holding (holdings are kept oldest first), else as given.
+  const spelled = (platform: string) =>
+    holdings.find((h) => platformKey(h.platform) === platformKey(platform))?.platform ?? platform;
+
+  // Ids are never reused, also after a snapshot is deleted.
+  let nextSnapshotId = snapshots.length + 1;
 
   const withChange = (i: number): Snapshot => ({
     ...snapshots[i],
@@ -157,17 +191,8 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     getSummary: async () => summary(),
     getHoldings: async () => holdings.map((h) => ({ ...h })),
     createHolding: async (input: HoldingInput) => {
-      // The API's checks and messages (its length limits aside). JSON has no NaN or Infinity, so the API
-      // never gets one; here they're rejected rather than stored.
+      rejectInvalid(holdingErrors(input));
       const [name, assetClass, platform] = [label(input.name), label(input.assetClass), label(input.platform)];
-      const errors: { field: string; message: string }[] = [];
-      if (!name) errors.push({ field: 'name', message: 'Name is required' });
-      if (!assetClass) errors.push({ field: 'assetClass', message: 'Asset class is required' });
-      if (!platform) errors.push({ field: 'platform', message: 'Platform is required' });
-      if (!Number.isFinite(input.valueUsd)) errors.push({ field: 'valueUsd', message: 'Value must be a number' });
-      else if (input.valueUsd < 0) errors.push({ field: 'valueUsd', message: 'Value must not be negative' });
-      else if (input.valueUsd > MAX_VALUE_USD) errors.push({ field: 'valueUsd', message: 'Value is too large' });
-      if (errors.length) throw new ApiError(400, errors.map((e) => e.message).join('; '), errors);
       if (holdings.length >= MAX_HOLDINGS) {
         throw new ApiError(409, `You can track up to ${MAX_HOLDINGS} holdings. Remove one to add another.`);
       }
@@ -177,8 +202,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         id: `demo-${nextId++}`,
         name,
         assetClass,
-        // Spelled like the platform's earliest holding, as the API does.
-        platform: holdings.find((h) => platformKey(h.platform) === platformKey(platform))?.platform ?? platform,
+        platform: spelled(platform),
         valueUsd: cents(input.valueUsd),
         createdAt: at,
         updatedAt: at,
@@ -186,9 +210,25 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       holdings.push(holding);
       return { ...holding };
     },
+    updateHolding: async (id: string, patch: HoldingPatch) => {
+      // Only what's sent changes; sending what's there writes nothing (updatedAt stays).
+      rejectInvalid(holdingErrors(patch));
+      const holding = holdings.find((h) => h.id === id);
+      if (!holding) throw new ApiError(404, `Holding ${id} not found`);
+      const updated: Holding = {
+        ...holding,
+        ...(patch.name !== undefined && { name: label(patch.name) }),
+        ...(patch.assetClass !== undefined && { assetClass: label(patch.assetClass) }),
+        ...(patch.platform !== undefined && { platform: spelled(label(patch.platform)) }),
+        ...(patch.valueUsd !== undefined && { valueUsd: cents(patch.valueUsd) }),
+      };
+      const changed = (['name', 'assetClass', 'platform', 'valueUsd'] as const).some((k) => updated[k] !== holding[k]);
+      if (changed) Object.assign(holding, updated, { updatedAt: now().toISOString() });
+      return { ...holding };
+    },
     deleteHolding: async (id: string) => {
       const index = holdings.findIndex((h) => h.id === id);
-      if (index < 0) throw new ApiError(404, 'Holding not found');
+      if (index < 0) throw new ApiError(404, `Holding ${id} not found`);
       holdings.splice(index, 1);
     },
     getPlatforms: async (): Promise<Platform[]> => {
@@ -211,8 +251,13 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         throw new ApiError(409, `A snapshot already exists for ${capturedAt.replace('.000Z', 'Z')}`);
       }
       if (snapshots.length >= MAX_SNAPSHOTS) throw new ApiError(409, `You've reached the limit of ${MAX_SNAPSHOTS} snapshots.`);
-      snapshots.push({ id: `demo-snapshot-${snapshots.length + 1}`, capturedAt, totalValueUsd: total(holdings) });
+      snapshots.push({ id: `demo-snapshot-${nextSnapshotId++}`, capturedAt, totalValueUsd: total(holdings) });
       return withChange(snapshots.length - 1);
+    },
+    deleteSnapshot: async (id: string) => {
+      const index = snapshots.findIndex((s) => s.id === id);
+      if (index < 0) throw new ApiError(404, `Snapshot ${id} not found`);
+      snapshots.splice(index, 1);
     },
     getEstimate: async (params: EstimateParams) => estimate(params),
   };

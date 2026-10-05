@@ -1,12 +1,14 @@
 'use client';
 
 import React from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
-import { useUi } from '@/context/UiContext';
 import { formatCurrency } from '@/lib/calculations';
 import { assetClassTag } from '@/lib/constants';
+import { sumValues } from '@/lib/assetsTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
+import { IconButton } from '@/components/ui/IconButton';
+import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
 
 export const PlatformsView: React.FC = () => {
   const {
@@ -15,7 +17,7 @@ export const PlatformsView: React.FC = () => {
     setSelectedPlatform,
     selectedPlatformHoldings,
   } = useWealth();
-  const { openDialog } = useUi();
+  const actions = useHoldingActions();
 
   if (platformDistribution.length === 0) {
     return (
@@ -23,7 +25,7 @@ export const PlatformsView: React.FC = () => {
         <EmptyState
           title="Platforms appear as you add assets"
           action={
-            <button className="btn btn-primary" onClick={() => openDialog((close) => <HoldingFormDialog onClose={close} />)}>
+            <button className="btn btn-primary" onClick={() => actions.add()}>
               Add your first asset
             </button>
           }
@@ -127,10 +129,20 @@ export const PlatformsView: React.FC = () => {
       {/* Selected Platform Drilldown Card */}
       {selectedPlatform && (
         <div className="card elev-md" style={{ marginTop: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-            <div className="card-kicker" style={{ margin: 0, flex: 1 }}>
-              {selectedPlatform} · what&apos;s there
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="card-kicker" style={{ margin: 0 }}>
+                {selectedPlatform} · what&apos;s there
+              </div>
+              <div className="text-muted" style={{ fontSize: '12.5px', marginTop: '2px' }}>
+                {selectedPlatformHoldings.length} {selectedPlatformHoldings.length === 1 ? 'asset' : 'assets'} ·{' '}
+                {formatCurrency(sumValues(selectedPlatformHoldings))}
+              </div>
             </div>
+            <button className="btn btn-secondary" onClick={() => actions.add(selectedPlatform)}>
+              <Plus size={14} aria-hidden />
+              Add asset here
+            </button>
             <button className="btn btn-ghost" onClick={() => setSelectedPlatform(null)}>
               Close
             </button>
@@ -148,6 +160,9 @@ export const PlatformsView: React.FC = () => {
                     <th>Instrument</th>
                     <th>Class</th>
                     <th>Value</th>
+                    <th style={{ width: '72px' }}>
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -162,6 +177,16 @@ export const PlatformsView: React.FC = () => {
                         </td>
                         <td style={{ padding: '12px 10px' }} className="text-nowrap">
                           {formatCurrency(h.valueUsd)}
+                        </td>
+                        <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                          <div className="row-actions">
+                            <IconButton label={`Edit ${h.name}`} onClick={() => actions.edit(h)}>
+                              <Pencil size={15} aria-hidden />
+                            </IconButton>
+                            <IconButton label={`Remove ${h.name}`} tone="danger" onClick={() => actions.remove(h)}>
+                              <Trash2 size={15} aria-hidden />
+                            </IconButton>
+                          </div>
                         </td>
                       </tr>
                     );

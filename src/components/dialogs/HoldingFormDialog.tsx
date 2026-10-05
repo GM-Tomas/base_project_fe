@@ -7,7 +7,9 @@ import { Modal } from '@/components/ui/Modal';
 import { Combobox } from '@/components/ui/Combobox';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FormError } from '@/components/ui/FormError';
-import { errorMessage } from '@/lib/apiError';
+import { ApiError, errorMessage } from '@/lib/apiError';
+import type { HoldingPatch } from '@/lib/api';
+import type { Holding } from '@/types/wealth';
 import { parseAmount } from '@/lib/money';
 import { normalizeLabel, platformKey } from '@/lib/labels';
 
@@ -30,21 +32,37 @@ export interface HoldingFormDialogProps {
   onClose: () => void;
   /** Fills in the platform ("Add asset here" on a platform). */
   platform?: string;
+  /** The holding to edit; without it, the dialog adds one. */
+  holding?: Holding;
 }
 
-export function HoldingFormDialog({ onClose, platform: presetPlatform = '' }: HoldingFormDialogProps) {
-  const { addHolding, platforms, availableAssetClasses } = useWealth();
+// What the edit form changes: the fields that differ from the holding, as the API would store them.
+function changes(holding: Holding, fields: { name: string; platform: string; assetClass: string; value: string }): HoldingPatch {
+  const patch: HoldingPatch = {};
+  if (normalizeLabel(fields.name) !== holding.name) patch.name = fields.name.trim();
+  if (normalizeLabel(fields.assetClass) !== holding.assetClass) patch.assetClass = fields.assetClass.trim();
+  if (normalizeLabel(fields.platform) !== holding.platform) patch.platform = fields.platform.trim();
+  const amount = parseAmount(fields.value);
+  if (amount.value !== undefined && amount.value !== holding.valueUsd) patch.valueUsd = amount.value;
+  return patch;
+}
+
+export function HoldingFormDialog({ onClose, platform: presetPlatform = '', holding }: HoldingFormDialogProps) {
+  const { addHolding, updateHolding, refresh, platforms, availableAssetClasses } = useWealth();
   const { toast } = useUi();
   const nameId = useId();
 
-  const [name, setName] = useState('');
-  const [platform, setPlatform] = useState(presetPlatform);
-  const [assetClass, setAssetClass] = useState('');
-  const [value, setValue] = useState('');
+  const [name, setName] = useState(holding?.name ?? '');
+  const [platform, setPlatform] = useState(holding?.platform ?? presetPlatform);
+  const [assetClass, setAssetClass] = useState(holding?.assetClass ?? '');
+  const [value, setValue] = useState(holding ? String(holding.valueUsd) : '');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const platformNames = platforms.map((p) => p.name);
+  const patch = holding && changes(holding, { name, platform, assetClass, value });
+  // Editing, Save waits for something to change (an amount it can't read counts: Save says what's wrong).
+  const unchanged = !!patch && Object.keys(patch).length === 0 && parseAmount(value).error === undefined;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,23 +84,29 @@ export function HoldingFormDialog({ onClose, platform: presetPlatform = '' }: Ho
     setError('');
     setIsSaving(true);
     try {
-      await addHolding({
-        name: name.trim(),
-        assetClass: assetClass.trim(),
-        platform: platform.trim(),
-        valueUsd: amount.value!,
-      });
+      if (holding) {
+        await updateHolding(holding.id, patch!);
+      } else {
+        await addHolding({
+          name: name.trim(),
+          assetClass: assetClass.trim(),
+          platform: platform.trim(),
+          valueUsd: amount.value!,
+        });
+      }
     } catch (err) {
       setError(errorMessage(err, 'Could not save this asset. Please try again.'));
       setIsSaving(false);
+      // Gone (removed from another device, say): what's on screen is out of date.
+      if (err instanceof ApiError && err.status === 404) refresh().catch(() => {});
       return;
     }
-    toast.success('Asset added');
+    toast.success(holding ? 'Changes saved' : 'Asset added');
     onClose();
   };
 
   return (
-    <Modal title="Add an asset" onClose={onClose} busy={isSaving}>
+    <Modal title={holding ? 'Edit asset' : 'Add an asset'} onClose={onClose} busy={isSaving}>
       {error && <FormError>{error}</FormError>}
 
       <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -123,8 +147,8 @@ export function HoldingFormDialog({ onClose, platform: presetPlatform = '' }: Ho
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>
             Cancel
           </button>
-          <button type="submit" className="btn btn-primary" disabled={isSaving}>
-            {isSaving ? 'Saving…' : 'Save asset'}
+          <button type="submit" className="btn btn-primary" disabled={isSaving || unchanged}>
+            {isSaving ? 'Saving…' : holding ? 'Save changes' : 'Save asset'}
           </button>
         </div>
       </form>

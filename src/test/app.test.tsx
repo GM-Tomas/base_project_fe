@@ -651,6 +651,236 @@ describe('assets', () => {
   });
 });
 
+describe('edit asset', () => {
+  const fill = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const save = () => screen.getByRole('button', { name: 'Save changes' });
+
+  it('opens prefilled, saves only what changed and says so', async () => {
+    routes['PATCH /api/v1/holdings/h2'] = () => json(holding('h2', 'Gold bar', 'Gold', 'Vault', 20000.5));
+    await renderApp();
+    nav('Assets');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Gold bar' }));
+    const fill = (label: string, value: string) =>
+      fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(label), { target: { value } });
+
+    const dialog = screen.getByRole('dialog', { name: 'Edit asset' });
+    expect((within(dialog).getByLabelText('Name') as HTMLInputElement).value).toBe('Gold bar');
+    expect((within(dialog).getByLabelText('Platform') as HTMLInputElement).value).toBe('Vault');
+    expect((within(dialog).getByLabelText('Asset class') as HTMLInputElement).value).toBe('Gold');
+    expect((within(dialog).getByLabelText('Value (USD)') as HTMLInputElement).value).toBe('4000');
+    // Nothing to save until something changes.
+    expect(save().hasAttribute('disabled')).toBe(true);
+    fill('Name', ' Gold bar ');
+    expect(save().hasAttribute('disabled')).toBe(true);
+
+    fill('Value (USD)', '20.000,50');
+    expect(save().hasAttribute('disabled')).toBe(false);
+    fireEvent.submit(save().closest('form')!);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(JSON.parse(requests('PATCH', '/api/v1/holdings/h2')[0][1].body)).toEqual({ valueUsd: 20000.5 });
+    expect(screen.getByText('Changes saved')).toBeTruthy();
+    expect(requests('GET', '/api/v1/holdings')).toHaveLength(2);
+  });
+
+  it('moves an asset to another platform and class', async () => {
+    routes['PATCH /api/v1/holdings/h1'] = () => json(holding('h1', 'SPY', 'Index Fund', 'Vault', 8000));
+    await renderApp();
+    nav('Assets');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit SPY' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit asset' });
+    fireEvent.change(within(dialog).getByLabelText('Platform'), { target: { value: 'vault' } });
+    expect(within(dialog).getByText('Matches Vault')).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('Asset class'), { target: { value: 'Index Fund' } });
+    fireEvent.submit(save().closest('form')!);
+
+    await waitFor(() => expect(requests('PATCH', '/api/v1/holdings/h1')).toHaveLength(1));
+    expect(JSON.parse(requests('PATCH', '/api/v1/holdings/h1')[0][1].body)).toEqual({ platform: 'vault', assetClass: 'Index Fund' });
+  });
+
+  it('says what is wrong, and reloads when the asset is gone', async () => {
+    routes['PATCH /api/v1/holdings/h1'] = () => json({ detail: 'Holding h1 not found' }, 404);
+    await renderApp();
+    nav('Assets');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit SPY' }));
+    const fill = (label: string, value: string) =>
+      fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(label), { target: { value } });
+
+    fill('Value (USD)', 'lots');
+    fireEvent.submit(save().closest('form')!);
+    expect(screen.getByText('Enter an amount like 1,234.56', { selector: '.form-error' })).toBeTruthy();
+    fill('Name', '');
+    fill('Value (USD)', '1');
+    fireEvent.submit(save().closest('form')!);
+    expect(screen.getByText('Please enter an asset name')).toBeTruthy();
+    expect(requests('PATCH', '/api/v1/holdings/h1')).toHaveLength(0);
+
+    // Removed from another device meanwhile: the API says so, and the list is refreshed.
+    fill('Name', 'SPY ETF');
+    fireEvent.submit(save().closest('form')!);
+    expect(await screen.findByText('Holding h1 not found')).toBeTruthy();
+    await waitFor(() => expect(requests('GET', '/api/v1/holdings')).toHaveLength(2));
+    expect(screen.getByRole('dialog', { name: 'Edit asset' })).toBeTruthy();
+  });
+
+  it("edits and removes from a platform's holdings, and adds there", async () => {
+    routes['PATCH /api/v1/holdings/h3'] = () => json(holding('h3', 'Coins', 'Gold', 'Vault', 400));
+    routes['POST /api/v1/holdings'] = () => json({}, 201);
+    await renderApp();
+    nav('Platforms');
+    fireEvent.click(screen.getByText('Vault'));
+    expect(screen.getByText('2 assets · $4,346')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Coins' }));
+    fireEvent.change(screen.getByLabelText('Value (USD)'), { target: { value: '400' } });
+    fireEvent.submit(save().closest('form')!);
+    await waitFor(() => expect(requests('PATCH', '/api/v1/holdings/h3')).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Gold bar' }));
+    expect(screen.getByRole('dialog', { name: 'Remove asset?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add asset here' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add an asset' });
+    expect((within(dialog).getByLabelText('Platform') as HTMLInputElement).value).toBe('Vault');
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Name'));
+  });
+});
+
+describe('assets table', () => {
+  const rowNames = () =>
+    screen
+      .getAllByRole('row')
+      .slice(1, -1)
+      .map((row) => within(row).getAllByRole('cell')[0].textContent);
+
+  it('searches across name, platform and class, ignoring accents', async () => {
+    routes['GET /api/v1/holdings'] = () => json([...HOLDINGS, holding('h4', 'Café Martínez', 'Equity', 'Balanz', 100)]);
+    await renderApp();
+    nav('Assets');
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search assets' }), { target: { value: 'cafe' } });
+    expect(rowNames()).toEqual(['Café Martínez']);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search assets' }), { target: { value: 'VAULT' } });
+    expect(rowNames()).toEqual(['Gold bar', 'Coins']);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search assets' }), { target: { value: 'gold coi' } });
+    expect(rowNames()).toEqual(['Coins']);
+  });
+
+  it('combines filters, totals what is shown and starts over with Show all', async () => {
+    await renderApp();
+    nav('Assets');
+    expect(rowNames()).toEqual(['SPY', 'Gold bar', 'Coins']);
+    expect(screen.getByText('3 assets · $12,346')).toBeTruthy();
+    expect(screen.getByText('64.8%')).toBeTruthy();
+    expect(screen.getByText('2.8%')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gold' }));
+    expect(screen.getByText('2 assets · $4,346 · 35.2% of your assets')).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by platform' }), { target: { value: 'Balanz' } });
+    expect(screen.getByText('No assets match this filter')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
+    expect(rowNames()).toEqual(['SPY', 'Gold bar', 'Coins']);
+    expect((screen.getByRole('combobox', { name: 'Filter by platform' }) as HTMLSelectElement).value).toBe('All');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by platform' }), { target: { value: 'Vault' } });
+    expect(rowNames()).toEqual(['Gold bar', 'Coins']);
+    expect(screen.getByText('2 assets · $4,346 · 35.2% of your assets')).toBeTruthy();
+  });
+
+  it('sorts by a column, both ways, and says how', async () => {
+    await renderApp();
+    nav('Assets');
+    const header = (name: string) => screen.getByRole('button', { name }).closest('th')!;
+    expect(header('Value').getAttribute('aria-sort')).toBe('descending');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+    expect(header('Name').getAttribute('aria-sort')).toBe('ascending');
+    expect(header('Value').getAttribute('aria-sort')).toBeNull();
+    expect(rowNames()).toEqual(['Coins', 'Gold bar', 'SPY']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+    expect(header('Name').getAttribute('aria-sort')).toBe('descending');
+    expect(rowNames()).toEqual(['SPY', 'Gold bar', 'Coins']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Value' }));
+    expect(rowNames()).toEqual(['SPY', 'Gold bar', 'Coins']);
+    fireEvent.click(screen.getByRole('button', { name: 'Value' }));
+    expect(rowNames()).toEqual(['Coins', 'Gold bar', 'SPY']);
+  });
+
+  it('keeps its search, filters and order while visiting other views', async () => {
+    await renderApp();
+    nav('Assets');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search assets' }), { target: { value: 'o' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gold' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+
+    nav('Dashboard');
+    nav('Assets');
+    expect((screen.getByRole('searchbox', { name: 'Search assets' }) as HTMLInputElement).value).toBe('o');
+    expect(screen.getByRole('button', { name: 'Gold' }).getAttribute('aria-pressed')).toBe('true');
+    expect(rowNames()).toEqual(['Coins', 'Gold bar']);
+  });
+
+  it("forgets a filter on a platform that's gone", async () => {
+    await renderApp();
+    nav('Assets');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by platform' }), { target: { value: 'Vault' } });
+    expect(rowNames()).toEqual(['Gold bar', 'Coins']);
+
+    // Its assets were removed from another device; the next reload no longer has the platform.
+    routes['GET /api/v1/platforms'] = () => json(PLATFORMS.filter((p) => p.name !== 'Vault'));
+    routes['GET /api/v1/holdings'] = () => json(HOLDINGS.slice(0, 1));
+    routes['POST /api/v1/wealth/snapshots'] = () => json({}, 201);
+    nav('History');
+    fireEvent.click(screen.getByRole('button', { name: 'Save a snapshot' }));
+    await screen.findByText('Snapshot saved');
+    nav('Assets');
+    expect((screen.getByRole('combobox', { name: 'Filter by platform' }) as HTMLSelectElement).value).toBe('All');
+    expect(rowNames()).toEqual(['SPY']);
+  });
+
+  it("opens an asset's platform from its row", async () => {
+    await renderApp();
+    nav('Assets');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Vault' })[0]);
+    expect(screen.getByRole('heading', { name: 'Platforms' })).toBeTruthy();
+    expect(screen.getByText("Vault · what's there")).toBeTruthy();
+  });
+});
+
+describe('delete checkpoint', () => {
+  it('asks first, deletes and refreshes', async () => {
+    routes['DELETE /api/v1/wealth/snapshots/s2'] = () => {
+      routes['GET /api/v1/wealth/snapshots'] = () => json(SNAPSHOTS.filter((s) => s.id !== 's2'));
+      return new Response(null, { status: 204 });
+    };
+    await renderApp();
+    nav('History');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete checkpoint of Feb 15, 2026' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete checkpoint?' });
+    expect(within(dialog).getByText('The checkpoint of Feb 15, 2026 ($11,000) will be removed from your history.')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.queryByText('Feb 15, 2026')).toBeNull());
+    expect(screen.getByText('Checkpoint deleted')).toBeTruthy();
+    expect(requests('DELETE', '/api/v1/wealth/snapshots/s2')).toHaveLength(1);
+  });
+
+  it('keeps the confirmation open when it fails', async () => {
+    routes['DELETE /api/v1/wealth/snapshots/s1'] = () => Promise.reject(new TypeError('offline'));
+    await renderApp();
+    nav('History');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete checkpoint of Jan 15, 2026' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Could not delete this checkpoint. Please try again.')).toBeTruthy();
+    expect(screen.getByText('Jan 15, 2026')).toBeTruthy();
+  });
+});
+
 describe('estimate', () => {
   it('projects with the current parameters and milestones', async () => {
     await renderApp();
