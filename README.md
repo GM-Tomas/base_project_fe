@@ -11,6 +11,12 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 - **Historical Snapshots**: Net worth timeline curve and snapshot logging.
 - **Add Asset Dialog**: Interactive modal backed by the API, with inline validation errors.
 
+## 📐 Specs
+
+New work follows spec-driven development: [`specs/`](specs/README.md) holds the product vision, the
+cross-cutting decisions and one spec per phase (requirements with acceptance criteria, API contract,
+design, tasks and tests) for both this repo and the backend. Each phase is implemented as its spec says.
+
 ## 🛠️ Tech Stack
 
 - **Framework**: [Next.js](https://nextjs.org/) (App Router)
