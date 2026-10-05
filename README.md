@@ -62,7 +62,9 @@ touches production data and needs no environment variables; a "Demo data" tag ma
 the tab reloads. Every other build uses the real backend, whatever its variables say: `next.config.mjs` picks
 the data source from Vercel's target environment (`VERCEL_TARGET_ENV`; a custom environment such as staging
 has its own name there, so it isn't a preview). Locally, `NEXT_PUBLIC_DATA_SOURCE=mock npm run dev` shows the
-same demo without a backend.
+same demo without a backend. The data source is fixed when a deployment is built, so production has to be built as
+production (a push to `main`, or a redeploy to Production): a preview deployment pointed at production without a
+rebuild (Vercel's REST promote endpoint doesn't rebuild) would keep its demo data until the next production build.
 
 ## 👥 Multiple users
 

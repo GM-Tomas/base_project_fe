@@ -12,24 +12,29 @@ function dataSourceFor(phase) {
 
 // The Supabase session lives in localStorage, so the CSP's main job is limiting where injected
 // script could load from or send it: only this site, the API and Supabase (none of those on mock data).
-// The dev server (and only it, whatever NODE_ENV says) needs eval and plain http.
+// The dev server (and only it, whatever NODE_ENV says) needs eval and plain http. On mock data, with no
+// session or real data to take, the Vercel Toolbar that Vercel adds to previews (comments) gets the
+// sources Vercel's docs list for it (vercel.com/docs/vercel-toolbar/managing-toolbar).
 const cspFor = (dataSource, isDev) => {
-  const apiOrigins =
-    dataSource === 'mock'
-      ? []
-      : [process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080', process.env.NEXT_PUBLIC_SUPABASE_URL]
-          .filter(Boolean)
-          .map((url) => new URL(url).origin);
+  const mock = dataSource === 'mock';
+  const apiOrigins = mock
+    ? []
+    : [process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080', process.env.NEXT_PUBLIC_SUPABASE_URL]
+        .filter(Boolean)
+        .map((url) => new URL(url).origin);
+  const toolbar = (...sources) => (mock ? sources : []);
+  const directive = (name, ...sources) => [name, ...sources].join(' ');
 
   // ponytail: 'unsafe-inline' scripts — Next's inline bootstrap needs it without per-request nonces;
   // a nonce CSP in proxy.ts would drop it at the cost of making every page dynamic.
   return [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
-    "font-src 'self'",
-    ['connect-src', "'self'", ...apiOrigins].join(' '),
+    directive('script-src', "'self'", "'unsafe-inline'", ...(isDev ? ["'unsafe-eval'"] : []), ...toolbar('https://vercel.live')),
+    directive('style-src', "'self'", "'unsafe-inline'", ...toolbar('https://vercel.live')),
+    directive('img-src', "'self'", 'data:', 'blob:', ...toolbar('https://vercel.live', 'https://vercel.com')),
+    directive('font-src', "'self'", ...toolbar('https://vercel.live', 'https://assets.vercel.com')),
+    directive('connect-src', "'self'", ...apiOrigins, ...toolbar('https://vercel.live', 'wss://ws-us3.pusher.com')),
+    ...(mock ? [directive('frame-src', "'self'", 'https://vercel.live')] : []),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

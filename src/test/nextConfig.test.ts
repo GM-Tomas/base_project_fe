@@ -33,14 +33,17 @@ describe('next.config.mjs data source', () => {
     expect(build(phase, env).env).toEqual({ NEXT_PUBLIC_DATA_SOURCE: dataSource });
   });
 
-  it('lets a mock build reach nothing but the site, a live one only its API and Supabase', async () => {
+  it('lets a mock build reach only the site and the Vercel Toolbar, a live one only its API and Supabase', async () => {
     vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', 'https://api.example.com');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://ref.supabase.co/');
     const preview = await csp(build(PHASE_PRODUCTION_BUILD, { VERCEL: '1', VERCEL_TARGET_ENV: 'preview' }));
-    expect(preview).toContain("connect-src 'self';");
+    expect(preview).toContain("connect-src 'self' https://vercel.live wss://ws-us3.pusher.com;");
+    expect(preview).toContain("script-src 'self' 'unsafe-inline' https://vercel.live;");
+    expect(preview).toContain("frame-src 'self' https://vercel.live;");
     const production = await csp(build(PHASE_PRODUCTION_BUILD, { VERCEL: '1', VERCEL_TARGET_ENV: 'production' }));
     expect(production).toContain("connect-src 'self' https://api.example.com https://ref.supabase.co;");
-    expect(production).not.toContain('unsafe-eval');
+    expect(production).toContain("script-src 'self' 'unsafe-inline';");
+    expect(production).not.toMatch(/vercel\.live|pusher|frame-src|unsafe-eval/);
     expect(production).toContain('upgrade-insecure-requests');
   });
 
