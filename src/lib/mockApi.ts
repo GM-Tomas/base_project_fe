@@ -10,6 +10,7 @@ import type {
 } from '@/types/wealth';
 import type { Api, HoldingInput } from './api';
 import { ApiError } from './apiError';
+import { normalizeLabel as label, platformKey } from './labels';
 
 // The API's own defaults and limits (base_project_go): the classes offered from the start, the ones
 // counted as liquid, the Estimate view's two milestones, the largest amount a holding can have, and how
@@ -48,11 +49,6 @@ const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity:
 const byValueThenName = (a: { name: string; value: number }, b: { name: string; value: number }) =>
   b.value - a.value || byName(a.name, b.name);
 const platformType = (name: string) => PLATFORM_TYPES.get(name) ?? 'Other';
-// A label as the API stores it: trimmed, inner whitespace collapsed, in Unicode NFC.
-const label = (raw: string) => raw.trim().replace(/[\t\n\f\r ]+/g, ' ').normalize('NFC');
-// Two platform names are one platform if they match caselessly in any Unicode form (close to the API's
-// full case folding).
-const platformKey = (name: string) => name.normalize('NFD').toUpperCase().toLowerCase().normalize('NFD');
 
 function groupBy(holdings: Holding[], key: (h: Holding) => string) {
   const groups = new Map<string, Holding[]>();

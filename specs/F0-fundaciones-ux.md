@@ -1,6 +1,6 @@
 # F0 — Fundaciones de UX
 
-**Estado:** Lista para implementar · **Repos:** frontend (la API no cambia)
+**Estado:** Hecha · **Repos:** frontend (la API no cambia)
 
 ## Objetivo
 
@@ -37,7 +37,8 @@ Assets y History. **Fuera de alcance:** cambios de API, responsive (F7), modo pr
    **Remove** (estilo peligro).
 2. El foco inicial está en **Cancel**: Enter no borra por accidente.
 3. Mientras borra, el botón dice "Removing…" y los dos quedan deshabilitados. Si la API falla, su mensaje
-   aparece dentro del diálogo y nada se borra.
+   (o *"Could not remove this asset. Please try again."* si no respondió) aparece dentro del diálogo, nada se
+   borra y se puede reintentar.
 4. Al terminar, el diálogo se cierra y aparece el toast "Asset removed".
 
 ### F0-R3 · Toasts
@@ -67,11 +68,12 @@ Assets y History. **Fuera de alcance:** cambios de API, responsive (F7), modo pr
 1. En Add asset, plataforma y clase son **un solo campo de texto** con sugerencias de las existentes.
    Desaparecen "+ Add new…" y el segundo campo.
 2. Si lo escrito no coincide con ninguna existente, el campo lo dice: *"New platform — it will be created"*
-   / *"New class"*. Plataformas se comparan sin distinguir mayúsculas; clases, exactas (como la API).
+   / *"New class — it will be created"*. Plataformas se comparan sin distinguir mayúsculas; clases, exactas
+   (como la API).
 3. Si coincide con otra capitalización (`binance`), el campo avisa *"Matches Binance"* (la API la guarda
    como la existente).
-4. Con una sola plataforma o clase existente, el campo arranca vacío con las sugerencias disponibles; en
-   una cuenta nueva, arranca vacío sin sugerencias.
+4. Los dos campos arrancan vacíos (antes se preseleccionaba la primera plataforma, fuente de errores), con
+   las existentes como sugerencias; en una cuenta nueva, sin sugerencias.
 
 ### F0-R6 · Acciones de fila (`IconButton`)
 
@@ -84,8 +86,10 @@ Assets y History. **Fuera de alcance:** cambios de API, responsive (F7), modo pr
 1. Dashboard sin holdings: *"Start by adding what you own"* con botón **Add your first asset**.
 2. Assets sin holdings: lo mismo. Con un filtro sin resultados: *"No assets match this filter"* con
    **Show all**.
-3. Platforms sin plataformas: *"Platforms appear as you add assets"* con **Add an asset**.
-4. History sin snapshots: explica qué es un checkpoint y ofrece **Save a snapshot**.
+3. Platforms sin plataformas: *"Platforms appear as you add assets"* con **Add your first asset** (el header
+   ya tiene "Add an asset").
+4. History sin snapshots: *"No checkpoints yet"*, qué es un checkpoint, junto al botón **Save a snapshot**
+   de la misma tarjeta; la tabla vacía no se muestra.
 
 ### F0-R8 · Host de diálogos y toasts (`UiProvider`)
 
@@ -118,21 +122,24 @@ src/components/dialogs/HoldingFormDialog.tsx   reemplaza AddAssetModal (lista pa
 
 ## Tareas
 
-- [ ] `lib/money.ts` + tests de la tabla de formatos (R4).
-- [ ] `Modal`, `ConfirmDialog`, `Toaster`, `UiContext` + tests (R1, R2.2–R2.3, R3, R8).
-- [ ] `MoneyInput`, `Combobox`, `IconButton`, `EmptyState`.
-- [ ] `HoldingFormDialog` (reemplaza `AddAssetModal`), `ProfileModal` sobre `Modal`.
-- [ ] Assets: borrar con confirmación + toast; History: toast al guardar snapshot.
-- [ ] Estados vacíos en Dashboard, Assets, Platforms, History.
-- [ ] Ajustar `app.test.tsx` (flujos nuevos) y README del frontend.
+- [x] `lib/money.ts` + tests de la tabla de formatos (R4).
+- [x] `Modal`, `ConfirmDialog`, `Toaster`, `UiContext` + tests (R1, R2.2–R2.3, R3, R8).
+- [x] `MoneyInput`, `Combobox`, `IconButton`, `EmptyState`.
+- [x] `HoldingFormDialog` (reemplaza `AddAssetModal`), `ProfileModal` sobre `Modal`.
+- [x] Assets: borrar con confirmación + toast; History: toast al guardar snapshot.
+- [x] Estados vacíos en Dashboard, Assets, Platforms, History.
+- [x] Ajustar `app.test.tsx` (flujos nuevos) y README del frontend.
+
+Hallazgo durante la implementación: el "donut" del dashboard se dibujaba como una torta chica dentro de un
+anillo vacío (la sombra interior tapaba el borde en vez del centro). Se corrigió con una máscara radial.
 
 ## Pruebas
 
 | Requisito | Dónde |
 |---|---|
-| R1 | `src/components/ui/Modal.test.tsx` (roles, Escape, fondo, foco, ocupado) |
-| R2 | `src/test/app.test.tsx` (borrar con confirmación, error dentro del diálogo) |
-| R3 | `src/components/ui/Toaster.test.tsx` + flujos en `app.test.tsx` |
+| R1 | `src/components/ui/ui.test.tsx` (roles, Escape, fondo, foco, ocupado) + `app.test.tsx` |
+| R2 | `src/test/app.test.tsx` (borrar con confirmación, error dentro del diálogo) + `ui.test.tsx` |
+| R3 | `src/components/ui/ui.test.tsx` (regiones, tiempo, pausa, acción, máximo) + flujos en `app.test.tsx` |
 | R4 | `src/lib/money.test.ts` (tabla de formatos) + alta con `1.234,56` en `app.test.tsx` |
 | R5 | `app.test.tsx` (plataforma nueva, existente y con otra capitalización) |
 | R6–R8 | `app.test.tsx` |

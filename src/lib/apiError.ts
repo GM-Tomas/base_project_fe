@@ -9,3 +9,6 @@ export class ApiError extends Error {
     this.errors = errors;
   }
 }
+
+/** What to tell the user about a failed call: the API's own message when it answered, else the fallback. */
+export const errorMessage = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);

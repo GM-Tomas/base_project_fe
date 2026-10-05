@@ -2,14 +2,17 @@
 
 import React, { useMemo, useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
+import { useUi } from '@/context/UiContext';
 import { generateLinePath, formatCurrency, formatPercentage } from '@/lib/calculations';
-import { ApiError } from '@/lib/api';
+import { errorMessage } from '@/lib/apiError';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const formatCheckpointLabel = (capturedAt: string) =>
   new Date(capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 export const HistoryView: React.FC = () => {
   const { snapshots, takeSnapshot } = useWealth();
+  const { toast } = useUi();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [hovered, setHovered] = useState<number | null>(null);
@@ -19,8 +22,9 @@ export const HistoryView: React.FC = () => {
     setIsSaving(true);
     try {
       await takeSnapshot();
+      toast.success('Snapshot saved');
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not save a snapshot right now');
+      setError(errorMessage(e, 'Could not save a snapshot right now'));
     } finally {
       setIsSaving(false);
     }
@@ -81,121 +85,122 @@ export const HistoryView: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ position: 'relative', width: '100%', height: '240px', marginTop: '10px' }}>
-          <svg viewBox="0 0 680 220" width="100%" height="100%" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="histFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--color-accent-500)" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="var(--color-accent-500)" stopOpacity="0.0" />
-              </linearGradient>
-            </defs>
+        {snapshots.length === 0 ? (
+          <EmptyState title="No checkpoints yet">
+            A checkpoint records your net worth at a moment in time. Save one now, and again every month or so, to
+            see how it grows.
+          </EmptyState>
+        ) : (
+          <div style={{ position: 'relative', width: '100%', height: '240px', marginTop: '10px' }}>
+            <svg viewBox="0 0 680 220" width="100%" height="100%" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="histFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--color-accent-500)" stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="var(--color-accent-500)" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
 
-            {/* Area Fill */}
-            {historyAreaPath && <path d={historyAreaPath} fill="url(#histFill)" opacity="0.6" />}
+              {/* Area Fill */}
+              {historyAreaPath && <path d={historyAreaPath} fill="url(#histFill)" opacity="0.6" />}
 
-            {/* Line Path */}
-            {historyLinePath && (
-              <path
-                d={historyLinePath}
-                fill="none"
-                stroke="var(--color-accent-500)"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            )}
-          </svg>
-
-          {/* Checkpoint dots live outside the stretched SVG (preserveAspectRatio="none" turns circles into ovals) */}
-          {snapshots.map((s, idx) => {
-            const [x, y] = histPoints[idx];
-            const left = (x / 680) * 100;
-            const top = (y / 220) * 100;
-            const isHovered = hovered === idx;
-            return (
-              <div
-                key={s.capturedAt + idx}
-                tabIndex={0}
-                aria-label={`${formatCheckpointLabel(s.capturedAt)}: ${formatCurrency(s.totalValueUsd)}`}
-                onMouseEnter={() => setHovered(idx)}
-                onMouseLeave={() => setHovered(null)}
-                onFocus={() => setHovered(idx)}
-                onBlur={() => setHovered(null)}
-                style={{
-                  position: 'absolute',
-                  left: `${left}%`,
-                  top: `${top}%`,
-                  width: '24px',
-                  height: '24px',
-                  transform: 'translate(-50%, -50%)',
-                  display: 'grid',
-                  placeItems: 'center',
-                  cursor: 'pointer',
-                  zIndex: isHovered ? 2 : 1,
-                }}
-              >
-                <span
-                  style={{
-                    width: isHovered ? '12px' : '9px',
-                    height: isHovered ? '12px' : '9px',
-                    borderRadius: '50%',
-                    background: isHovered ? 'var(--color-accent-500)' : 'var(--color-bg)',
-                    border: '2px solid var(--color-accent-500)',
-                    boxShadow: isHovered ? '0 0 0 4px color-mix(in srgb, var(--color-accent-500) 25%, transparent)' : 'none',
-                    transition: 'all 0.12s ease',
-                  }}
+              {/* Line Path */}
+              {historyLinePath && (
+                <path
+                  d={historyLinePath}
+                  fill="none"
+                  stroke="var(--color-accent-500)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
                 />
-                {isHovered && (
-                  <div
+              )}
+            </svg>
+
+            {/* Checkpoint dots live outside the stretched SVG (preserveAspectRatio="none" turns circles into ovals) */}
+            {snapshots.map((s, idx) => {
+              const [x, y] = histPoints[idx];
+              const left = (x / 680) * 100;
+              const top = (y / 220) * 100;
+              const isHovered = hovered === idx;
+              return (
+                <div
+                  key={s.capturedAt + idx}
+                  tabIndex={0}
+                  aria-label={`${formatCheckpointLabel(s.capturedAt)}: ${formatCurrency(s.totalValueUsd)}`}
+                  onMouseEnter={() => setHovered(idx)}
+                  onMouseLeave={() => setHovered(null)}
+                  onFocus={() => setHovered(idx)}
+                  onBlur={() => setHovered(null)}
+                  style={{
+                    position: 'absolute',
+                    left: `${left}%`,
+                    top: `${top}%`,
+                    width: '24px',
+                    height: '24px',
+                    transform: 'translate(-50%, -50%)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    cursor: 'pointer',
+                    zIndex: isHovered ? 2 : 1,
+                  }}
+                >
+                  <span
                     style={{
-                      position: 'absolute',
-                      // keep the tooltip inside the card: flip below for high points, hug the edges at the ends
-                      ...(top < 50 ? { top: '30px' } : { bottom: '30px' }),
-                      left: left < 15 ? '0' : left > 85 ? 'auto' : '50%',
-                      right: left > 85 ? '0' : 'auto',
-                      transform: left < 15 || left > 85 ? 'none' : 'translateX(-50%)',
-                      padding: '8px 12px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--color-surface)',
-                      boxShadow: 'var(--shadow-md)',
-                      whiteSpace: 'nowrap',
-                      pointerEvents: 'none',
+                      width: isHovered ? '12px' : '9px',
+                      height: isHovered ? '12px' : '9px',
+                      borderRadius: '50%',
+                      background: isHovered ? 'var(--color-accent-500)' : 'var(--color-bg)',
+                      border: '2px solid var(--color-accent-500)',
+                      boxShadow: isHovered ? '0 0 0 4px color-mix(in srgb, var(--color-accent-500) 25%, transparent)' : 'none',
+                      transition: 'all 0.12s ease',
                     }}
-                  >
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text)' }}>
-                      {formatCurrency(s.totalValueUsd)}
+                  />
+                  {isHovered && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        // keep the tooltip inside the card: flip below for high points, hug the edges at the ends
+                        ...(top < 50 ? { top: '30px' } : { bottom: '30px' }),
+                        left: left < 15 ? '0' : left > 85 ? 'auto' : '50%',
+                        right: left > 85 ? '0' : 'auto',
+                        transform: left < 15 || left > 85 ? 'none' : 'translateX(-50%)',
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'var(--color-surface)',
+                        boxShadow: 'var(--shadow-md)',
+                        whiteSpace: 'nowrap',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text)' }}>
+                        {formatCurrency(s.totalValueUsd)}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'color-mix(in srgb, var(--color-text) 60%, transparent)' }}>
+                        {formatCheckpointLabel(s.capturedAt)}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '12px', color: 'color-mix(in srgb, var(--color-text) 60%, transparent)' }}>
-                      {formatCheckpointLabel(s.capturedAt)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Checkpoints Table Card */}
-      <div className="card elev-sm" style={{ padding: '6px 16px 16px', overflowX: 'auto' }}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Checkpoint</th>
-              <th>Net worth</th>
-              <th>Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snapshotRows.length === 0 ? (
+      {snapshotRows.length > 0 && (
+        <div className="card elev-sm" style={{ padding: '6px 16px 16px', overflowX: 'auto' }}>
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={3} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-neutral-400)' }}>
-                  No snapshots yet — save one to start tracking your history.
-                </td>
+                <th>Checkpoint</th>
+                <th>Net worth</th>
+                <th>Change</th>
               </tr>
-            ) : (
-              snapshotRows.map((r, i) => (
+            </thead>
+            <tbody>
+              {snapshotRows.map((r, i) => (
                 <tr key={i}>
                   <td style={{ padding: '12px 10px', fontWeight: 500 }}>{r.label}</td>
                   <td style={{ padding: '12px 10px' }} className="text-nowrap">
@@ -214,11 +219,11 @@ export const HistoryView: React.FC = () => {
                     </span>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };

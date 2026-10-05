@@ -2,6 +2,9 @@
 
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
+import { useUi } from '@/context/UiContext';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -15,6 +18,7 @@ export const DashboardView: React.FC = () => {
     classDistribution,
     platformDistribution,
   } = useWealth();
+  const { openDialog } = useUi();
 
   // Generate gradient parts for donut chart
   let accumulatedPct = 0;
@@ -178,110 +182,130 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Grid: Donut Chart + Exposure Bars */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1.4fr',
-          gap: '18px',
-        }}
-      >
-        {/* What you're holding (Asset Class Donut) */}
+      {holdings.length === 0 && (
         <div className="card elev-sm">
-          <div className="card-kicker">What you&apos;re holding</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '22px', marginTop: '6px' }}>
-            {/* Donut graphic */}
-            <div
-              style={{
-                width: '128px',
-                height: '128px',
-                borderRadius: '50%',
-                flex: 'none',
-                background: donutGradient,
-                boxShadow: 'inset 0 0 0 32px var(--color-surface)',
-                transition: 'background 0.3s ease',
-              }}
-            />
+          <EmptyState
+            title="Start by adding what you own"
+            action={
+              <button className="btn btn-primary" onClick={() => openDialog((close) => <HoldingFormDialog onClose={close} />)}>
+                Add your first asset
+              </button>
+            }
+          >
+            Add each account, fund or coin with what it&apos;s worth in dollars: your net worth, where it lives and how
+            it&apos;s split show up here.
+          </EmptyState>
+        </div>
+      )}
 
-            {/* Legend list */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', flex: 1, minWidth: 0 }}>
-              {classDistribution.map((item) => (
-                <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-                  <div
-                    style={{
-                      width: '9px',
-                      height: '9px',
-                      borderRadius: '3px',
-                      background: item.color,
-                      flex: 'none',
-                    }}
-                  />
-                  <div
-                    style={{
-                      flex: 1,
-                      color: 'color-mix(in srgb, var(--color-text) 85%, transparent)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {item.label}
+      {/* Bottom Grid: Donut Chart + Exposure Bars */}
+      {holdings.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1.4fr',
+            gap: '18px',
+          }}
+        >
+          {/* What you're holding (Asset Class Donut) */}
+          <div className="card elev-sm">
+            <div className="card-kicker">What you&apos;re holding</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '22px', marginTop: '6px' }}>
+              {/* Donut graphic */}
+              <div
+                style={{
+                  width: '128px',
+                  height: '128px',
+                  borderRadius: '50%',
+                  flex: 'none',
+                  background: donutGradient,
+                  // The hole: an inset shadow paints over the ring instead (a small pie in a blank ring).
+                  mask: 'radial-gradient(farthest-side, transparent 60%, #000 calc(60% + 1px))',
+                  WebkitMask: 'radial-gradient(farthest-side, transparent 60%, #000 calc(60% + 1px))',
+                  transition: 'background 0.3s ease',
+                }}
+              />
+
+              {/* Legend list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', flex: 1, minWidth: 0 }}>
+                {classDistribution.map((item) => (
+                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                    <div
+                      style={{
+                        width: '9px',
+                        height: '9px',
+                        borderRadius: '3px',
+                        background: item.color,
+                        flex: 'none',
+                      }}
+                    />
+                    <div
+                      style={{
+                        flex: 1,
+                        color: 'color-mix(in srgb, var(--color-text) 85%, transparent)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                    <div
+                      style={{
+                        fontVariantNumeric: 'tabular-nums',
+                        color: 'color-mix(in srgb, var(--color-text) 60%, transparent)',
+                        fontSize: '12px',
+                      }}
+                    >
+                      {item.pctLabel}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Where it lives (Platform exposure) */}
+          <div className="card elev-sm">
+            <div className="card-kicker">Where it lives</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '6px' }}>
+              {sortedPlatforms.map((p) => (
+                <div key={p.name}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '5px' }}>
+                    <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{p.name}</span>
+                    <span
+                      style={{
+                        fontVariantNumeric: 'tabular-nums',
+                        color: 'color-mix(in srgb, var(--color-text) 60%, transparent)',
+                      }}
+                    >
+                      {p.balanceFormatted} · {p.pctLabel}
+                    </span>
                   </div>
                   <div
                     style={{
-                      fontVariantNumeric: 'tabular-nums',
-                      color: 'color-mix(in srgb, var(--color-text) 60%, transparent)',
-                      fontSize: '12px',
+                      height: '6px',
+                      borderRadius: '4px',
+                      background: 'var(--color-neutral-900)',
+                      overflow: 'hidden',
                     }}
                   >
-                    {item.pctLabel}
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${p.pctOfTotal.toFixed(1)}%`,
+                        borderRadius: '4px',
+                        background: p.color,
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
                   </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
-
-        {/* Where it lives (Platform exposure) */}
-        <div className="card elev-sm">
-          <div className="card-kicker">Where it lives</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '6px' }}>
-            {sortedPlatforms.map((p) => (
-              <div key={p.name}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '5px' }}>
-                  <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{p.name}</span>
-                  <span
-                    style={{
-                      fontVariantNumeric: 'tabular-nums',
-                      color: 'color-mix(in srgb, var(--color-text) 60%, transparent)',
-                    }}
-                  >
-                    {p.balanceFormatted} · {p.pctLabel}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    height: '6px',
-                    borderRadius: '4px',
-                    background: 'var(--color-neutral-900)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${p.pctOfTotal.toFixed(1)}%`,
-                      borderRadius: '4px',
-                      background: p.color,
-                      transition: 'width 0.4s ease',
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

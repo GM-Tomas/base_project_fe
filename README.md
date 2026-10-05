@@ -6,10 +6,13 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 
 - **Dashboard Overview**: Live Net Worth tracking, YTD performance indicator, liquidity breakdown, and asset class distribution.
 - **Platforms Grid**: Detailed tracking across all connected financial platforms (brokers, banks, wallets, exchanges) with drilldown inspection.
-- **Assets Explorer**: Holdings table filterable by asset class, with delete.
+- **Assets Explorer**: Holdings table filterable by asset class; removing one asks first.
 - **Wealth Estimation Engine**: Interactive compound interest and wealth projection simulator with milestone tracking ($150k, $250k targets).
 - **Historical Snapshots**: Net worth timeline curve and snapshot logging.
-- **Add Asset Dialog**: Interactive modal backed by the API, with inline validation errors.
+- **Add Asset Dialog**: amounts in any usual format (`1.234,56`, `1,234.56`, `$ 1234`) with a preview of how
+  they were read; platform and class fields suggest the existing ones and say when a name is new.
+- **Accessible dialogs and toasts** (`src/components/ui`): every dialog closes with Escape, keeps focus inside
+  and gives it back; successful actions confirm with a toast.
 
 ## 📐 Specs
 

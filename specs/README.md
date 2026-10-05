@@ -28,7 +28,7 @@ Estas specs cubren los dos repositorios:
 
 | Fase | Estado | Backend | Frontend |
 |---|---|---|---|
-| F0 — Fundaciones de UX | Lista para implementar | — | ✔ |
+| F0 — Fundaciones de UX | Hecha | — | ✔ |
 | F1 — Editar y eliminar | Lista para implementar | ✔ | ✔ |
 | F2 — Movimientos | Lista para implementar | ✔ | ✔ |
 | F3 — Deudas | Lista para implementar | ✔ | ✔ |

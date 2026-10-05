@@ -2,8 +2,11 @@
 
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
+import { useUi } from '@/context/UiContext';
 import { formatCurrency } from '@/lib/calculations';
 import { assetClassTag } from '@/lib/constants';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
 
 export const PlatformsView: React.FC = () => {
   const {
@@ -12,6 +15,25 @@ export const PlatformsView: React.FC = () => {
     setSelectedPlatform,
     selectedPlatformHoldings,
   } = useWealth();
+  const { openDialog } = useUi();
+
+  if (platformDistribution.length === 0) {
+    return (
+      <div className="card elev-sm">
+        <EmptyState
+          title="Platforms appear as you add assets"
+          action={
+            <button className="btn btn-primary" onClick={() => openDialog((close) => <HoldingFormDialog onClose={close} />)}>
+              Add your first asset
+            </button>
+          }
+        >
+          Each bank, broker, exchange or wallet you name when adding an asset gets its card here, with what you hold
+          there.
+        </EmptyState>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

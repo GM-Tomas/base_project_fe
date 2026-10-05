@@ -11,7 +11,7 @@ import { PlatformsView } from '@/components/views/PlatformsView';
 import { AssetsView } from '@/components/views/AssetsView';
 import { EstimateView } from '@/components/views/EstimateView';
 import { HistoryView } from '@/components/views/HistoryView';
-import { AddAssetModal } from '@/components/modals/AddAssetModal';
+import { UiProvider } from '@/context/UiContext';
 
 const canSkipLogin = process.env.NODE_ENV !== 'production';
 
@@ -25,16 +25,19 @@ export default function HomePage() {
   }
 
   // Mounted only once there is a session (and keyed by user): data loads right after sign-in, and
-  // signing out unmounts it, so the next account never sees the previous one's numbers.
+  // signing out unmounts it, so the next account never sees the previous one's numbers (nor its open
+  // dialogs and toasts).
   return (
     <WealthProvider key={user?.id}>
-      <Dashboard />
+      <UiProvider>
+        <Dashboard />
+      </UiProvider>
     </WealthProvider>
   );
 }
 
 function Dashboard() {
-  const { view, loading: dataLoading, loadError, isAddModalOpen, retry } = useWealth();
+  const { view, loading: dataLoading, loadError, retry } = useWealth();
   const { user, signOut } = useAuth();
 
   if (dataLoading) {
@@ -145,9 +148,6 @@ function Dashboard() {
           {view === 'history' && <HistoryView />}
         </div>
       </main>
-
-      {/* Add Asset Dialog — mounted per opening so it starts from the current platforms/classes */}
-      {isAddModalOpen && <AddAssetModal />}
     </div>
   );
 }

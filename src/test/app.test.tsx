@@ -284,6 +284,16 @@ describe('dashboard', () => {
     expect(screen.getByText(label)).toBeTruthy();
   });
 
+  it('starts an empty account off with a way to add its first asset', async () => {
+    routes['GET /api/v1/holdings'] = () => json([]);
+    routes['GET /api/v1/wealth/summary'] = () => json(summary({ byAssetClass: [], byPlatform: [] }));
+    await renderApp();
+    expect(screen.getByText('Start by adding what you own')).toBeTruthy();
+    expect(screen.queryByText("What you're holding")).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first asset' }));
+    expect(screen.getByRole('dialog', { name: 'Add an asset' })).toBeTruthy();
+  });
+
   it('renders an empty donut with no holdings', async () => {
     routes['GET /api/v1/wealth/summary'] = () => json(summary({ byAssetClass: [], byPlatform: [] }));
     await renderApp();
@@ -315,6 +325,17 @@ describe('platforms', () => {
     nav('Dashboard');
     nav('Platforms');
     expect(screen.queryByText("Balanz · what's there")).toBeNull();
+  });
+});
+
+describe('platforms without assets', () => {
+  it('says where platforms come from and how to start', async () => {
+    routes['GET /api/v1/wealth/summary'] = () => json(summary({ byPlatform: [] }));
+    await renderApp();
+    nav('Platforms');
+    expect(screen.getByText('Platforms appear as you add assets')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first asset' }));
+    expect(screen.getByRole('dialog', { name: 'Add an asset' })).toBeTruthy();
   });
 });
 
@@ -545,15 +566,16 @@ describe('assets', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gold' }));
     expect(screen.queryByText('SPY')).toBeNull();
     expect(screen.getByText('Gold bar')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Gold' }).getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: 'Cash' }));
-    expect(screen.getByText('No holdings found for the selected category.')).toBeTruthy();
+    expect(screen.getByText('No assets match this filter')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
     expect(screen.getByText('SPY')).toBeTruthy();
   });
 
-  it('deletes a holding and refreshes', async () => {
+  it('asks before removing a holding, then removes it and says so', async () => {
     routes['DELETE /api/v1/holdings/h1'] = () => {
       routes['GET /api/v1/holdings'] = () => json(HOLDINGS.slice(1));
       return new Response(null, { status: 204 });
@@ -561,14 +583,26 @@ describe('assets', () => {
     await renderApp();
     nav('Assets');
 
-    const remove = screen.getAllByTitle('Remove asset')[0];
-    fireEvent.mouseEnter(remove);
-    expect(remove.style.color).toBe('var(--color-negative)');
-    fireEvent.mouseLeave(remove);
-    expect(remove.style.color).toBe('var(--color-neutral-600)');
+    const remove = screen.getByRole('button', { name: 'Remove SPY' });
+    remove.focus();
+    fireEvent.click(remove);
+    const dialog = screen.getByRole('dialog', { name: 'Remove asset?' });
+    expect(within(dialog).getByText('SPY on Balanz ($8,000) will stop counting toward your net worth.')).toBeTruthy();
+    // Cancel has the focus: Enter doesn't remove anything by accident.
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(remove);
+    expect(requests('DELETE', '/api/v1/holdings/h1')).toHaveLength(0);
 
     fireEvent.click(remove);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('button', { name: 'Removing…' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' }).hasAttribute('disabled')).toBe(true);
     await waitFor(() => expect(screen.queryByText('SPY')).toBeNull());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('Asset removed')).toBeTruthy();
     expect(requests('DELETE', '/api/v1/holdings/h1')).toHaveLength(1);
   });
 
@@ -579,25 +613,41 @@ describe('assets', () => {
     };
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getAllByTitle('Remove asset')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove SPY' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
     expect(
       await screen.findByText(
         "Your change was saved, but your data couldn't be reloaded. Please try again.",
       ),
     ).toBeTruthy();
-    expect(screen.queryByText('Could not remove this asset')).toBeNull();
+    expect(screen.queryByText('Could not remove this asset. Please try again.')).toBeNull();
   });
 
   it.each([
     ['an API error', () => json({ detail: 'Holding not found' }, 404), 'Holding not found'],
-    ['a network error', () => Promise.reject(new TypeError('offline')), 'Could not remove this asset'],
-  ])('shows %s when delete fails', async (_name, route, message) => {
+    ['a network error', () => Promise.reject(new TypeError('offline')), 'Could not remove this asset. Please try again.'],
+  ])('keeps the confirmation open with %s', async (_name, route, message) => {
     routes['DELETE /api/v1/holdings/h1'] = route;
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getAllByTitle('Remove asset')[0]);
-    expect(await screen.findByText(message)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove SPY' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Remove asset?' });
+    expect(await within(dialog).findByText(message)).toBeTruthy();
+    // Nothing was removed, and it can be tried again.
+    expect(within(dialog).getByRole('button', { name: 'Remove' })).toBeTruthy();
+    expect(screen.getByText('SPY')).toBeTruthy();
+  });
+
+  it('starts an empty account off with a way to add its first asset', async () => {
+    routes['GET /api/v1/holdings'] = () => json([]);
+    await renderApp();
+    nav('Assets');
+    expect(screen.getByText('Start by adding what you own')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first asset' }));
+    expect(screen.getByRole('dialog', { name: 'Add an asset' })).toBeTruthy();
   });
 });
 
@@ -698,11 +748,12 @@ describe('history', () => {
     };
     await renderApp();
     nav('History');
-    expect(screen.getByText('No snapshots yet — save one to start tracking your history.')).toBeTruthy();
+    expect(screen.getByText('No checkpoints yet')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save a snapshot' }));
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeTruthy();
     expect(await screen.findByText('May 15, 2026')).toBeTruthy();
+    expect(screen.getByText('Snapshot saved')).toBeTruthy();
   });
 
   it.each([
@@ -721,26 +772,42 @@ describe('history', () => {
 describe('add asset', () => {
   const open = () => fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
   const form = () => screen.getByRole('button', { name: 'Save asset' }).closest('form')!;
-  const type = (placeholder: string, value: string) =>
-    fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value } });
+  const fill = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const suggestions = (label: string) =>
+    [...document.getElementById(screen.getByLabelText(label).getAttribute('list')!)!.children].map((o) => o.getAttribute('value'));
+  const sent = () => JSON.parse(requests('POST', '/api/v1/holdings')[0][1].body);
 
   it('creates a holding on an existing platform and class', async () => {
     routes['POST /api/v1/holdings'] = () => json({}, 201);
     await renderApp();
     open();
-    expect(screen.getByText('Add an asset', { selector: '.dialog-title' })).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Add an asset' });
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Name'));
 
-    type('e.g. Vanguard S&P 500 ETF', '  VOO  ');
-    const [platform, assetClass] = screen.getAllByRole('combobox');
-    fireEvent.change(platform, { target: { value: 'Vault' } });
-    fireEvent.change(assetClass, { target: { value: 'Equity' } });
-    type('0.00', '1500.5');
+    fill('Name', '  VOO  ');
+    fill('Platform', 'Vault');
+    fill('Asset class', 'Equity');
+    fill('Value (USD)', '1500.5');
     fireEvent.submit(form());
 
-    await waitFor(() => expect(screen.queryByText('Save asset')).toBeNull());
-    expect(JSON.parse(requests('POST', '/api/v1/holdings')[0][1].body)).toEqual({
-      name: 'VOO', assetClass: 'Equity', platform: 'Vault', valueUsd: 1500.5,
-    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(sent()).toEqual({ name: 'VOO', assetClass: 'Equity', platform: 'Vault', valueUsd: 1500.5 });
+    expect(screen.getByText('Asset added')).toBeTruthy();
+  });
+
+  it('reads amounts as people type them, and shows how', async () => {
+    routes['POST /api/v1/holdings'] = () => json({}, 201);
+    await renderApp();
+    open();
+    fill('Name', 'Plazo fijo');
+    fill('Platform', 'Vault');
+    fill('Asset class', 'Cash');
+    fill('Value (USD)', '$ 1.234,56');
+    expect(screen.getByText('= $1,234.56')).toBeTruthy();
+    fireEvent.submit(form());
+
+    await waitFor(() => expect(requests('POST', '/api/v1/holdings')).toHaveLength(1));
+    expect(sent().valueUsd).toBe(1234.56);
   });
 
   it('says the asset was saved when only reloading afterwards fails', async () => {
@@ -750,11 +817,10 @@ describe('add asset', () => {
     };
     await renderApp();
     open();
-    type('e.g. Vanguard S&P 500 ETF', 'VOO');
-    const [platform, assetClass] = screen.getAllByRole('combobox');
-    fireEvent.change(platform, { target: { value: 'Vault' } });
-    fireEvent.change(assetClass, { target: { value: 'Equity' } });
-    type('0.00', '1');
+    fill('Name', 'VOO');
+    fill('Platform', 'Vault');
+    fill('Asset class', 'Equity');
+    fill('Value (USD)', '1');
     fireEvent.submit(form());
 
     expect(
@@ -766,57 +832,80 @@ describe('add asset', () => {
     expect(requests('POST', '/api/v1/holdings')).toHaveLength(1);
   });
 
-  it('creates a new platform and class', async () => {
+  it('suggests what exists and says when a platform or class is new, or which one it matches', async () => {
     routes['POST /api/v1/holdings'] = () => json({}, 201);
     await renderApp();
     open();
+    expect(suggestions('Platform')).toEqual(['Balanz', 'Vault', 'Empty']);
+    expect(suggestions('Asset class')).toEqual(['Cash', 'Equity', 'Gold']);
 
-    type('e.g. Vanguard S&P 500 ETF', 'BTC');
-    const [platform, assetClass] = screen.getAllByRole('combobox');
-    fireEvent.change(platform, { target: { value: '__new__' } });
-    fireEvent.change(assetClass, { target: { value: '__new__' } });
-    type('New platform name', ' Binance ');
-    type('New asset class name', ' Crypto ');
-    type('0.00', '10');
+    fill('Platform', 'Vault');
+    expect(screen.queryByText(/Matches|New platform/)).toBeNull();
+    fill('Platform', 'vault');
+    expect(screen.getByText('Matches Vault')).toBeTruthy();
+    fill('Platform', ' Binance ');
+    expect(screen.getByText('New platform — it will be created')).toBeTruthy();
+
+    fill('Asset class', 'Equity');
+    expect(screen.queryByText('New class — it will be created')).toBeNull();
+    fill('Asset class', ' Crypto ');
+    expect(screen.getByText('New class — it will be created')).toBeTruthy();
+
+    fill('Name', 'BTC');
+    fill('Value (USD)', '10');
     fireEvent.submit(form());
-
     await waitFor(() => expect(requests('POST', '/api/v1/holdings')).toHaveLength(1));
-    expect(JSON.parse(requests('POST', '/api/v1/holdings')[0][1].body)).toMatchObject({ platform: 'Binance', assetClass: 'Crypto' });
+    expect(sent()).toMatchObject({ platform: 'Binance', assetClass: 'Crypto' });
   });
 
-  it('starts on "add new" when there are no platforms or classes yet', async () => {
+  it('starts empty, with nothing to suggest, on a new account', async () => {
     routes['GET /api/v1/platforms'] = () => json([]);
     routes['GET /api/v1/asset-classes'] = () => json({ defaults: [], inUse: [], all: [] });
     await renderApp();
     open();
-    expect(screen.getByPlaceholderText('New platform name')).toBeTruthy();
-    expect(screen.getByPlaceholderText('New asset class name')).toBeTruthy();
+    for (const label of ['Platform', 'Asset class']) {
+      expect((screen.getByLabelText(label) as HTMLInputElement).value).toBe('');
+      expect(suggestions(label)).toEqual([]);
+    }
   });
 
-  it('validates before sending', async () => {
+  it('validates before sending, and takes 0 as a value', async () => {
     await renderApp();
     open();
 
     fireEvent.submit(form());
     expect(screen.getByText('Please enter an asset name')).toBeTruthy();
 
-    type('e.g. Vanguard S&P 500 ETF', 'BTC');
-    const [platform, assetClass] = screen.getAllByRole('combobox');
-    fireEvent.change(platform, { target: { value: '__new__' } });
+    fill('Name', 'BTC');
     fireEvent.submit(form());
     expect(screen.getByText('Please choose or enter a platform')).toBeTruthy();
 
-    type('New platform name', 'Binance');
-    fireEvent.change(assetClass, { target: { value: '__new__' } });
+    fill('Platform', 'Binance');
     fireEvent.submit(form());
     expect(screen.getByText('Please choose or enter an asset class')).toBeTruthy();
 
-    type('New asset class name', 'Crypto');
-    type('0.00', '0');
+    fill('Asset class', 'Crypto');
     fireEvent.submit(form());
-    expect(screen.getByText('Please enter a valid positive value')).toBeTruthy();
+    expect(screen.getByText('Please enter a value')).toBeTruthy();
 
+    // The field says what's wrong as soon as it's typed; submitting says it again, at the top.
+    fill('Value (USD)', 'ten');
+    expect(screen.getByText('Enter an amount like 1,234.56', { selector: '.field-error' })).toBeTruthy();
+    expect(screen.getByLabelText('Value (USD)').getAttribute('aria-invalid')).toBe('true');
+    fireEvent.submit(form());
+    expect(screen.getByText('Enter an amount like 1,234.56', { selector: '.form-error' })).toBeTruthy();
+
+    fill('Value (USD)', '-5');
+    fireEvent.submit(form());
+    expect(screen.getAllByText("Amounts can't be negative")).toHaveLength(2);
     expect(requests('POST', '/api/v1/holdings')).toHaveLength(0);
+
+    // An account that's empty for now is worth 0.
+    routes['POST /api/v1/holdings'] = () => json({}, 201);
+    fill('Value (USD)', '0');
+    fireEvent.submit(form());
+    await waitFor(() => expect(requests('POST', '/api/v1/holdings')).toHaveLength(1));
+    expect(sent().valueUsd).toBe(0);
   });
 
   it.each([
@@ -826,26 +915,43 @@ describe('add asset', () => {
     routes['POST /api/v1/holdings'] = route;
     await renderApp();
     open();
-    type('e.g. Vanguard S&P 500 ETF', 'VOO');
-    type('0.00', '1');
+    fill('Name', 'VOO');
+    fill('Platform', 'Vault');
+    fill('Asset class', 'Equity');
+    fill('Value (USD)', '1');
     fireEvent.submit(form());
 
     expect(await screen.findByText(message)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Save asset' })).toBeTruthy();
   });
 
-  it('closes with Cancel or the backdrop, but not when clicking inside', async () => {
+  it('closes with Cancel, Escape or the backdrop, but not when clicking or selecting inside', async () => {
     await renderApp();
+    const opener = screen.getByRole('button', { name: 'Add an asset' });
 
+    opener.focus();
     open();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByText('Save asset')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(opener);
 
     open();
-    fireEvent.click(screen.getByText('Add an asset', { selector: '.dialog-title' }));
-    expect(screen.getByText('Save asset')).toBeTruthy();
-    fireEvent.click(document.querySelector('.dialog-backdrop')!);
-    expect(screen.queryByText('Save asset')).toBeNull();
+    fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    open();
+    const dialog = screen.getByRole('dialog');
+    fireEvent.mouseDown(dialog);
+    fireEvent.click(dialog);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    // Selecting text in a field and letting go over the backdrop keeps the form.
+    const backdrop = document.querySelector('.dialog-backdrop')!;
+    fireEvent.mouseDown(screen.getByLabelText('Name'));
+    fireEvent.click(backdrop);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
 
@@ -870,7 +976,10 @@ describe('profile', () => {
     expect(screen.queryByText('Profile')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Ana Pérez/ }));
-    fireEvent.click(document.querySelector('.dialog-backdrop')!);
+    expect(screen.getByRole('dialog', { name: 'Profile' })).toBeTruthy();
+    const backdrop = document.querySelector('.dialog-backdrop')!;
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
     expect(screen.queryByText('Profile')).toBeNull();
   });
 
@@ -943,7 +1052,7 @@ describe('multiple accounts', () => {
     expect(screen.getByText('Bob bond')).toBeTruthy();
     expect(screen.queryByText('SPY')).toBeNull();
     nav('History');
-    expect(screen.getByText('No snapshots yet — save one to start tracking your history.')).toBeTruthy();
+    expect(screen.getByText('No checkpoints yet')).toBeTruthy();
   };
 
   it('signing out and in as someone else shows only their data', async () => {

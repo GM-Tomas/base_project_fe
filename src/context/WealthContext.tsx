@@ -38,7 +38,6 @@ interface WealthContextType {
   platforms: Platform[];
   snapshots: Snapshot[];
   estimateParams: EstimateParams;
-  isAddModalOpen: boolean;
   loading: boolean;
   loadError: string | null;
 
@@ -63,8 +62,6 @@ interface WealthContextType {
   addHolding: (holding: HoldingInput) => Promise<void>;
   deleteHolding: (id: string) => Promise<void>;
   takeSnapshot: () => Promise<void>;
-  openAddModal: () => void;
-  closeAddModal: () => void;
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
 }
@@ -96,7 +93,6 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [view, setViewState] = useState<ViewType>('dashboard');
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [assetFilter, setAssetFilter] = useState<string>('All');
-  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const holdingsRef = useRef<Holding[]>([]);
@@ -273,7 +269,6 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         platforms,
         snapshots,
         estimateParams,
-        isAddModalOpen,
         loading,
         loadError,
 
@@ -299,8 +294,6 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         addHolding,
         deleteHolding,
         takeSnapshot,
-        openAddModal: () => setIsAddModalOpen(true),
-        closeAddModal: () => setIsAddModalOpen(false),
         refresh,
         retry: () => load(),
       }}

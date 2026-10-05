@@ -1,38 +1,66 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
+import { Trash2 } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
+import { useUi } from '@/context/UiContext';
 import { formatCurrency } from '@/lib/calculations';
 import { assetClassTag } from '@/lib/constants';
-import { ApiError } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { IconButton } from '@/components/ui/IconButton';
+import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
+import type { Holding } from '@/types/wealth';
 
 export const AssetsView: React.FC = () => {
   const {
+    holdings,
     filteredHoldings,
     assetFilter,
     setAssetFilter,
     availableAssetClasses,
     deleteHolding,
   } = useWealth();
-  const [error, setError] = useState('');
+  const { openDialog, toast } = useUi();
 
   const filterOptions = ['All', ...availableAssetClasses];
 
-  const handleDelete = async (id: string) => {
-    setError('');
-    try {
-      await deleteHolding(id);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not remove this asset');
-    }
-  };
+  const confirmRemove = (h: Holding) =>
+    openDialog((close) => (
+      <ConfirmDialog
+        title="Remove asset?"
+        message={`${h.name} on ${h.platform} (${formatCurrency(h.valueUsd)}) will stop counting toward your net worth.`}
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        failureMessage="Could not remove this asset. Please try again."
+        onClose={close}
+        onConfirm={async () => {
+          await deleteHolding(h.id);
+          toast.success('Asset removed');
+        }}
+      />
+    ));
+
+  if (holdings.length === 0) {
+    return (
+      <div className="card elev-sm">
+        <EmptyState
+          title="Start by adding what you own"
+          action={
+            <button className="btn btn-primary" onClick={() => openDialog((close) => <HoldingFormDialog onClose={close} />)}>
+              Add your first asset
+            </button>
+          }
+        >
+          Add each account, fund or coin with what it&apos;s worth in dollars: BASE adds them up and shows where your
+          money lives.
+        </EmptyState>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {error && (
-        <div style={{ fontSize: '13px', color: 'var(--color-negative)' }}>{error}</div>
-      )}
-
       {/* Filter Chips */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {filterOptions.map((opt) => {
@@ -41,6 +69,7 @@ export const AssetsView: React.FC = () => {
             <button
               key={opt}
               onClick={() => setAssetFilter(opt)}
+              aria-pressed={isActive}
               style={{
                 padding: '6px 14px',
                 borderRadius: '999px',
@@ -61,70 +90,53 @@ export const AssetsView: React.FC = () => {
 
       {/* Holdings Table Card */}
       <div className="card elev-sm" style={{ padding: '6px 16px 16px', overflowX: 'auto' }}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Instrument</th>
-              <th>Class</th>
-              <th>Platform</th>
-              <th>Value</th>
-              <th style={{ width: '40px' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredHoldings.length === 0 ? (
+        {filteredHoldings.length === 0 ? (
+          <EmptyState
+            title="No assets match this filter"
+            action={
+              <button className="btn btn-secondary" onClick={() => setAssetFilter('All')}>
+                Show all
+              </button>
+            }
+          />
+        ) : (
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-neutral-400)' }}>
-                  No holdings found for the selected category.
-                </td>
+                <th>Instrument</th>
+                <th>Class</th>
+                <th>Platform</th>
+                <th>Value</th>
+                <th style={{ width: '40px' }}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ) : (
-              filteredHoldings.map((h) => {
-                const tagClass = assetClassTag(h.assetClass);
-
-                return (
-                  <tr key={h.id}>
-                    <td style={{ padding: '12px 10px', fontWeight: 500 }}>{h.name}</td>
-                    <td style={{ padding: '12px 10px' }}>
-                      <span className={tagClass}>{h.assetClass}</span>
-                    </td>
-                    <td style={{ padding: '12px 10px' }} className="text-muted">
-                      {h.platform}
-                    </td>
-                    <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
-                      {formatCurrency(h.valueUsd)}
-                    </td>
-                    <td style={{ padding: '12px 6px', textAlign: 'right' }}>
-                      <button
-                        title="Remove asset"
-                        onClick={() => handleDelete(h.id)}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--color-neutral-600)',
-                          cursor: 'pointer',
-                          padding: '4px',
-                          borderRadius: '4px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'color 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-negative)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-neutral-600)')}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6"></polyline>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredHoldings.map((h) => (
+                <tr key={h.id}>
+                  <td style={{ padding: '12px 10px', fontWeight: 500 }}>{h.name}</td>
+                  <td style={{ padding: '12px 10px' }}>
+                    <span className={assetClassTag(h.assetClass)}>{h.assetClass}</span>
+                  </td>
+                  <td style={{ padding: '12px 10px' }} className="text-muted">
+                    {h.platform}
+                  </td>
+                  <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
+                    {formatCurrency(h.valueUsd)}
+                  </td>
+                  <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                    <div className="row-actions">
+                      <IconButton label={`Remove ${h.name}`} tone="danger" onClick={() => confirmRemove(h)}>
+                        <Trash2 size={15} aria-hidden />
+                      </IconButton>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

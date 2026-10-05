@@ -2,10 +2,15 @@
 
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
+import { useUi } from '@/context/UiContext';
+import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
 import { usesMockData } from '@/lib/dataSource';
 
 export const Header: React.FC = () => {
-  const { view, openAddModal } = useWealth();
+  const { view } = useWealth();
+  const { openDialog } = useUi();
+  // Mounted per opening, so it starts from the current platforms and classes.
+  const openAddModal = () => openDialog((close) => <HoldingFormDialog onClose={close} />);
 
   const viewTitles: Record<string, string> = {
     dashboard: 'Dashboard',
