@@ -7,6 +7,9 @@ import {
   ArrowUpFromLine,
   CircleMinus,
   CirclePlus,
+  CreditCard,
+  HandCoins,
+  Percent,
   TrendingDown,
   TrendingUp,
   Undo2,
@@ -17,7 +20,7 @@ import { useWealth } from '@/context/WealthContext';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/apiError';
 import { formatUsd } from '@/lib/money';
-import { amountOf, describe, formatDay, KIND_LABEL } from '@/lib/movements';
+import { amountOf, describe, formatDay, KIND_LABEL, type Scope } from '@/lib/movements';
 import { IconButton } from '@/components/ui/IconButton';
 import { useMovementFeedback } from '@/components/dialogs/useMovementFeedback';
 import type { Movement, MovementKind } from '@/types/wealth';
@@ -31,6 +34,9 @@ const ICONS: Record<MovementKind, LucideIcon> = {
   WITHDRAWAL: ArrowUpFromLine,
   TRANSFER: ArrowLeftRight,
   ADJUSTMENT: Wrench,
+  DEBT_PAYMENT: HandCoins,
+  DEBT_CHARGE: CreditCard,
+  DEBT_INTEREST: Percent,
 };
 
 export const PAGE_SIZE = 50;
@@ -38,6 +44,8 @@ export const PAGE_SIZE = 50;
 export interface ActivityListProps {
   /** One holding's activity, with amounts as they changed it; everything's otherwise. */
   holdingId?: string;
+  /** One debt's activity, with amounts as they changed what's owed. */
+  debtId?: string;
   kinds?: MovementKind[];
   /** What to say when there's nothing (to show). */
   empty?: string;
@@ -47,7 +55,7 @@ type Loaded = { items: Movement[]; next: string | null };
 
 // The activity log, newest first, a page at a time. It reloads whenever the app's data does (after any
 // change, here or in a dialog), so it never disagrees with the values on screen.
-export function ActivityList({ holdingId, kinds, empty = 'No activity yet' }: ActivityListProps) {
+export function ActivityList({ holdingId, debtId, kinds, empty = 'No activity yet' }: ActivityListProps) {
   const { dataVersion } = useWealth();
   const { confirmUndo } = useMovementFeedback();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -63,20 +71,20 @@ export function ActivityList({ holdingId, kinds, empty = 'No activity yet' }: Ac
     setError('');
     setLoadingMore(false);
     api
-      .getMovements({ holdingId, kinds: kindsKey ? (kindsKey.split(',') as MovementKind[]) : undefined, limit: PAGE_SIZE })
+      .getMovements({ holdingId, debtId, kinds: kindsKey ? (kindsKey.split(',') as MovementKind[]) : undefined, limit: PAGE_SIZE })
       .then((page) => {
         if (current === generation.current) setLoaded({ items: page.items, next: page.nextCursor });
       })
       .catch((e) => {
         if (current === generation.current) setError(errorMessage(e, "Couldn't load the activity. Please try again."));
       });
-  }, [holdingId, kindsKey, dataVersion, attempt]);
+  }, [holdingId, debtId, kindsKey, dataVersion, attempt]);
 
   const loadMore = async () => {
     const current = generation.current;
     setLoadingMore(true);
     try {
-      const page = await api.getMovements({ holdingId, kinds, limit: PAGE_SIZE, cursor: loaded!.next! });
+      const page = await api.getMovements({ holdingId, debtId, kinds, limit: PAGE_SIZE, cursor: loaded!.next! });
       if (current !== generation.current) return;
       setLoaded((list) => ({ items: [...list!.items, ...page.items], next: page.nextCursor }));
     } catch (e) {
@@ -103,7 +111,7 @@ export function ActivityList({ holdingId, kinds, empty = 'No activity yet' }: Ac
     <div>
       <ul className="activity-list" aria-label="Activity">
         {loaded.items.map((m) => (
-          <ActivityRow key={m.id} movement={m} holdingId={holdingId} onUndo={() => confirmUndo(m)} />
+          <ActivityRow key={m.id} movement={m} scope={{ holdingId, debtId }} onUndo={() => confirmUndo(m)} />
         ))}
       </ul>
       {error && (
@@ -122,15 +130,15 @@ export function ActivityList({ holdingId, kinds, empty = 'No activity yet' }: Ac
   );
 }
 
-function ActivityRow({ movement: m, holdingId, onUndo }: { movement: Movement; holdingId?: string; onUndo: () => void }) {
+function ActivityRow({ movement: m, scope, onUndo }: { movement: Movement; scope: Scope; onUndo: () => void }) {
   const Icon = ICONS[m.kind];
-  const { title, details } = describe(m, holdingId);
-  const amount = amountOf(m, holdingId);
+  const { title, details } = describe(m, scope);
+  const amount = amountOf(m, scope);
   const label = KIND_LABEL[m.kind].toLowerCase();
   const undoLabel =
     m.kind === 'TRANSFER'
       ? `Undo transfer of ${formatUsd(m.amountUsd)} from ${m.holding!.name} to ${m.toHolding!.name}`
-      : `Undo ${label} of ${formatUsd(m.amountUsd)} on ${m.holding!.name}`;
+      : `Undo ${label} of ${formatUsd(m.amountUsd)} on ${(m.debt ?? m.holding)!.name}`;
   return (
     <li className="activity-row">
       <span className={`activity-icon kind-${m.kind.toLowerCase()}`} aria-hidden>

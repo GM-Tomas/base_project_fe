@@ -300,6 +300,12 @@ select.input option {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+textarea.input { resize: vertical; line-height: 1.45; }
 
 /* Range Sliders */
 input[type="range"] {
@@ -797,7 +803,10 @@ input[type="date"] { color-scheme: dark; }
 .kind-loss { color: var(--color-negative); background: color-mix(in srgb, var(--color-negative) 14%, transparent); }
 .kind-deposit,
 .kind-withdrawal { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
-.kind-transfer { color: var(--color-accent-2); background: color-mix(in srgb, var(--color-accent-2) 14%, transparent); }
+.kind-transfer,
+.kind-debt_charge { color: var(--color-accent-2); background: color-mix(in srgb, var(--color-accent-2) 14%, transparent); }
+.kind-debt_payment { color: var(--color-positive); background: color-mix(in srgb, var(--color-positive) 14%, transparent); }
+.kind-debt_interest { color: var(--color-negative); background: color-mix(in srgb, var(--color-negative) 14%, transparent); }
 .activity-main { flex: 1; min-width: 0; }
 .activity-title {
   font-size: 13.5px;
@@ -832,6 +841,75 @@ input[type="date"] { color-scheme: dark; }
   justify-content: center;
   padding-top: 12px;
 }
+
+.hero-split {
+  position: relative;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+}
+
+/* A card that takes you somewhere: the whole card is the button */
+.card-button {
+  width: 100%;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+.card-button:hover { box-shadow: 0 0 0 1px var(--color-accent); }
+
+/* Debts */
+.debt-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.metric-value {
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+.debt-sub { font-size: 12px; margin-top: 2px; }
+.debt-payoff { font-size: 13px; min-width: 170px; }
+.debt-terms {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.debt-terms dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.debt-terms dd { margin: 2px 0 0; font-size: 14px; font-weight: 500; }
+.debt-notes {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--color-text) 75%, transparent);
+}
+.quick-amounts { display: flex; gap: 14px; }
+
+/* Chart legends */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-swatch { width: 18px; height: 0; border-top: 2.5px solid var(--color-accent-500); }
+.legend-net-worth { border-top: 2px dashed var(--color-accent-2); }
 
 /* Toasts */
 .toast-region {

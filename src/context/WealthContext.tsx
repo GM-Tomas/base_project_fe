@@ -1,11 +1,11 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
-import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams, Movement } from '@/types/wealth';
+import { Holding, Platform, Snapshot, WealthSummary, AssetClass, ViewType, EstimateParams, Movement, Debt } from '@/types/wealth';
 import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
 import { initialOf } from '@/lib/initial';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
-import { api, ApiError, HoldingInput, HoldingPatch, MovementInput } from '@/lib/api';
+import { api, ApiError, DebtInput, DebtPatch, HoldingInput, HoldingPatch, MovementInput } from '@/lib/api';
 import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
 
 interface ClassDistributionItem {
@@ -36,6 +36,8 @@ interface WealthContextType {
   selectedPlatform: string | null;
   assetsTable: AssetsTableState;
   holdings: Holding[];
+  /** Largest balance first. */
+  debts: Debt[];
   platforms: Platform[];
   snapshots: Snapshot[];
   estimateParams: EstimateParams;
@@ -45,8 +47,13 @@ interface WealthContextType {
   dataVersion: number;
 
   // Computed Values
+  /** Assets minus debts: below zero when more is owed than owned. */
   netWorthUSD: number;
   netWorthFormatted: string;
+  assetsUSD: number;
+  debtsUSD: number;
+  /** The debts' monthly payments, those that have one. */
+  monthlyDebtPaymentsUSD: number;
   ytdGrowthFormatted: string;
   ytdLabel: string;
   liquidityPct: number;
@@ -68,7 +75,10 @@ interface WealthContextType {
   deleteHolding: (id: string) => Promise<void>;
   takeSnapshot: () => Promise<void>;
   deleteSnapshot: (id: string) => Promise<void>;
-  /** Records a gain, loss, deposit, withdrawal or transfer; resolves to it once data is reloaded. */
+  addDebt: (input: DebtInput) => Promise<Debt>;
+  updateDebt: (id: string, patch: DebtPatch) => Promise<void>;
+  deleteDebt: (id: string) => Promise<void>;
+  /** Records a gain, loss, deposit, withdrawal, transfer or what happened to a debt; resolves to it once data is reloaded. */
   recordMovement: (input: MovementInput) => Promise<Movement>;
   /** Undoes a movement: its effect on values is reverted and it's gone from the activity. */
   revertMovement: (id: string) => Promise<void>;
@@ -92,6 +102,8 @@ const reason = (e: unknown) => (e instanceof ApiError ? `: ${e.message}` : '. Pl
 
 const EMPTY_SUMMARY: WealthSummary = {
   netWorth: { usd: 0 },
+  assets: { usd: 0 },
+  debts: { usd: 0, count: 0, monthlyPaymentUsd: 0 },
   holdingsCount: 0,
   ytd: { basis: 'NO_BASELINE', growthPct: 0 },
   liquidity: { liquidPct: 0, illiquidPct: 0, liquidAssetClasses: [] },
@@ -111,6 +123,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // the answer to a newer one than what's on screen is shown.
   const refreshesStarted = useRef(0);
   const refreshShown = useRef(0);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [summary, setSummary] = useState<WealthSummary>(EMPTY_SUMMARY);
@@ -140,6 +153,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         api.getPlatforms(),
         api.getAssetClasses(),
         api.getSnapshots(),
+        api.getDebts(),
       ]);
     } catch (e) {
       // Newer data is already on screen: nothing to report.
@@ -148,7 +162,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       refreshShown.current = refreshId;
       throw e;
     }
-    const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes] = results;
+    const [summaryRes, holdingsRes, platformsRes, assetClassesRes, snapshotsRes, debtsRes] = results;
     if (refreshId < refreshShown.current) return;
     refreshShown.current = refreshId;
     setLoadError(null); // an earlier refresh's failure, if any, is moot now
@@ -159,6 +173,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setPlatforms(platformsRes);
     setAssetClasses(assetClassesRes.all);
     setSnapshots(snapshotsRes);
+    setDebts(debtsRes);
     setSelectedPlatform((selected) => followPlatform(selected, before, holdingsRes));
     setDataVersion((v) => v + 1);
   }, []);
@@ -191,6 +206,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // recomputed from the raw holdings list on every render.
   const netWorthUSD = summary.netWorth.usd;
   const netWorthFormatted = useMemo(() => formatCurrency(netWorthUSD), [netWorthUSD]);
+  const assetsUSD = summary.assets.usd;
+  const debtsUSD = summary.debts.usd;
+  const monthlyDebtPaymentsUSD = summary.debts.monthlyPaymentUsd;
   const ytdGrowthFormatted = useMemo(() => formatPercentage(summary.ytd.growthPct), [summary.ytd.growthPct]);
   const ytdLabel = useMemo(() => {
     if (summary.ytd.basis === 'YEAR_START_SNAPSHOT') return 'since January';
@@ -293,6 +311,39 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [refresh],
   );
 
+  const addDebt = useCallback(
+    async (input: DebtInput) => {
+      const debt = await api.createDebt(input);
+      await reloadAfterChange();
+      return debt;
+    },
+    [reloadAfterChange],
+  );
+
+  const updateDebt = useCallback(
+    async (id: string, patch: DebtPatch) => {
+      try {
+        await api.updateDebt(id, patch);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
+  const deleteDebt = useCallback(
+    async (id: string) => {
+      try {
+        await api.deleteDebt(id);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
   const recordMovement = useCallback(
     async (input: MovementInput) => {
       let movement: Movement;
@@ -326,6 +377,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         selectedPlatform,
         assetsTable,
         holdings,
+        debts,
         platforms,
         snapshots,
         estimateParams,
@@ -335,6 +387,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         netWorthUSD,
         netWorthFormatted,
+        assetsUSD,
+        debtsUSD,
+        monthlyDebtPaymentsUSD,
         ytdGrowthFormatted,
         ytdLabel,
         liquidityPct,
@@ -360,6 +415,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteHolding,
         takeSnapshot,
         deleteSnapshot,
+        addDebt,
+        updateDebt,
+        deleteDebt,
         recordMovement,
         revertMovement,
         refresh,

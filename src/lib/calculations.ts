@@ -1,8 +1,9 @@
 /**
- * Format a USD value for display
+ * Format a USD value for display, in whole dollars: "$1,234", or "−$1,234" below zero (a net worth can be).
  */
 export function formatCurrency(valUSD: number): string {
-  return '$' + Math.round(valUSD).toLocaleString('en-US');
+  const rounded = Math.round(valUSD);
+  return (rounded < 0 ? '−$' : '$') + Math.abs(rounded).toLocaleString('en-US');
 }
 
 /**
@@ -13,13 +14,15 @@ export function formatPercentage(n: number): string {
 }
 
 /**
- * Generate smooth SVG path and coordinate points from an array of numbers
+ * Generate smooth SVG path and coordinate points from an array of numbers. Lines drawn on one chart share a
+ * scale: pass the lowest and highest of all of them as `scale` (each line's own otherwise).
  */
 export function generateLinePath(
   values: number[],
   width: number,
   height: number,
-  padding: number
+  padding: number,
+  scale?: { min: number; max: number }
 ): { pathString: string; points: [number, number][] } {
   if (!values.length) return { pathString: '', points: [] };
   if (values.length === 1) {
@@ -27,8 +30,8 @@ export function generateLinePath(
     return { pathString: `M ${padding},${y} L ${width - padding},${y}`, points: [[padding, y], [width - padding, y]] };
   }
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const min = scale?.min ?? Math.min(...values);
+  const max = scale?.max ?? Math.max(...values);
   const range = max - min || 1;
   const step = (width - 2 * padding) / (values.length - 1);
 

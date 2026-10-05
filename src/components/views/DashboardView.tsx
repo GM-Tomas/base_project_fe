@@ -5,10 +5,16 @@ import { useWealth } from '@/context/WealthContext';
 import { useUi } from '@/context/UiContext';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
+import { formatCurrency } from '@/lib/calculations';
 
 export const DashboardView: React.FC = () => {
   const {
+    netWorthUSD,
     netWorthFormatted,
+    assetsUSD,
+    debtsUSD,
+    debts,
+    monthlyDebtPaymentsUSD,
     ytdGrowthFormatted,
     ytdLabel,
     platforms,
@@ -17,6 +23,7 @@ export const DashboardView: React.FC = () => {
     illiquidPct,
     classDistribution,
     platformDistribution,
+    setView,
   } = useWealth();
   const { openDialog } = useUi();
 
@@ -112,7 +119,7 @@ export const DashboardView: React.FC = () => {
               }}
             />
             <div className="card-kicker" style={{ margin: 0 }}>
-              Everything you own, right now
+              Your net worth, right now
             </div>
           </div>
 
@@ -124,11 +131,16 @@ export const DashboardView: React.FC = () => {
               fontVariantNumeric: 'tabular-nums',
               margin: '8px 0 4px',
               position: 'relative',
-              color: 'var(--color-text)',
+              color: netWorthUSD < 0 ? 'var(--color-negative)' : 'var(--color-text)',
             }}
           >
             {netWorthFormatted}
           </div>
+          {debtsUSD > 0 && (
+            <div className="hero-split">
+              Assets {formatCurrency(assetsUSD)} · Debts {formatCurrency(debtsUSD)}
+            </div>
+          )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
             <div
@@ -164,13 +176,23 @@ export const DashboardView: React.FC = () => {
             <div className="card-body">Term deposits & fixed income</div>
           </div>
 
-          <div className="card elev-sm">
-            <div className="card-kicker">Accounts</div>
-            <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--color-text)' }}>
-              {platforms.length}
-            </div>
-            <div className="card-body">Banks, brokers & exchanges</div>
-          </div>
+          <button type="button" className="card elev-sm card-button" onClick={() => setView('debts')}>
+            <div className="card-kicker">You owe</div>
+            {debts.length === 0 ? (
+              <>
+                <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--color-text)' }}>Nothing owed</div>
+                <div className="card-body">Cards, loans or a mortgage go in Debts</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--color-text)' }}>{formatCurrency(debtsUSD)}</div>
+                <div className="card-body">
+                  {debts.length} {debts.length === 1 ? 'debt' : 'debts'}
+                  {monthlyDebtPaymentsUSD > 0 && ` · ${formatCurrency(monthlyDebtPaymentsUSD)} a month`}
+                </div>
+              </>
+            )}
+          </button>
 
           <div className="card elev-sm">
             <div className="card-kicker">Holdings</div>

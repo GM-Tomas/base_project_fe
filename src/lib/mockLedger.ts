@@ -1,56 +1,116 @@
-import type { Holding, Movement, MovementHolding, MovementKind, MovementPage, ValueChangeReason } from '@/types/wealth';
+import type {
+  BalanceChangeReason,
+  Debt,
+  Holding,
+  Movement,
+  MovementDebt,
+  MovementHolding,
+  MovementKind,
+  MovementPage,
+  ValueChangeReason,
+} from '@/types/wealth';
 import type { MovementInput, MovementQuery } from './api';
 import { ApiError } from './apiError';
 import { formatUsd } from './money';
 
 // The API's activity log (base_project_go: MovementService), in memory: the same kinds, effects, limits,
-// order and messages. Holdings keep their current value; movements say how it got there.
+// order and messages. Holdings and debts keep their current value; movements say how it got there.
 
 const MAX_MOVEMENTS = 20_000;
 const MAX_NOTE = 200;
 const MAX_AMOUNT = 1e15;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const RECORDABLE: MovementKind[] = ['GAIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER'];
-const ALL_KINDS: MovementKind[] = ['OPENING', 'CLOSING', ...RECORDABLE, 'ADJUSTMENT'];
+const DEBT_KINDS: MovementKind[] = ['DEBT_PAYMENT', 'DEBT_CHARGE', 'DEBT_INTEREST'];
+const RECORDABLE: MovementKind[] = ['GAIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', ...DEBT_KINDS];
+const ALL_KINDS: MovementKind[] = ['OPENING', 'CLOSING', 'GAIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'ADJUSTMENT', ...DEBT_KINDS];
 const REASONS: (ValueChangeReason | '')[] = ['', 'MARKET', 'CASH_FLOW', 'CORRECTION'];
+const BALANCE_REASONS: (BalanceChangeReason | '')[] = ['', 'PAYMENT', 'CHARGE', 'INTEREST', 'CORRECTION'];
 
 const WHY_NOT_BELOW_ZERO: Partial<Record<MovementKind, string>> = {
   LOSS: "a loss can't be larger than that.",
   WITHDRAWAL: "you can't withdraw more than that.",
   TRANSFER: "you can't transfer more than that.",
+  DEBT_PAYMENT: "you can't pay more than that.",
 };
 
+/** A debt as the mock keeps it: what the API stores, without its payoff (worked out when it's read). */
+export type MockDebt = Omit<Debt, 'payoff'>;
+
 type Ref = Omit<MovementHolding, 'exists'>;
-type Stored = Omit<Movement, 'revertible' | 'holding' | 'toHolding'> & { holding: Ref | null; toHolding: Ref | null };
+type DebtRef = Omit<MovementDebt, 'exists'>;
+type Stored = Omit<Movement, 'revertible' | 'holding' | 'toHolding' | 'debt'> & {
+  holding: Ref | null;
+  toHolding: Ref | null;
+  debt: DebtRef | null;
+};
 type FieldError = { field: string; message: string };
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 const refOf = (h: Holding): Ref => ({ id: h.id, name: h.name, platform: h.platform, assetClass: h.assetClass });
+const debtRefOf = (d: MockDebt): DebtRef => ({ id: d.id, name: d.name, lender: d.lender });
 const invalid = (errors: FieldError[]) => new ApiError(400, errors.map((e) => e.message).join('; '), errors);
 const insufficient = (h: Holding, why: string) => new ApiError(409, `${h.name} is worth ${formatUsd(h.valueUsd)}: ${why}`);
 // JSON has no NaN or Infinity: the API gets null for them, which it reads as 0.
 const sent = (n: number | undefined) => (n !== undefined && Number.isFinite(n) ? n : 0);
+const isDebtKind = (kind: MovementKind) => DEBT_KINDS.includes(kind);
 
 /** What a movement did to holding values: signed changes, undone with the signs flipped. */
 function effect(m: Stored): [holdingId: string, delta: number][] {
-  const own = m.holding!.id;
+  const amount = m.amountUsd;
   switch (m.kind) {
     case 'OPENING':
     case 'GAIN':
     case 'DEPOSIT':
-      return [[own, m.amountUsd]];
+      return m.holding ? [[m.holding.id, amount]] : [];
     case 'CLOSING':
     case 'LOSS':
     case 'WITHDRAWAL':
-      return [[own, -m.amountUsd]];
+    case 'DEBT_PAYMENT':
+      return m.holding ? [[m.holding.id, -amount]] : [];
     case 'TRANSFER':
       return [
-        [own, -m.amountUsd],
-        [m.toHolding!.id, cents(m.amountUsd - (m.feeUsd ?? 0))],
+        [m.holding!.id, -amount],
+        [m.toHolding!.id, cents(amount - (m.feeUsd ?? 0))],
       ];
+    case 'DEBT_CHARGE':
+      return m.toHolding ? [[m.toHolding.id, amount]] : [];
     case 'ADJUSTMENT':
-      return [[own, cents(m.newValueUsd! - m.previousValueUsd!)]];
+      return m.holding ? [[m.holding.id, cents(m.newValueUsd! - m.previousValueUsd!)]] : [];
+    case 'DEBT_INTEREST':
+      return [];
   }
+}
+
+/** What a movement did to its debt's balance (positive: more owed), or null when it isn't about one. */
+function debtEffect(m: Stored): number | null {
+  if (!m.debt) return null;
+  switch (m.kind) {
+    case 'OPENING':
+    case 'DEBT_CHARGE':
+    case 'DEBT_INTEREST':
+      return m.amountUsd;
+    case 'CLOSING':
+    case 'DEBT_PAYMENT':
+      return -m.amountUsd;
+    case 'ADJUSTMENT':
+      return cents(m.newValueUsd! - m.previousValueUsd!);
+    default:
+      return null;
+  }
+}
+
+/** What an edit of a debt's balance is recorded as, for this reason (the API refuses a reason going the other way). */
+export function balanceChangeKind(reason: BalanceChangeReason, previous: number, next: number): MovementKind {
+  const up = next > previous;
+  if (reason === 'PAYMENT') {
+    if (up) throw new ApiError(400, 'A payment can only lower the balance');
+    return 'DEBT_PAYMENT';
+  }
+  if (reason === 'CHARGE' || reason === 'INTEREST') {
+    if (!up) throw new ApiError(400, 'New charges and interest can only raise the balance');
+    return reason === 'CHARGE' ? 'DEBT_CHARGE' : 'DEBT_INTEREST';
+  }
+  return 'ADJUSTMENT';
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -58,7 +118,7 @@ const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:
 
 // A date (YYYY-MM-DD: that day at the given UTC time) or an RFC 3339 instant, as the API reads them; null
 // when it's neither. Unlike Date's parser, there's no February 30.
-function parseWhen(raw: string, dayTime: string): Date | null {
+export function parseWhen(raw: string, dayTime: string): Date | null {
   const parts = DATE.exec(raw) ?? INSTANT.exec(raw);
   if (!parts) return null;
   const [year, month, day] = parts.slice(1, 4).map(Number);
@@ -67,7 +127,7 @@ function parseWhen(raw: string, dayTime: string): Date | null {
   return Number.isNaN(at.getTime()) ? null : at;
 }
 
-const BAD_WHEN = (field: string) => `${field} must be a date (YYYY-MM-DD) or a date and time (RFC 3339)`;
+export const BAD_WHEN = (field: string) => `${field} must be a date (YYYY-MM-DD) or a date and time (RFC 3339)`;
 
 // When a movement happened: a date is noon UTC (no time zone within ±11 h moves it to another day); not
 // before 1970, not after tomorrow (a day of slack for time zones ahead of the server's).
@@ -117,14 +177,15 @@ export interface NewHolding {
 
 export interface LedgerStore {
   holdings: Holding[];
+  debts: MockDebt[];
   now: () => Date;
   /** Validates a holding as POST /holdings does (its value is 0), to add it later. */
   newHolding: (input: { name: string; assetClass: string; platform: string }) => NewHolding;
 }
 
-export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
+export function createMockLedger({ holdings, debts, now, newHolding }: LedgerStore) {
   const movements: Stored[] = [];
-  // How many count toward the quota: all but CLOSINGs (removing a holding always works).
+  // How many count toward the quota: all but CLOSINGs (removing a holding or a debt always works).
   let counted = 0;
   const keep = (m: Stored) => {
     movements.push(m);
@@ -138,6 +199,11 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
     if (!h) throw new ApiError(404, `Holding ${holdingId} not found`);
     return h;
   };
+  const findDebt = (debtId: string) => {
+    const d = debts.find((x) => x.id === debtId);
+    if (!d) throw new ApiError(404, `Debt ${debtId} not found`);
+    return d;
+  };
   const roomForOneMore = () => {
     if (counted >= MAX_MOVEMENTS) {
       throw new ApiError(409, `You've reached the limit of ${MAX_MOVEMENTS} recorded changes. Undo some to record new ones.`);
@@ -149,15 +215,20 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
     const exists = (ref: Ref | null) => !!ref && holdings.some((h) => h.id === ref.id);
     const holding = m.holding && { ...m.holding, exists: exists(m.holding) };
     const toHolding = m.toHolding && { ...m.toHolding, exists: exists(m.toHolding) };
+    const debt = m.debt && { ...m.debt, exists: debts.some((d) => d.id === m.debt!.id) };
     const revertible =
-      m.kind !== 'OPENING' && m.kind !== 'CLOSING' && (!holding || holding.exists) && (!toHolding || toHolding.exists);
-    return { ...m, holding, toHolding, revertible };
+      m.kind !== 'OPENING' &&
+      m.kind !== 'CLOSING' &&
+      (!holding || holding.exists) &&
+      (!toHolding || toHolding.exists) &&
+      (!debt || debt.exists);
+    return { ...m, holding, toHolding, debt, revertible };
   };
+  const nothing = { feeUsd: null, holding: null, toHolding: null, debt: null, previousValueUsd: null, newValueUsd: null, note: null };
   const lifecycle = (kind: 'OPENING' | 'CLOSING', h: Holding, at = now().toISOString()) =>
-    store({
-      kind, occurredAt: at, createdAt: at, amountUsd: h.valueUsd, feeUsd: null, holding: refOf(h), toHolding: null,
-      previousValueUsd: null, newValueUsd: null, note: null,
-    });
+    store({ ...nothing, kind, occurredAt: at, createdAt: at, amountUsd: h.valueUsd, holding: refOf(h) });
+  const debtLifecycle = (kind: 'OPENING' | 'CLOSING', d: MockDebt, at = now().toISOString()) =>
+    store({ ...nothing, kind, occurredAt: at, createdAt: at, amountUsd: d.balanceUsd, debt: debtRefOf(d) });
 
   // A transfer's holdings, checked as the API checks them (every problem at once).
   function transferErrors(input: Extract<MovementInput, { kind: 'TRANSFER' }>) {
@@ -172,11 +243,59 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
     return errors;
   }
 
+  // A debt's payment, charge or interest: the debt's balance changes, and so does the holding the money came
+  // from (a payment) or went to (a charge), if one is named.
+  function debtMovement(input: Extract<MovementInput, { debtId: string }>, value: number, at: string, text: string | null) {
+    if (!input.debtId) throw invalid([{ field: 'debtId', message: 'debtId is required' }]);
+    const d = findDebt(input.debtId);
+    const holdingId =
+      input.kind === 'DEBT_PAYMENT' ? input.fromHoldingId : input.kind === 'DEBT_CHARGE' ? input.toHoldingId : undefined;
+    const h = holdingId ? find(holdingId) : null;
+    const delta = input.kind === 'DEBT_PAYMENT' ? -value : value;
+    if (cents(d.balanceUsd + delta) < 0) throw new ApiError(409, `${d.name} only has ${formatUsd(d.balanceUsd)} left to pay.`);
+    if (h && input.kind === 'DEBT_PAYMENT' && cents(h.valueUsd - value) < 0) throw insufficient(h, WHY_NOT_BELOW_ZERO.DEBT_PAYMENT!);
+    roomForOneMore();
+    const [debtRef, ref] = [debtRefOf(d), h && refOf(h)];
+    const stamp = now().toISOString();
+    d.balanceUsd = cents(d.balanceUsd + delta);
+    d.updatedAt = stamp;
+    if (h) {
+      h.valueUsd = cents(h.valueUsd + (input.kind === 'DEBT_PAYMENT' ? -value : value));
+      h.updatedAt = stamp;
+    }
+    return view(
+      store({
+        ...nothing, kind: input.kind, occurredAt: at, amountUsd: value, note: text, debt: debtRef,
+        holding: input.kind === 'DEBT_PAYMENT' ? ref : null, toHolding: input.kind === 'DEBT_CHARGE' ? ref : null,
+      }),
+    );
+  }
+
   return {
-    /** Counts toward the quota before a holding is added (its OPENING). */
+    /** Counts toward the quota before a holding or a debt is added (its OPENING). */
     roomForOneMore,
     opened: (h: Holding, at?: string) => void lifecycle('OPENING', h, at),
     closed: (h: Holding) => void lifecycle('CLOSING', h),
+    debtOpened: (d: MockDebt) => void debtLifecycle('OPENING', d),
+    debtClosed: (d: MockDebt) => void debtLifecycle('CLOSING', d),
+
+    /** Checks what an edit of a debt's balance would carry, before anything changes. */
+    checkDebtEdit(reason: string | undefined, rawOccurredAt: string | undefined, rawNote: string | undefined) {
+      if (reason !== undefined && !BALANCE_REASONS.includes(reason as BalanceChangeReason)) {
+        throw new ApiError(400, `balanceChangeReason must be one of PAYMENT, CHARGE, INTEREST, CORRECTION (got "${reason}")`);
+      }
+      const text = note(rawNote);
+      return { reason: (reason || 'CORRECTION') as BalanceChangeReason, at: occurredAt(rawOccurredAt, now()), note: text };
+    },
+
+    /** Records an edit of a debt's balance (d as it is after it), as kind. */
+    debtEdited(d: MockDebt, previous: number, kind: MovementKind, edit: { at: string; note: string | null }) {
+      const next = d.balanceUsd;
+      store({
+        ...nothing, kind, occurredAt: edit.at, amountUsd: cents(Math.abs(next - previous)), debt: debtRefOf(d),
+        previousValueUsd: previous, newValueUsd: next, note: edit.note,
+      });
+    },
 
     /** Checks what an edit's movement would carry, before anything changes (as the API validates first). */
     checkEdit(reason: string | undefined, rawOccurredAt: string | undefined, rawNote: string | undefined) {
@@ -194,8 +313,8 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
       const kind: MovementKind =
         edit.reason === 'CORRECTION' ? 'ADJUSTMENT' : edit.reason === 'CASH_FLOW' ? (up ? 'DEPOSIT' : 'WITHDRAWAL') : up ? 'GAIN' : 'LOSS';
       store({
-        kind, occurredAt: edit.at, amountUsd: cents(Math.abs(next - previous)), feeUsd: null, holding: refOf(h),
-        toHolding: null, previousValueUsd: previous, newValueUsd: next, note: edit.note,
+        ...nothing, kind, occurredAt: edit.at, amountUsd: cents(Math.abs(next - previous)), holding: refOf(h),
+        previousValueUsd: previous, newValueUsd: next, note: edit.note,
       });
     },
 
@@ -208,13 +327,16 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
         throw invalid([{ field: 'occurredAt', message: BAD_WHEN('occurredAt') }]);
       }
       if (!RECORDABLE.includes(input.kind)) {
-        throw invalid([{ field: 'kind', message: 'kind must be one of GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER' }]);
+        throw invalid([{ field: 'kind', message: 'kind must be one of GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER, DEBT_PAYMENT, DEBT_CHARGE, DEBT_INTEREST' }]);
       }
       const value = money(sent(input.amountUsd));
       if (value === 0) throw new ApiError(400, 'amount must be greater than 0');
       const text = note(input.note);
       const at = occurredAt(input.occurredAt, now());
 
+      if (input.kind === 'DEBT_PAYMENT' || input.kind === 'DEBT_CHARGE' || input.kind === 'DEBT_INTEREST') {
+        return debtMovement(input, value, at, text);
+      }
       if (input.kind !== 'TRANSFER') {
         if (!input.holdingId) throw invalid([{ field: 'holdingId', message: 'holdingId is required' }]);
         const h = find(input.holdingId);
@@ -224,7 +346,7 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
         const ref = refOf(h);
         h.valueUsd = cents(h.valueUsd + delta);
         h.updatedAt = now().toISOString();
-        return view(store({ kind: input.kind, occurredAt: at, amountUsd: value, feeUsd: null, holding: ref, toHolding: null, previousValueUsd: null, newValueUsd: null, note: text }));
+        return view(store({ ...nothing, kind: input.kind, occurredAt: at, amountUsd: value, holding: ref, note: text }));
       }
 
       const errors = transferErrors(input);
@@ -246,13 +368,16 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
       from.valueUsd = cents(from.valueUsd - value);
       destination.valueUsd = cents(destination.valueUsd + value - feeUsd);
       from.updatedAt = destination.updatedAt = stamp;
-      return view(store({ kind: 'TRANSFER', occurredAt: at, amountUsd: value, feeUsd, holding: fromRef, toHolding: toRef, previousValueUsd: null, newValueUsd: null, note: text }));
+      return view(store({ ...nothing, kind: 'TRANSFER', occurredAt: at, amountUsd: value, feeUsd, holding: fromRef, toHolding: toRef, note: text }));
     },
 
     list(query: MovementQuery = {}): MovementPage {
       const errors: FieldError[] = [];
       if (query.kinds?.some((k) => !ALL_KINDS.includes(k))) {
-        errors.push({ field: 'kind', message: 'kind must be a comma-separated list of OPENING, CLOSING, GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER, ADJUSTMENT' });
+        errors.push({
+          field: 'kind',
+          message: `kind must be a comma-separated list of ${ALL_KINDS.join(', ')}`,
+        });
       }
       // A date covers the whole UTC day: from its first instant, to its last.
       const bound = (field: 'from' | 'to', dayTime: string) => {
@@ -273,6 +398,7 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
         .filter(
           (m) =>
             (!query.holdingId || m.holding?.id === query.holdingId || m.toHolding?.id === query.holdingId) &&
+            (!query.debtId || m.debt?.id === query.debtId) &&
             (!query.kinds?.length || query.kinds.includes(m.kind)) &&
             (!from || m.occurredAt >= from) &&
             (!to || m.occurredAt <= to) &&
@@ -291,7 +417,7 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
       if (index < 0) throw new ApiError(404, `Movement ${movementId} not found`);
       const m = movements[index];
       if (m.kind === 'OPENING' || m.kind === 'CLOSING') {
-        throw new ApiError(409, "Adding or removing an asset can't be undone here: remove the asset, or add it again.");
+        throw new ApiError(409, `Adding or removing ${m.debt ? 'a debt' : 'an asset'} can't be undone here: remove it, or add it again.`);
       }
       const changes = effect(m).map(([holdingId, delta]) => {
         const h = holdings.find((x) => x.id === holdingId);
@@ -300,18 +426,39 @@ export function createMockLedger({ holdings, now, newHolding }: LedgerStore) {
         if (cents(h.valueUsd - delta) < 0) throw insufficient(h, 'undoing this would take it below zero.');
         return [h, delta] as const;
       });
+      const debtDelta = debtEffect(m);
+      let debt: MockDebt | undefined;
+      if (debtDelta !== null) {
+        debt = debts.find((d) => d.id === m.debt!.id);
+        if (!debt) throw new ApiError(409, `${m.debt!.name} was removed, so this can't be undone.`);
+        if (cents(debt.balanceUsd - debtDelta) < 0) {
+          throw new ApiError(409, `${debt.name} has ${formatUsd(debt.balanceUsd)} left to pay: undoing this would take it below zero.`);
+        }
+      }
       const stamp = now().toISOString();
       for (const [h, delta] of changes) {
         h.valueUsd = cents(h.valueUsd - delta);
         h.updatedAt = stamp;
+      }
+      if (debt) {
+        debt.balanceUsd = cents(debt.balanceUsd - debtDelta!);
+        debt.updatedAt = stamp;
       }
       movements.splice(index, 1);
       counted--;
     },
 
     /** A past movement for the demo's history (values are seeded as they end up). */
-    seed(m: Omit<Stored, 'id' | 'holding' | 'toHolding'> & { holding: Holding; toHolding?: Holding }) {
-      keep({ ...m, id: id(), holding: refOf(m.holding), toHolding: m.toHolding ? refOf(m.toHolding) : null });
+    seed(
+      m: Omit<Stored, 'id' | 'holding' | 'toHolding' | 'debt'> & { holding?: Holding; toHolding?: Holding; debt?: MockDebt },
+    ) {
+      keep({
+        ...m,
+        id: id(),
+        holding: m.holding ? refOf(m.holding) : null,
+        toHolding: m.toHolding ? refOf(m.toHolding) : null,
+        debt: m.debt ? debtRefOf(m.debt) : null,
+      });
     },
   };
 }

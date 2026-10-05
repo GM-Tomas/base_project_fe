@@ -14,7 +14,7 @@ const UNDO_FAILED = "Couldn't undo this change. Please try again.";
 // What a movement's title says it was, for its confirmation: "Gain of $50.00 on Bitcoin (Oct 3, 2026)".
 function summary(m: Movement) {
   const what = `${KIND_LABEL[m.kind]} of ${formatUsd(m.amountUsd)}`;
-  const where = m.kind === 'TRANSFER' ? `from ${m.holding!.name} to ${m.toHolding!.name}` : `on ${m.holding!.name}`;
+  const where = m.kind === 'TRANSFER' ? `from ${m.holding!.name} to ${m.toHolding!.name}` : `on ${(m.debt ?? m.holding)!.name}`;
   return `${what} ${where} (${formatDay(m.occurredAt)}).`;
 }
 

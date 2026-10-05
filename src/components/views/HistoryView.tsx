@@ -16,15 +16,24 @@ import type { Snapshot } from '@/types/wealth';
 const formatCheckpointLabel = (capturedAt: string) =>
   new Date(capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-// Everything recorded, newest first: what kind of change, and on which asset.
+// Everything recorded, newest first: what kind of change, and on which asset or debt.
 function ActivitySection() {
-  const { holdings } = useWealth();
+  const { holdings, debts } = useWealth();
   const [group, setGroup] = useState<string | null>(null);
-  const [holdingId, setHoldingId] = useState('');
+  // "holding:<id>", "debt:<id>", or empty for everything.
+  const [subject, setSubject] = useState('');
   const kinds = KIND_GROUPS.find((g) => g.label === group)?.kinds;
-  // A filter on an asset that's gone since shows everything.
-  const asset = holdings.some((h) => h.id === holdingId) ? holdingId : '';
+  // A filter on an asset or a debt that's gone since shows everything.
+  const [type, id] = subject.split(':');
+  const holdingId = type === 'holding' && holdings.some((h) => h.id === id) ? id : undefined;
+  const debtId = type === 'debt' && debts.some((d) => d.id === id) ? id : undefined;
   const byName = [...holdings].sort((a, b) => a.name.localeCompare(b.name));
+  const debtsByName = [...debts].sort((a, b) => a.name.localeCompare(b.name));
+  const assetOptions = byName.map((h) => (
+    <option key={h.id} value={`holding:${h.id}`}>
+      {h.name} · {h.platform}
+    </option>
+  ));
 
   return (
     <div className="card elev-sm" style={{ padding: '18px 20px' }}>
@@ -37,19 +46,39 @@ function ActivitySection() {
             </button>
           ))}
         </div>
-        <select className="input activity-asset" aria-label="Filter by asset" value={asset} onChange={(e) => setHoldingId(e.target.value)}>
-          <option value="">All assets</option>
-          {byName.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name} · {h.platform}
-            </option>
-          ))}
+        <select
+          className="input activity-asset"
+          aria-label={debts.length ? 'Filter by asset or debt' : 'Filter by asset'}
+          value={holdingId ? `holding:${holdingId}` : debtId ? `debt:${debtId}` : ''}
+          onChange={(e) => setSubject(e.target.value)}
+        >
+          <option value="">{debts.length ? 'All assets and debts' : 'All assets'}</option>
+          {debts.length ? (
+            <>
+              <optgroup label="Assets">{assetOptions}</optgroup>
+              <optgroup label="Debts">
+                {debtsByName.map((d) => (
+                  <option key={d.id} value={`debt:${d.id}`}>
+                    {d.name}
+                    {d.lender ? ` · ${d.lender}` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            </>
+          ) : (
+            assetOptions
+          )}
         </select>
       </div>
       <ActivityList
         kinds={kinds}
-        holdingId={asset || undefined}
-        empty={group || asset ? 'Nothing recorded matches this filter' : 'Nothing recorded yet: gains, losses, deposits and transfers show up here.'}
+        holdingId={holdingId}
+        debtId={debtId}
+        empty={
+          group || holdingId || debtId
+            ? 'Nothing recorded matches this filter'
+            : 'Nothing recorded yet: gains, losses, deposits and transfers show up here.'
+        }
       />
     </div>
   );
@@ -242,6 +271,7 @@ export const HistoryView: React.FC = () => {
                       </div>
                       <div style={{ fontSize: '12px', color: 'color-mix(in srgb, var(--color-text) 60%, transparent)' }}>
                         {formatCheckpointLabel(s.capturedAt)}
+                        {s.debtsUsd > 0 && ` · Assets ${formatCurrency(s.assetsUsd)} · Debts ${formatCurrency(s.debtsUsd)}`}
                       </div>
                     </div>
                   )}
@@ -272,6 +302,11 @@ export const HistoryView: React.FC = () => {
                   <td style={{ padding: '12px 10px', fontWeight: 500 }}>{r.label}</td>
                   <td style={{ padding: '12px 10px' }} className="text-nowrap">
                     {r.valueFormatted}
+                    {r.snapshot.debtsUsd > 0 && (
+                      <div className="text-muted debt-sub">
+                        Assets {formatCurrency(r.snapshot.assetsUsd)} · Debts {formatCurrency(r.snapshot.debtsUsd)}
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '12px 10px' }}>
                     <span

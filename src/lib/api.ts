@@ -3,6 +3,9 @@ import { createMockApi } from './mockApi';
 import { supabase } from './supabaseClient';
 import type {
   AvailableAssetClasses,
+  BalanceChangeReason,
+  Debt,
+  DebtKind,
   EstimateParams,
   Holding,
   Movement,
@@ -84,6 +87,37 @@ export type HoldingPatch = Partial<HoldingInput> & {
   note?: string;
 };
 
+/** POST /debts: only name and balanceUsd are required. */
+export interface DebtInput {
+  name: string;
+  lender?: string;
+  kind?: DebtKind;
+  balanceUsd: number;
+  interestRatePct?: number;
+  monthlyPaymentUsd?: number;
+  dueDay?: number;
+  notes?: string;
+}
+
+/**
+ * PATCH /debts/{id}, a merge patch: only what's sent changes, and null clears the optional terms. A new
+ * balance is recorded as balanceChangeReason says (a correction by default).
+ */
+export interface DebtPatch {
+  name?: string;
+  lender?: string | null;
+  kind?: DebtKind;
+  balanceUsd?: number;
+  interestRatePct?: number | null;
+  monthlyPaymentUsd?: number | null;
+  dueDay?: number | null;
+  notes?: string | null;
+  balanceChangeReason?: BalanceChangeReason;
+  /** YYYY-MM-DD; now when absent. */
+  occurredAt?: string;
+  note?: string;
+}
+
 interface MovementCommon {
   amountUsd: number;
   /** YYYY-MM-DD; now when absent. */
@@ -91,7 +125,10 @@ interface MovementCommon {
   note?: string;
 }
 
-/** POST /movements: a gain, loss, deposit or withdrawal on a holding, or a transfer between two. */
+/**
+ * POST /movements: a gain, loss, deposit or withdrawal on a holding; a transfer between two; or a debt's
+ * payment (from a holding, maybe), new charge (into a holding, maybe) or interest.
+ */
 export type MovementInput =
   | (MovementCommon & { kind: 'GAIN' | 'LOSS' | 'DEPOSIT' | 'WITHDRAWAL'; holdingId: string })
   | (MovementCommon & {
@@ -100,11 +137,15 @@ export type MovementInput =
       toHoldingId?: string;
       toNewHolding?: { name: string; assetClass: string; platform: string };
       feeUsd?: number;
-    });
+    })
+  | (MovementCommon & { kind: 'DEBT_PAYMENT'; debtId: string; fromHoldingId?: string })
+  | (MovementCommon & { kind: 'DEBT_CHARGE'; debtId: string; toHoldingId?: string })
+  | (MovementCommon & { kind: 'DEBT_INTEREST'; debtId: string });
 
 /** GET /movements: newest first, a page at a time. */
 export interface MovementQuery {
   holdingId?: string;
+  debtId?: string;
   kinds?: MovementKind[];
   /** Instants (ISO) or dates (YYYY-MM-DD). */
   from?: string;
@@ -123,9 +164,16 @@ const liveApi = {
     request<Holding>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteHolding: (id: string) => request<void>(`/api/v1/holdings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  getDebts: () => request<Debt[]>('/api/v1/debts'),
+  createDebt: (body: DebtInput) => request<Debt>('/api/v1/debts', { method: 'POST', body: JSON.stringify(body) }),
+  updateDebt: (id: string, patch: DebtPatch) =>
+    request<Debt>(`/api/v1/debts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteDebt: (id: string) => request<void>(`/api/v1/debts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   getMovements: (query: MovementQuery = {}) => {
     const params = new URLSearchParams();
     if (query.holdingId) params.set('holdingId', query.holdingId);
+    if (query.debtId) params.set('debtId', query.debtId);
     if (query.kinds?.length) params.set('kind', query.kinds.join(','));
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);

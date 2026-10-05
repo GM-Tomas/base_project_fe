@@ -1,6 +1,6 @@
 # F3 — Deudas
 
-**Estado:** Lista para implementar · **Repos:** backend + frontend · **Depende de:** F2
+**Estado:** Hecha · **Repos:** backend + frontend · **Depende de:** F2
 
 ## Objetivo
 
@@ -115,8 +115,9 @@ type Debt struct {
   `OPENING`, `CLOSING` y `ADJUSTMENT` se reutilizan con referencia a la deuda (`Movement.Debt *DebtRef`).
 - `model.SignedMoney` (decimal con signo, escala 2) para el patrimonio neto y los snapshots.
   `GrowthPctFrom` devuelve `nil` si la base es ≤ 0.
-- `domain/service.DebtPayoff(debt, now)` → `{ status: PAID_OFF | ON_TRACK | NEVER | NO_PAYMENT, months,
-  payoffMonth, totalInterest }` y `DebtBalanceAt(debt, month)` para la proyección.
+- `domain/service.CalculateDebtPayoff(debt, now)` → `{ status: PAID_OFF | ON_TRACK | NEVER | NO_PAYMENT,
+  months, payoffMonth, totalInterest }` y `DebtBalances(debt, months)` (el saldo de cada mes) para la
+  proyección.
 
 ### API
 
@@ -180,17 +181,17 @@ Deudas, pagos, cargos, intereses, `payoff`, resumen con assets/deudas, snapshots
 ## Tareas
 
 **Backend**
-- [ ] `SignedMoney`; snapshots con assets/deudas (lectura de documentos viejos).
-- [ ] Dominio `Debt` + `DebtPayoff` + `DebtBalanceAt` (100 % cubierto).
-- [ ] `DebtRepository` + `DebtService` (CRUD con `OPENING`/`CLOSING`/motivo del saldo en transacción).
-- [ ] Movimientos de deuda (crear, listar por deuda, deshacer).
-- [ ] Resumen, YTD con base ≤ 0, proyección con deudas e hitos sobre el neto.
-- [ ] Handlers, `openapi.json`, README; e2e de aislamiento de deudas.
+- [x] `SignedMoney`; snapshots con assets/deudas (lectura de documentos viejos).
+- [x] Dominio `Debt` + `DebtPayoff` + `DebtBalances` (100 % cubierto).
+- [x] `DebtRepository` + `DebtService` (CRUD con `OPENING`/`CLOSING`/motivo del saldo en transacción).
+- [x] Movimientos de deuda (crear, listar por deuda, deshacer).
+- [x] Resumen, YTD con base ≤ 0, proyección con deudas e hitos sobre el neto.
+- [x] Handlers, `openapi.json`, README; e2e de aislamiento de deudas.
 
 **Frontend**
-- [ ] `api.ts` + mock + tests.
-- [ ] Debts (vista, detalle, diálogos), Dashboard, Estimate, Activity.
-- [ ] Tests de flujos.
+- [x] `api.ts` + mock + tests.
+- [x] Debts (vista, detalle, diálogos), Dashboard, Estimate, Activity.
+- [x] Tests de flujos.
 
 ## Pruebas
 
@@ -211,3 +212,34 @@ Deudas, pagos, cargos, intereses, `payoff`, resumen con assets/deudas, snapshots
   tarjeta se mezclan cargos, intereses y pagos; el usuario puede elegir el motivo si lo sabe.
 - **Riesgo**: el neto puede bajar de golpe en el dashboard al cargar deudas. Es el objetivo; el subtítulo
   "Assets · Debts" lo explica.
+- **Intereses del mes redondeados a centavos** (como los cobra un banco): `interés = round(saldo × tasa/1200,
+  2)`, `saldo ← saldo + interés − cuota`. La API y el mock (`src/lib/amortization.ts`) usan el mismo
+  cálculo en centavos enteros, con los mismos casos de prueba, así el formulario dice lo mismo que la API.
+- **Never**: la cuota no supera el interés del primer mes (el saldo no baja) o pasan más de 600 meses. En la
+  proyección, una deuda sin cuota queda constante y una que crece se corta en el máximo de `Money` (1e15).
+- **El motivo tiene que cuadrar con la dirección del cambio**: `PAYMENT` solo baja el saldo y `CHARGE` /
+  `INTEREST` solo lo suben (`400` *"A payment can only lower the balance"* / *"New charges and interest can
+  only raise the balance"*). El diálogo solo ofrece los motivos que cuadran (si el saldo cambia de
+  dirección, vuelve a **Correction**), así que la UI nunca llega a ese `400`.
+- **Porcentajes sobre los assets**: `byAssetClass`, `byPlatform` y la liquidez son partes de lo que se
+  tiene (el neto puede ser 0 o negativo). YTD compara netos; con base ≤ 0 es `NO_BASELINE`.
+- **Tarjeta You owe en lugar de Accounts** en el dashboard (la cantidad de cuentas sigue debajo del neto:
+  *"Across 5 accounts"*). La cuota mensual total suma todas las deudas que tienen cuota.
+- **Tasa promedio**: ponderada por saldo, solo entre las deudas que tienen tasa y saldo; sin ninguna, *"Add
+  the rates to see it"*.
+- **Debt-free by**: la cancelación más lejana; si alguna nunca se cancela se dice cuál (*"Car loan never
+  gets paid off at its payment"*), y si a alguna le falta la cuota, *"Add a monthly payment to Mom to see
+  when"*. Sin saldo en ninguna: *"Now"*.
+- **Pagar**: el monto arranca en la cuota (o en el saldo si es menor), con atajos **Monthly payment** y
+  **Full balance**; si se cambia a cargo o interés sin haberlo tocado, se vacía. El asset de origen o
+  destino se elige en un solo `select` agrupado por plataforma (*optgroup*), en lugar de dos pasos: es
+  opcional y así se ve todo junto. La vista previa muestra el saldo y el asset después del movimiento y no
+  deja enviar más que el saldo de la deuda o el valor del asset.
+- **Undo de alta o baja de una deuda**: no se puede, como con los assets (*"Adding or removing a debt can't
+  be undone here: remove it, or add it again."*). La baja pide confirmación y deja la actividad.
+- **History**: cada checkpoint muestra *"Assets $X · Debts $Y"* cuando hubo deudas, y la actividad se
+  filtra por asset **o** deuda.
+- **Estimate**: la línea del neto es punteada y comparte escala con la del portfolio; *"In 12 years"*
+  sigue mostrando el portfolio y debajo *"$X net of debts"*.
+- **Ids que no son UUID**: `debtId` en el body responde `404` como una deuda inexistente; el filtro
+  `debtId` de `GET /movements`, `400` (*"debtId must be a debt's id"*).

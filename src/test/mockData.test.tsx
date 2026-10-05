@@ -22,7 +22,9 @@ describe('on mock data', () => {
         <HomePage />
       </AuthProvider>,
     );
-    expect(await screen.findByText('$107,420')).toBeTruthy();
+    // The net worth: what's owned, less what's owed.
+    expect(await screen.findByText('$97,770')).toBeTruthy();
+    expect(screen.getByText('Assets $107,420 · Debts $9,650')).toBeTruthy();
     expect(screen.getByText('Demo data')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy(); // the tag stays out of the title
 
@@ -33,7 +35,7 @@ describe('on mock data', () => {
     fireEvent.change(assetClass, { target: { value: 'Crypto' } });
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1000' } });
     fireEvent.submit(screen.getByRole('button', { name: 'Save asset' }).closest('form')!);
-    expect(await screen.findByText('$108,420')).toBeTruthy();
+    expect(await screen.findByText('$98,770')).toBeTruthy();
 
     // Signing out shows the login, where anything signs back in to the same demo data.
     fireEvent.click(screen.getByRole('button', { name: /Demo account/ }));
@@ -44,7 +46,7 @@ describe('on mock data', () => {
     fireEvent.change(document.querySelector('input[type=email]')!, { target: { value: 'me@example.com' } });
     fireEvent.change(document.querySelector('input[type=password]')!, { target: { value: 'whatever' } });
     fireEvent.submit(document.querySelector('form')!);
-    expect(await screen.findByText('$108,420')).toBeTruthy();
+    expect(await screen.findByText('$98,770')).toBeTruthy();
 
     // Movements too: a gain changes the value and joins the demo's activity, and can be undone.
     fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
@@ -54,11 +56,23 @@ describe('on mock data', () => {
     expect(await screen.findByText('8 assets · $109,000')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'History' }));
     const activity = await screen.findByRole('list', { name: 'Activity' });
-    expect(within(activity).getAllByRole('listitem')).toHaveLength(16);
+    expect(within(activity).getAllByRole('listitem')).toHaveLength(22);
     expect(within(activity).getByText('+$580.00')).toBeTruthy();
     fireEvent.click(within(activity).getByRole('button', { name: 'Undo gain of $580.00 on Bitcoin' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Undo this change?' })).getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(within(screen.getByRole('list', { name: 'Activity' })).queryByText('+$580.00')).toBeNull());
+
+    // Debts: paying one off raises the net worth.
+    // (History has a Debts filter too: the one in the navigation.)
+    fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Debts' }));
+    expect(screen.getByText('Feb 2029')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Pay Visa Gold' }));
+    expect((screen.getByLabelText('Amount (USD)') as HTMLInputElement).value).toBe('$300.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }));
+    expect(await screen.findByText('Payment recorded')).toBeTruthy();
+    expect(screen.getByText('$950')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+    expect(screen.getByText('$99,070')).toBeTruthy();
 
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
   });

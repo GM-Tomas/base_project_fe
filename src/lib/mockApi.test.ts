@@ -3,7 +3,7 @@ import { ApiError } from './apiError';
 import { createMockApi } from './mockApi';
 
 const at = (iso: string) => () => new Date(iso);
-const grown = (i: number) => Math.round(88_000 * 1.022 ** i * 100) / 100;
+const grown = (i: number) => Math.round(80_000 * 1.022 ** i * 100) / 100;
 
 describe('mock API (the data previews run on)', () => {
   it('summarizes the demo portfolio like the API does', async () => {
@@ -11,7 +11,10 @@ describe('mock API (the data previews run on)', () => {
 
     const summary = await api.getSummary();
 
-    expect(summary.netWorth.usd).toBe(107_420);
+    // What's owned, less what's owed.
+    expect(summary.netWorth.usd).toBe(97_770);
+    expect(summary.assets.usd).toBe(107_420);
+    expect(summary.debts).toEqual({ usd: 9_650, count: 2, monthlyPaymentUsd: 650 });
     expect(summary.holdingsCount).toBe(7);
     expect(summary.byAssetClass).toEqual([
       { assetClass: 'Index Fund', valueUsd: 42_350, pct: 39.4, count: 1 },
@@ -32,11 +35,11 @@ describe('mock API (the data previews run on)', () => {
       illiquidPct: 14,
       liquidAssetClasses: ['Cash', 'Equity', 'Crypto', 'Index Fund'],
     });
-    // Nine monthly snapshots up to last month: January's is the year's first.
+    // Nine monthly snapshots up to last month: January's is the year's first. Shares are of the assets.
     expect(summary.ytd).toEqual({
       basis: 'YEAR_START_SNAPSHOT',
-      growthPct: 22.1,
-      baselineValueUsd: 88_000,
+      growthPct: 22.2,
+      baselineValueUsd: 80_000,
       baselineAt: '2026-01-01T12:00:00.000Z',
     });
   });
@@ -48,11 +51,23 @@ describe('mock API (the data previews run on)', () => {
 
     const empty = createMockApi(at('2026-10-04T10:00:00Z'));
     for (const h of await empty.getHoldings()) await empty.deleteHolding(h.id);
+    // Only debts left: the net worth is below zero, and still compares to January.
+    const owing = await empty.getSummary();
+    expect(owing.netWorth.usd).toBe(-9_650);
+    expect(owing.ytd).toMatchObject({ basis: 'YEAR_START_SNAPSHOT', growthPct: -112.1 });
+    expect(owing.liquidity).toMatchObject({ liquidPct: 0, illiquidPct: 0 });
+    expect(owing.byPlatform).toEqual([]);
+    for (const d of await empty.getDebts()) await empty.deleteDebt(d.id);
     const summary = await empty.getSummary();
     expect(summary.netWorth.usd).toBe(0);
-    expect(summary.liquidity).toMatchObject({ liquidPct: 0, illiquidPct: 0 });
     expect(summary.ytd.basis).toBe('YEAR_START_SNAPSHOT'); // a 0 net worth still compares to January
-    expect(summary.byPlatform).toEqual([]);
+
+    // A baseline at or below zero has nothing to compare to.
+    const negative = createMockApi(at('2026-10-04T10:00:00Z'));
+    for (const s of await negative.getSnapshots()) await negative.deleteSnapshot(s.id);
+    for (const h of await negative.getHoldings()) await negative.deleteHolding(h.id);
+    await negative.createSnapshot();
+    expect((await negative.getSummary()).ytd).toEqual({ basis: 'NO_BASELINE', growthPct: 0 });
   });
 
   it('lists platforms and asset classes like the API', async () => {
@@ -79,7 +94,7 @@ describe('mock API (the data previews run on)', () => {
     expect(added).toMatchObject({ name: 'Gold bar', assetClass: 'Gold', platform: 'Binance', valueUsd: 1_000 });
     await api.createHolding({ name: 'Lebac', assetClass: 'Fixed Income', platform: 'Nuevo Banco', valueUsd: 50.25 });
 
-    expect((await api.getSummary()).netWorth.usd).toBe(108_470.25);
+    expect((await api.getSummary()).netWorth.usd).toBe(98_820.25);
     expect((await api.getPlatforms()).map((p) => `${p.name}/${p.type}`)).toContain('Nuevo Banco/Other');
     expect((await api.getAssetClasses()).all).toEqual(['Cash', 'Fixed Income', 'Index Fund', 'Equity', 'Crypto', 'Gold']);
 
@@ -104,7 +119,7 @@ describe('mock API (the data previews run on)', () => {
     expect(edited).toMatchObject({ name: 'VOO', platform: 'Binance', assetClass: 'Index Fund', valueUsd: 50_000.01 });
     expect(edited.updatedAt).toBe('2026-10-04T10:01:00.000Z');
     expect(edited.createdAt).toBe(voo.createdAt);
-    expect((await api.getSummary()).netWorth.usd).toBe(115_070.01);
+    expect((await api.getSummary()).netWorth.usd).toBe(105_420.01);
 
     // Nothing new: nothing written.
     clock += 60_000;
@@ -192,15 +207,25 @@ describe('mock API (the data previews run on)', () => {
 
     const history = await api.getSnapshots();
     expect(history).toHaveLength(9);
-    expect(history[0]).toEqual({ id: 'demo-snapshot-1', capturedAt: '2026-01-01T12:00:00.000Z', totalValueUsd: 88_000, changePctFromPrevious: null });
+    expect(history[0]).toEqual({
+      id: 'demo-snapshot-1',
+      capturedAt: '2026-01-01T12:00:00.000Z',
+      totalValueUsd: 80_000,
+      assetsUsd: 92_350,
+      debtsUsd: 12_350,
+      changePctFromPrevious: null,
+    });
     expect(history[1].changePctFromPrevious).toBe(2.2);
 
+    // The net worth, with the assets and debts behind it.
     const taken = await api.createSnapshot();
     expect(taken).toEqual({
       id: 'demo-snapshot-10',
       capturedAt: '2026-10-04T10:00:00.000Z',
-      totalValueUsd: 107_420,
-      changePctFromPrevious: Math.round(((107_420 - grown(8)) / grown(8)) * 1000) / 10,
+      totalValueUsd: 97_770,
+      assetsUsd: 107_420,
+      debtsUsd: 9_650,
+      changePctFromPrevious: Math.round(((97_770 - grown(8)) / grown(8)) * 1000) / 10,
     });
     expect(await api.getSnapshots()).toHaveLength(10);
   });
@@ -208,10 +233,21 @@ describe('mock API (the data previews run on)', () => {
   it('projects like the API: compound monthly, with the two milestones', async () => {
     const api = createMockApi(at('2026-10-04T10:00:00Z'));
 
+    // The portfolio grows from the assets; the debts are paid off on their own terms.
     const flat = await api.getEstimate({ contribution: 1_000, yieldPct: 0, years: 5 });
     expect(flat.principalUsd).toBe(107_420);
+    expect(flat.debtsUsd).toBe(9_650);
     expect(flat.series).toHaveLength(6);
-    expect(flat.series[5]).toEqual({ year: 5, futureValueUsd: 167_420, totalContributedUsd: 167_420, interestEarnedUsd: 0 });
+    expect(flat.series[0]).toMatchObject({ futureValueUsd: 107_420, debtBalanceUsd: 9_650, netWorthUsd: 97_770 });
+    expect(flat.series[1]).toMatchObject({ futureValueUsd: 119_420, debtBalanceUsd: 5_026.45, netWorthUsd: 114_393.55 });
+    expect(flat.series[5]).toEqual({
+      year: 5,
+      futureValueUsd: 167_420,
+      totalContributedUsd: 167_420,
+      interestEarnedUsd: 0,
+      debtBalanceUsd: 0,
+      netWorthUsd: 167_420,
+    });
     expect(flat.milestones).toEqual([
       { amountUsd: 150_000, status: 'REACHABLE', monthsRequired: 43, targetMonth: '2030-05' },
       { amountUsd: 250_000, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null },
@@ -220,7 +256,15 @@ describe('mock API (the data previews run on)', () => {
     const compound = await api.getEstimate({ contribution: 0, yieldPct: 12, years: 1 });
     expect(compound.series[1].futureValueUsd).toBeCloseTo(107_420 * 1.01 ** 12, 1);
 
+    // Milestones are about the net worth: 157,420 owned is 147,770 net, until the debts go down.
     await api.createHolding({ name: 'Bonus', assetClass: 'Cash', platform: 'Santander', valueUsd: 50_000 });
+    expect((await api.getEstimate({ contribution: 0, yieldPct: 0, years: 1 })).milestones[0]).toEqual({
+      amountUsd: 150_000,
+      status: 'REACHABLE',
+      monthsRequired: 5,
+      targetMonth: '2027-03',
+    });
+    for (const d of await api.getDebts()) await api.deleteDebt(d.id);
     expect((await api.getEstimate({ contribution: 0, yieldPct: 0, years: 1 })).milestones[0]).toEqual({
       amountUsd: 150_000,
       status: 'ACHIEVED',

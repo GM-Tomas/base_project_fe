@@ -33,6 +33,7 @@ const movement = (id: string, kind: Movement['kind'], over: Partial<Movement> = 
   feeUsd: kind === 'TRANSFER' ? 0 : null,
   holding: SPY,
   toHolding: null,
+  debt: null,
   previousValueUsd: null,
   newValueUsd: null,
   note: null,
@@ -492,7 +493,7 @@ describe('activity', () => {
     await waitFor(() => expect(requests('GET', '/api/v1/movements')).toHaveLength(3));
     expect(movementsQuery(2).get('kind')).toBe('GAIN,LOSS');
 
-    fireEvent.change(screen.getByLabelText('Filter by asset'), { target: { value: 'h3' } });
+    fireEvent.change(screen.getByLabelText('Filter by asset'), { target: { value: 'holding:h3' } });
     await waitFor(() => expect(requests('GET', '/api/v1/movements')).toHaveLength(4));
     expect(movementsQuery(3).get('holdingId')).toBe('h3');
     expect(movementsQuery(3).get('kind')).toBe('GAIN,LOSS');

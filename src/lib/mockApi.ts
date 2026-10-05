@@ -10,8 +10,10 @@ import type {
 } from '@/types/wealth';
 import type { Api, HoldingInput, HoldingPatch, MovementInput, MovementQuery } from './api';
 import { ApiError } from './apiError';
+import { debtBalances, monthAfter } from './amortization';
 import { normalizeLabel as label, platformKey } from './labels';
-import { createMockLedger, type MockLedger } from './mockLedger';
+import { createMockDebts } from './mockDebts';
+import { createMockLedger, type MockDebt, type MockLedger } from './mockLedger';
 
 // The API's own defaults and limits (base_project_go): the classes offered from the start, the ones
 // counted as liquid, the Estimate view's two milestones, the largest amount a holding can have, and how
@@ -50,18 +52,44 @@ const SEED_OPENING = new Map([
   ['Bitcoin', 15_000],
   ['Ethereum', 6_200],
   ['US Treasury 2027', 14_700],
-  ['Savings account', 10_000],
+  ['Savings account', 10_600],
   ['Emergency fund', 2_000],
 ]);
-type SeedMovement = { kind: 'GAIN' | 'LOSS' | 'DEPOSIT' | 'TRANSFER' | 'ADJUSTMENT'; holding: string; amountUsd: number; daysAgo: number; note?: string; to?: string; edit?: true };
+
+// The demo's debts as they are now, added after the holdings ([month of last year, opening balance]).
+const SEED_DEBTS: (Omit<MockDebt, 'id' | 'createdAt' | 'updatedAt'> & { month: number; opening: number })[] = [
+  {
+    name: 'Visa Gold', lender: 'Santander', kind: 'CREDIT_CARD', balanceUsd: 1_250, interestRatePct: 65,
+    monthlyPaymentUsd: 300, dueDay: 10, notes: null, month: 7, opening: 1_500,
+  },
+  {
+    name: 'Car loan', lender: 'Banco Galicia', kind: 'LOAN', balanceUsd: 8_400, interestRatePct: 12,
+    monthlyPaymentUsd: 350, dueDay: 5, notes: 'Fixed rate, 36 payments', month: 8, opening: 9_100,
+  },
+];
+
+type SeedMovement = {
+  kind: 'GAIN' | 'LOSS' | 'DEPOSIT' | 'TRANSFER' | 'ADJUSTMENT' | 'DEBT_PAYMENT' | 'DEBT_CHARGE';
+  holding?: string;
+  to?: string;
+  debt?: string;
+  amountUsd: number;
+  daysAgo: number;
+  note?: string;
+  edit?: true;
+};
 const SEED_ACTIVITY: SeedMovement[] = [
   { kind: 'ADJUSTMENT', holding: 'Ethereum', amountUsd: 80, daysAgo: 75, note: 'Fixed a typo', edit: true },
   { kind: 'GAIN', holding: 'Vanguard S&P 500 ETF (VOO)', amountUsd: 2_350, daysAgo: 41, edit: true },
+  { kind: 'DEBT_PAYMENT', debt: 'Car loan', amountUsd: 350, daysAgo: 35 },
   { kind: 'GAIN', holding: 'US Treasury 2027', amountUsd: 300, daysAgo: 33, note: 'Coupon' },
   { kind: 'LOSS', holding: 'Apple (AAPL)', amountUsd: 700, daysAgo: 27 },
+  { kind: 'DEBT_CHARGE', debt: 'Visa Gold', amountUsd: 350, daysAgo: 25, note: 'Groceries and fuel' },
   { kind: 'DEPOSIT', holding: 'Savings account', amountUsd: 700, daysAgo: 20, note: 'Salary' },
+  { kind: 'DEBT_PAYMENT', debt: 'Visa Gold', holding: 'Savings account', amountUsd: 600, daysAgo: 15 },
   { kind: 'GAIN', holding: 'Bitcoin', amountUsd: 3_450, daysAgo: 12 },
   { kind: 'TRANSFER', holding: 'Savings account', to: 'Emergency fund', amountUsd: 1_200, daysAgo: 6 },
+  { kind: 'DEBT_PAYMENT', debt: 'Car loan', amountUsd: 350, daysAgo: 5 },
 ];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -112,40 +140,40 @@ const rejectInvalid = (errors: FieldError[]) => {
   if (errors.length) throw new ApiError(400, errors.map((e) => e.message).join('; '), errors);
 };
 
-function monthsLater(now: Date, months: number) {
-  const totalMonths = now.getUTCMonth() + months;
-  const year = now.getUTCFullYear() + Math.floor(totalMonths / 12);
-  return `${year}-${String((totalMonths % 12) + 1).padStart(2, '0')}`;
-}
-
-// The demo's activity log: each holding's OPENING when it was added, then SEED_ACTIVITY.
-function seedActivity(ledger: MockLedger, holdings: Holding[], started: Date) {
+// The demo's activity log: each holding's and debt's OPENING when it was added, then SEED_ACTIVITY.
+function seedActivity(ledger: MockLedger, holdings: Holding[], debts: MockDebt[], started: Date) {
   const named = (name: string) => holdings.find((h) => h.name === name)!;
+  const nothing = { feeUsd: null, previousValueUsd: null, newValueUsd: null, note: null };
   for (const h of holdings) {
-    ledger.seed({
-      kind: 'OPENING', occurredAt: h.createdAt, createdAt: h.createdAt, amountUsd: SEED_OPENING.get(h.name) ?? h.valueUsd,
-      feeUsd: null, holding: h, previousValueUsd: null, newValueUsd: null, note: null,
-    });
+    const amountUsd = SEED_OPENING.get(h.name) ?? h.valueUsd;
+    ledger.seed({ ...nothing, kind: 'OPENING', occurredAt: h.createdAt, createdAt: h.createdAt, amountUsd, holding: h });
+  }
+  for (const d of debts) {
+    const amountUsd = SEED_DEBTS.find((s) => s.name === d.name)!.opening;
+    ledger.seed({ ...nothing, kind: 'OPENING', occurredAt: d.createdAt, createdAt: d.createdAt, amountUsd, debt: d });
   }
   const values = new Map(holdings.map((h) => [h.name, SEED_OPENING.get(h.name) ?? h.valueUsd]));
   for (const m of SEED_ACTIVITY) {
     const at = new Date(started.getTime() - m.daysAgo * DAY_MS).toISOString();
-    const previous = values.get(m.holding)!;
-    const next = m.kind === 'LOSS' || m.kind === 'TRANSFER' || m.kind === 'ADJUSTMENT' ? previous - m.amountUsd : previous + m.amountUsd;
-    values.set(m.holding, next);
+    const debt = m.debt ? debts.find((d) => d.name === m.debt) : undefined;
+    const previous = m.holding ? values.get(m.holding)! : 0;
+    const down = ['LOSS', 'TRANSFER', 'ADJUSTMENT', 'DEBT_PAYMENT'].includes(m.kind);
+    const next = down ? previous - m.amountUsd : previous + m.amountUsd;
+    if (m.holding) values.set(m.holding, next);
     if (m.to) values.set(m.to, values.get(m.to)! + m.amountUsd);
     ledger.seed({
       kind: m.kind, occurredAt: at, createdAt: at, amountUsd: m.amountUsd, feeUsd: m.kind === 'TRANSFER' ? 0 : null,
-      holding: named(m.holding), toHolding: m.to ? named(m.to) : undefined,
+      holding: m.holding ? named(m.holding) : undefined, toHolding: m.to ? named(m.to) : undefined, debt,
       previousValueUsd: m.edit ? previous : null, newValueUsd: m.edit ? next : null, note: m.note ?? null,
     });
   }
 }
 
-// The API's answers for a demo account, kept in memory: made-up holdings, their activity and nine monthly
-// snapshots, changed by what the user does in this tab, gone on reload. Same rules as the API where the UI
-// shows them: one spelling per platform, totals and percentages, YTD from the first snapshot of the year,
-// compound monthly projections, movements and what they do to values.
+// The API's answers for a demo account, kept in memory: made-up holdings and debts, their activity and nine
+// monthly snapshots, changed by what the user does in this tab, gone on reload. Same rules as the API where
+// the UI shows them: one spelling per platform, totals and percentages, net worth as assets minus debts, YTD
+// from the first snapshot of the year, compound monthly projections with debts paid off on their own terms,
+// movements and what they do to values.
 export function createMockApi(now: () => Date = () => new Date()): Api {
   let nextId = 1;
   const started = now();
@@ -153,11 +181,21 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     const at = new Date(Date.UTC(started.getUTCFullYear() - 1, i, 15)).toISOString();
     return { id: `demo-${nextId++}`, name, assetClass, platform, valueUsd, createdAt: at, updatedAt: at };
   });
-  const snapshots: { id: string; capturedAt: string; totalValueUsd: number }[] = Array.from({ length: 9 }, (_, i) => ({
-    id: `demo-snapshot-${i + 1}`,
-    capturedAt: new Date(Date.UTC(started.getUTCFullYear(), started.getUTCMonth() - 9 + i, 1, 12)).toISOString(),
-    totalValueUsd: cents(88_000 * 1.022 ** i),
-  }));
+  const debts: MockDebt[] = SEED_DEBTS.map(({ month, opening, ...debt }) => {
+    const at = new Date(Date.UTC(started.getUTCFullYear() - 1, month, 15)).toISOString();
+    return { ...debt, id: `demo-debt-${nextId++}`, createdAt: at, updatedAt: at };
+  });
+  // Nine months of a growing net worth, while the debts were paid down.
+  const snapshots: Omit<Snapshot, 'changePctFromPrevious'>[] = Array.from({ length: 9 }, (_, i) => {
+    const [net, owed] = [cents(80_000 * 1.022 ** i), cents(9_650 + 300 * (9 - i))];
+    return {
+      id: `demo-snapshot-${i + 1}`,
+      capturedAt: new Date(Date.UTC(started.getUTCFullYear(), started.getUTCMonth() - 9 + i, 1, 12)).toISOString(),
+      totalValueUsd: net,
+      assetsUsd: cents(net + owed),
+      debtsUsd: owed,
+    };
+  });
 
   // A platform as the API spells it: like its earliest holding (holdings are kept oldest first), else as given.
   const spelled = (platform: string) =>
@@ -181,8 +219,10 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       },
     };
   };
-  const ledger = createMockLedger({ holdings, now, newHolding: (input) => newHolding({ ...input, valueUsd: 0 }) });
-  seedActivity(ledger, holdings, started);
+  const ledger = createMockLedger({ holdings, debts, now, newHolding: (input) => newHolding({ ...input, valueUsd: 0 }) });
+  seedActivity(ledger, holdings, debts, started);
+  const debtsApi = createMockDebts({ debts, ledger, now, nextId: () => `demo-debt-${nextId++}` });
+  const owed = () => cents(debts.reduce((sum, d) => sum + d.balanceUsd, 0));
 
   // Ids are never reused, also after a snapshot is deleted.
   let nextSnapshotId = snapshots.length + 1;
@@ -193,8 +233,11 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
   });
 
   const summary = (): WealthSummary => {
-    const netWorth = total(holdings);
-    const pct = (value: number) => (netWorth > 0 ? tenths((value / netWorth) * 100) : 0);
+    const assets = total(holdings);
+    const debtsUsd = owed();
+    const netWorth = cents(assets - debtsUsd);
+    // Shares of what's owned: the net worth can be zero or below.
+    const pct = (value: number) => (assets > 0 ? tenths((value / assets) * 100) : 0);
     const liquid = total(holdings.filter((h) => LIQUID_CLASSES.includes(h.assetClass)));
     // The year's first snapshot, else the earliest one.
     const year = now().getUTCFullYear();
@@ -203,6 +246,12 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     const ytdGrowth = baseline ? growthPct(netWorth, baseline.totalValueUsd) : null;
     return {
       netWorth: { usd: netWorth },
+      assets: { usd: assets },
+      debts: {
+        usd: debtsUsd,
+        count: debts.length,
+        monthlyPaymentUsd: cents(debts.reduce((sum, d) => sum + (d.monthlyPaymentUsd ?? 0), 0)),
+      },
       holdingsCount: holdings.length,
       ytd:
         baseline && ytdGrowth !== null
@@ -215,7 +264,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
           : { basis: 'NO_BASELINE', growthPct: 0 },
       liquidity: {
         liquidPct: pct(liquid),
-        illiquidPct: netWorth > 0 ? tenths(100 - pct(liquid)) : 0,
+        illiquidPct: assets > 0 ? tenths(100 - pct(liquid)) : 0,
         liquidAssetClasses: LIQUID_CLASSES,
       },
       byAssetClass: groupBy(holdings, (h) => h.assetClass)
@@ -227,30 +276,42 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     };
   };
 
+  // The portfolio (the assets) grows; each debt is paid off on its own terms; the net worth is what's left.
   const estimate = ({ contribution, yieldPct, years }: EstimateParams): Projection => {
     const principal = total(holdings);
     const r = yieldPct / 100 / 12;
     const futureValue = (months: number) =>
       Math.max(0, r === 0 ? principal + contribution * months : principal * (1 + r) ** months + contribution * (((1 + r) ** months - 1) / r));
+    const owedBy = Array.from({ length: years * 12 + 1 }, () => 0);
+    for (const d of debts) debtBalances(d, years * 12).forEach((balance, m) => (owedBy[m] = cents(owedBy[m] + balance)));
     const milestone = (amountUsd: number): Milestone => {
       for (let month = 0; month <= years * 12; month++) {
-        if (futureValue(month) >= amountUsd) {
+        if (futureValue(month) - owedBy[month] >= amountUsd) {
           return month === 0
             ? { amountUsd, status: 'ACHIEVED', monthsRequired: 0, targetMonth: null }
-            : { amountUsd, status: 'REACHABLE', monthsRequired: month, targetMonth: monthsLater(now(), month) };
+            : { amountUsd, status: 'REACHABLE', monthsRequired: month, targetMonth: monthAfter(now(), month) };
         }
       }
       return { amountUsd, status: 'OUT_OF_HORIZON', monthsRequired: null, targetMonth: null };
     };
     return {
       principalUsd: principal,
+      debtsUsd: owed(),
       monthlyContributionUsd: contribution,
       annualYieldPct: yieldPct,
       years,
       series: Array.from({ length: years + 1 }, (_, year) => {
         const fv = cents(futureValue(year * 12));
         const contributed = cents(principal + contribution * year * 12);
-        return { year, futureValueUsd: fv, totalContributedUsd: contributed, interestEarnedUsd: cents(fv - contributed) };
+        const debt = owedBy[year * 12];
+        return {
+          year,
+          futureValueUsd: fv,
+          totalContributedUsd: contributed,
+          interestEarnedUsd: cents(fv - contributed),
+          debtBalanceUsd: debt,
+          netWorthUsd: cents(fv - debt),
+        };
       }),
       milestones: MILESTONES.map(milestone),
     };
@@ -296,6 +357,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       ledger.closed(holdings[index]);
       holdings.splice(index, 1);
     },
+    ...debtsApi,
     getMovements: async (query?: MovementQuery) => ledger.list(query),
     createMovement: async (input: MovementInput) => ledger.record(input),
     deleteMovement: async (id: string) => ledger.revert(id),
@@ -319,7 +381,14 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         throw new ApiError(409, `A snapshot already exists for ${capturedAt.replace('.000Z', 'Z')}`);
       }
       if (snapshots.length >= MAX_SNAPSHOTS) throw new ApiError(409, `You've reached the limit of ${MAX_SNAPSHOTS} snapshots.`);
-      snapshots.push({ id: `demo-snapshot-${nextSnapshotId++}`, capturedAt, totalValueUsd: total(holdings) });
+      const [assets, debtsUsd] = [total(holdings), owed()];
+      snapshots.push({
+        id: `demo-snapshot-${nextSnapshotId++}`,
+        capturedAt,
+        totalValueUsd: cents(assets - debtsUsd),
+        assetsUsd: assets,
+        debtsUsd,
+      });
       return withChange(snapshots.length - 1);
     },
     deleteSnapshot: async (id: string) => {

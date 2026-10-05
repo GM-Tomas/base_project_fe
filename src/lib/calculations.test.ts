@@ -6,6 +6,11 @@ describe('formatCurrency', () => {
     expect(formatCurrency(12345.6)).toBe('$12,346');
     expect(formatCurrency(0)).toBe('$0');
   });
+
+  it('signs amounts below zero', () => {
+    expect(formatCurrency(-1234.4)).toBe('−$1,234');
+    expect(formatCurrency(-0.4)).toBe('$0');
+  });
 });
 
 describe('formatPercentage', () => {
@@ -39,6 +44,14 @@ describe('generateLinePath', () => {
       [90, 25],
     ]);
     expect(pathString).toBe('M 10.0,40.0 L 50.0,10.0 L 90.0,25.0');
+  });
+
+  it('draws on a shared scale when given one', () => {
+    const { points } = generateLinePath([0, 5], 100, 50, 10, { min: -10, max: 10 });
+    expect(points).toEqual([
+      [10, 25],
+      [90, 17.5],
+    ]);
   });
 
   it('does not divide by zero when all values are equal', () => {

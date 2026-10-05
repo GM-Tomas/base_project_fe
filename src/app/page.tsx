@@ -9,6 +9,7 @@ import { Login } from '@/components/auth/Login';
 import { DashboardView } from '@/components/views/DashboardView';
 import { PlatformsView } from '@/components/views/PlatformsView';
 import { AssetsView } from '@/components/views/AssetsView';
+import { DebtsView } from '@/components/views/DebtsView';
 import { EstimateView } from '@/components/views/EstimateView';
 import { HistoryView } from '@/components/views/HistoryView';
 import { UiProvider } from '@/context/UiContext';
@@ -144,6 +145,7 @@ function Dashboard() {
           {view === 'dashboard' && <DashboardView />}
           {view === 'platforms' && <PlatformsView />}
           {view === 'assets' && <AssetsView />}
+          {view === 'debts' && <DebtsView />}
           {view === 'estimate' && <EstimateView />}
           {view === 'history' && <HistoryView />}
         </div>

@@ -21,6 +21,8 @@ export const SESSION = {
 
 export const summary = (over: Partial<WealthSummary> = {}): WealthSummary => ({
   netWorth: { usd: 12345.6 },
+  assets: { usd: 12345.6 },
+  debts: { usd: 0, count: 0, monthlyPaymentUsd: 0 },
   holdingsCount: 3,
   ytd: { basis: 'YEAR_START_SNAPSHOT', growthPct: 12.34 },
   liquidity: { liquidPct: 70, illiquidPct: 30, liquidAssetClasses: ['Equity'] },
@@ -49,7 +51,7 @@ export const HOLDINGS = [
 export const PLATFORMS: Platform[] = ['Balanz', 'Vault', 'Empty'].map((name) => ({ name, type: 'Other', createdAt: '' }));
 
 export const snapshot = (id: string, capturedAt: string, totalValueUsd: number, changePctFromPrevious: number | null): Snapshot => ({
-  id, capturedAt, totalValueUsd, changePctFromPrevious,
+  id, capturedAt, totalValueUsd, assetsUsd: totalValueUsd, debtsUsd: 0, changePctFromPrevious,
 });
 
 export const SNAPSHOTS = [
@@ -61,12 +63,13 @@ export const SNAPSHOTS = [
 
 export const projection = (over: Partial<Projection> = {}): Projection => ({
   principalUsd: 12345.6,
+  debtsUsd: 0,
   monthlyContributionUsd: 900,
   annualYieldPct: 9,
   years: 12,
   series: [
-    { year: 0, futureValueUsd: 12345.6, totalContributedUsd: 12345.6, interestEarnedUsd: 0 },
-    { year: 1, futureValueUsd: 25000, totalContributedUsd: 23145.6, interestEarnedUsd: 1854.4 },
+    { year: 0, futureValueUsd: 12345.6, totalContributedUsd: 12345.6, interestEarnedUsd: 0, debtBalanceUsd: 0, netWorthUsd: 12345.6 },
+    { year: 1, futureValueUsd: 25000, totalContributedUsd: 23145.6, interestEarnedUsd: 1854.4, debtBalanceUsd: 0, netWorthUsd: 25000 },
   ],
   milestones: [
     { amountUsd: 50000, status: 'REACHABLE', monthsRequired: 30, targetMonth: '2029-03' },
@@ -90,6 +93,7 @@ export function installFakeBackend() {
       'GET /api/v1/wealth/snapshots': () => json(SNAPSHOTS),
       'GET /api/v1/wealth/estimate': () => json(projection()),
       'GET /api/v1/movements': () => json({ items: [], nextCursor: null }),
+      'GET /api/v1/debts': () => json([]),
     };
     fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
       const key = `${init.method ?? 'GET'} ${new URL(url).pathname}`;
@@ -109,14 +113,15 @@ export function installFakeBackend() {
 export const requests = (method: string, path: string) =>
   fetchMock.mock.calls.filter(([url, init]) => (init?.method ?? 'GET') === method && new URL(url).pathname === path);
 
-export async function renderApp(session: Session | null = SESSION) {
+/** Renders the app signed in (or not), and waits for the dashboard's net worth (12,345.60 unless told). */
+export async function renderApp(session: Session | null = SESSION, netWorth = '$12,346') {
   vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session } } as never);
   const utils = render(
     <AuthProvider>
       <HomePage />
     </AuthProvider>,
   );
-  if (session) await screen.findByText('$12,346');
+  if (session) await screen.findByText(netWorth);
   return utils;
 }
 

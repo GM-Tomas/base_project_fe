@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Movement } from '@/types/wealth';
 import { createMockApi } from './mockApi';
+import { debtEffect, effects } from './movements';
 
 // The mock's activity log (mockLedger.ts), through the API surface the app calls.
 
@@ -15,23 +16,12 @@ function demo() {
   return { api, tick, holding, value };
 }
 
-// What a movement did to each holding's value, from what the API returns.
+// What a movement did to each holding's and debt's value, from what the API returns.
 function deltas(m: Movement): [string, number][] {
-  const own = m.holding!.id;
-  switch (m.kind) {
-    case 'OPENING':
-    case 'GAIN':
-    case 'DEPOSIT':
-      return [[own, m.amountUsd]];
-    case 'CLOSING':
-    case 'LOSS':
-    case 'WITHDRAWAL':
-      return [[own, -m.amountUsd]];
-    case 'TRANSFER':
-      return [[own, -m.amountUsd], [m.toHolding!.id, m.amountUsd - m.feeUsd!]];
-    case 'ADJUSTMENT':
-      return [[own, m.newValueUsd! - m.previousValueUsd!]];
-  }
+  const changes: [string, number][] = effects(m).map(([h, delta]) => [h.id, delta]);
+  const owed = debtEffect(m);
+  if (owed !== null) changes.push([m.debt!.id, owed]);
+  return changes;
 }
 
 describe('mock activity log', () => {
@@ -40,14 +30,20 @@ describe('mock activity log', () => {
 
     const { items, nextCursor } = await api.getMovements();
     expect(nextCursor).toBeNull();
-    expect(items.map((m) => `${m.kind} ${m.holding!.name}`)).toEqual([
+    expect(items.map((m) => [m.kind, m.debt?.name, m.holding?.name].filter(Boolean).join(' '))).toEqual([
+      'DEBT_PAYMENT Car loan',
       'TRANSFER Savings account',
       'GAIN Bitcoin',
+      'DEBT_PAYMENT Visa Gold Savings account',
       'DEPOSIT Savings account',
+      'DEBT_CHARGE Visa Gold',
       'LOSS Apple (AAPL)',
       'GAIN US Treasury 2027',
+      'DEBT_PAYMENT Car loan',
       'GAIN Vanguard S&P 500 ETF (VOO)',
       'ADJUSTMENT Ethereum',
+      'OPENING Car loan',
+      'OPENING Visa Gold',
       'OPENING Emergency fund',
       'OPENING Savings account',
       'OPENING US Treasury 2027',
@@ -56,7 +52,7 @@ describe('mock activity log', () => {
       'OPENING Apple (AAPL)',
       'OPENING Vanguard S&P 500 ETF (VOO)',
     ]);
-    expect(items[0]).toMatchObject({
+    expect(items[1]).toMatchObject({
       occurredAt: '2026-09-28T10:00:00.000Z',
       amountUsd: 1_200,
       feeUsd: 0,
@@ -69,6 +65,14 @@ describe('mock activity log', () => {
     const sums = new Map<string, number>();
     for (const m of items) for (const [id, delta] of deltas(m)) sums.set(id, (sums.get(id) ?? 0) + delta);
     for (const h of await api.getHoldings()) expect(sums.get(h.id)).toBeCloseTo(h.valueUsd, 2);
+    for (const d of await api.getDebts()) expect(sums.get(d.id)).toBeCloseTo(d.balanceUsd, 2);
+    expect(items.find((m) => m.kind === 'DEBT_CHARGE')).toMatchObject({
+      debt: { name: 'Visa Gold', lender: 'Santander', exists: true },
+      holding: null,
+      toHolding: null,
+      note: 'Groceries and fuel',
+      revertible: true,
+    });
   });
 
   it('records gains, losses, deposits and withdrawals on a holding', async () => {
@@ -118,8 +122,8 @@ describe('mock activity log', () => {
 
     expect(await fails({ kind: 'OPENING', holdingId: id, amountUsd: 1 })).toMatchObject({
       status: 400,
-      message: 'kind must be one of GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER',
-      errors: [{ field: 'kind', message: 'kind must be one of GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER' }],
+      message: 'kind must be one of GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER, DEBT_PAYMENT, DEBT_CHARGE, DEBT_INTEREST',
+      errors: [{ field: 'kind', message: 'kind must be one of GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER, DEBT_PAYMENT, DEBT_CHARGE, DEBT_INTEREST' }],
     });
     expect(await fails({ kind: 'GAIN', amountUsd: 1 })).toMatchObject({ status: 400, message: 'holdingId is required' });
     expect(await fails({ kind: 'GAIN', holdingId: 'nope', amountUsd: 1 })).toMatchObject({ status: 404, message: 'Holding nope not found' });
@@ -214,7 +218,7 @@ describe('mock activity log', () => {
     expect(await fails({ fromHoldingId: savings.id, toHoldingId: 'gone' })).toMatchObject({ status: 404, message: 'Holding gone not found' });
 
     expect((await api.getHoldings()).map((h) => h.valueUsd)).toEqual([42_350, 12_800, 18_450, 6_120, 15_000, 9_500, 3_200]);
-    expect((await api.getMovements()).items).toHaveLength(14);
+    expect((await api.getMovements()).items).toHaveLength(20);
   });
 
   it("checks the holdings cap for a transfer's new destination", async () => {
@@ -326,10 +330,15 @@ describe('mock activity log', () => {
   it("refuses to undo what can't be undone", async () => {
     const { api, holding } = demo();
     const all = (await api.getMovements()).items;
-    const opening = all.find((m) => m.kind === 'OPENING')!;
+    const opening = all.find((m) => m.kind === 'OPENING' && m.holding)!;
     await expect(api.deleteMovement(opening.id)).rejects.toMatchObject({
       status: 409,
-      message: "Adding or removing an asset can't be undone here: remove the asset, or add it again.",
+      message: "Adding or removing an asset can't be undone here: remove it, or add it again.",
+    });
+    const debtOpening = all.find((m) => m.kind === 'OPENING' && m.debt)!;
+    await expect(api.deleteMovement(debtOpening.id)).rejects.toMatchObject({
+      status: 409,
+      message: "Adding or removing a debt can't be undone here: remove it, or add it again.",
     });
 
     // Going below zero: the seeded transfer's 1,200 left the fund since.
@@ -358,31 +367,40 @@ describe('mock activity log', () => {
     // As origin or destination.
     const fund = await holding('Emergency fund');
     expect((await api.getMovements({ holdingId: fund.id })).items.map((m) => m.kind)).toEqual(['TRANSFER', 'OPENING']);
+    // A debt payment made from it is in the holding's activity too.
+    expect((await api.getMovements({ holdingId: savings.id })).items.map((m) => m.kind)).toEqual([
+      'TRANSFER',
+      'DEBT_PAYMENT',
+      'DEPOSIT',
+      'OPENING',
+    ]);
+    const visa = (await api.getDebts()).find((d) => d.name === 'Visa Gold')!;
+    expect((await api.getMovements({ debtId: visa.id })).items.map((m) => m.kind)).toEqual(['DEBT_PAYMENT', 'DEBT_CHARGE', 'OPENING']);
     expect((await api.getMovements({ kinds: ['GAIN', 'LOSS'] })).items).toHaveLength(4);
     // Dates cover the whole UTC day.
     const day = (await api.getMovements({ from: '2026-09-28', to: '2026-09-28' })).items;
     expect(day.map((m) => m.kind)).toEqual(['TRANSFER']);
-    expect((await api.getMovements({ from: '2026-09-28T10:00:00.001Z' })).items).toHaveLength(0);
+    expect((await api.getMovements({ from: '2026-09-28T10:00:00.001Z' })).items.map((m) => m.kind)).toEqual(['DEBT_PAYMENT']);
 
-    const first = await api.getMovements({ limit: 5 });
-    expect(first.items).toHaveLength(5);
+    const first = await api.getMovements({ limit: 7 });
+    expect(first.items).toHaveLength(7);
     // New activity doesn't shift the next page.
     tick();
     await api.createMovement({ kind: 'GAIN', holdingId: savings.id, amountUsd: 1 });
-    const second = await api.getMovements({ limit: 5, cursor: first.nextCursor! });
-    const third = await api.getMovements({ limit: 5, cursor: second.nextCursor! });
+    const second = await api.getMovements({ limit: 7, cursor: first.nextCursor! });
+    const third = await api.getMovements({ limit: 7, cursor: second.nextCursor! });
     expect(third.nextCursor).toBeNull();
     const pages = [...first.items, ...second.items, ...third.items];
-    expect(pages).toHaveLength(14);
-    expect(new Set(pages.map((m) => m.id)).size).toBe(14);
-    expect(await api.getMovements({ limit: 5, cursor: first.nextCursor! })).toEqual(second);
+    expect(pages).toHaveLength(20);
+    expect(new Set(pages.map((m) => m.id)).size).toBe(20);
+    expect(await api.getMovements({ limit: 7, cursor: first.nextCursor! })).toEqual(second);
 
     const failure = await api
       .getMovements({ kinds: ['BONUS' as never], from: 'soon', to: '2026-02-30', limit: 500, cursor: 'not*base64' })
       .catch((e) => e);
     expect(failure).toMatchObject({ status: 400 });
     expect(failure.errors.map((e: { message: string }) => e.message)).toEqual([
-      'kind must be a comma-separated list of OPENING, CLOSING, GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER, ADJUSTMENT',
+      'kind must be a comma-separated list of OPENING, CLOSING, GAIN, LOSS, DEPOSIT, WITHDRAWAL, TRANSFER, ADJUSTMENT, DEBT_PAYMENT, DEBT_CHARGE, DEBT_INTEREST',
       'from must be a date (YYYY-MM-DD) or a date and time (RFC 3339)',
       'to must be a date (YYYY-MM-DD) or a date and time (RFC 3339)',
       'limit must be between 1 and 200',
@@ -394,16 +412,23 @@ describe('mock activity log', () => {
   it('keeps to 20,000 movements, CLOSINGs aside', async () => {
     const { api, holding } = demo();
     const { id } = await holding('Bitcoin');
-    for (let i = 14; i < 20_000; i++) await api.createMovement({ kind: 'GAIN', holdingId: id, amountUsd: 1 });
+    const [car] = await api.getDebts();
+    const seeded = (await api.getMovements({ limit: 200 })).items.length;
+    for (let i = seeded; i < 20_000; i++) await api.createMovement({ kind: 'GAIN', holdingId: id, amountUsd: 1 });
 
     const limit = { status: 409, message: "You've reached the limit of 20000 recorded changes. Undo some to record new ones." };
     await expect(api.createMovement({ kind: 'GAIN', holdingId: id, amountUsd: 1 })).rejects.toMatchObject(limit);
+    await expect(api.createMovement({ kind: 'DEBT_INTEREST', debtId: car.id, amountUsd: 1 })).rejects.toMatchObject(limit);
     await expect(api.createHolding({ name: 'x', assetClass: 'Cash', platform: 'y', valueUsd: 1 })).rejects.toMatchObject(limit);
+    await expect(api.createDebt({ name: 'x', balanceUsd: 1 })).rejects.toMatchObject(limit);
     await expect(api.updateHolding(id, { valueUsd: 1 })).rejects.toMatchObject(limit);
-    expect(await holding('Bitcoin')).toMatchObject({ valueUsd: 18_450 + 19_986 });
+    await expect(api.updateDebt(car.id, { balanceUsd: 1 })).rejects.toMatchObject(limit);
+    expect(await holding('Bitcoin')).toMatchObject({ valueUsd: 18_450 + 20_000 - seeded });
     // Renaming records nothing, and removing always works.
     await expect(api.updateHolding(id, { name: 'BTC' })).resolves.toMatchObject({ name: 'BTC' });
+    await expect(api.updateDebt(car.id, { name: 'Car' })).resolves.toMatchObject({ name: 'Car', balanceUsd: 8_400 });
     await api.deleteHolding(id);
+    await api.deleteDebt(car.id);
 
     // Undoing one makes room for one.
     const [latest] = (await api.getMovements({ kinds: ['TRANSFER'] })).items;

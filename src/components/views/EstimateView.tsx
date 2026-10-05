@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useWealth } from '@/context/WealthContext';
 import { generateLinePath, formatCurrency } from '@/lib/calculations';
 import { api, ApiError } from '@/lib/api';
+import { formatMonth } from '@/lib/debts';
 import { Milestone, Projection } from '@/types/wealth';
 
 const DEBOUNCE_MS = 150;
@@ -25,8 +26,7 @@ const formatMilestoneLabel = (milestone: Milestone | undefined, years: number) =
   if (milestone.status === 'ACHIEVED') return 'already there';
   if (milestone.status === 'OUT_OF_HORIZON') return `not within ${years}y at this pace`;
   if (!milestone.targetMonth) return '';
-  const [year, month] = milestone.targetMonth.split('-').map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  return formatMonth(milestone.targetMonth);
 };
 
 export const EstimateView: React.FC = () => {
@@ -58,11 +58,25 @@ export const EstimateView: React.FC = () => {
   // Annual series from the server — the chart re-renders smoothly off the debounced request,
   // not a per-keystroke recalculation.
   const estimateSeries = useMemo(() => projection?.series.map((p) => p.futureValueUsd) ?? [], [projection]);
+  // With debts, a second line: the portfolio minus what's still owed each year (on the same scale).
+  const hasDebts = (projection?.debtsUsd ?? 0) > 0;
+  const netWorthSeries = useMemo(
+    () => (hasDebts ? (projection?.series.map((p) => p.netWorthUsd) ?? []) : []),
+    [projection, hasDebts],
+  );
+  const scale = useMemo(() => {
+    const all = [...estimateSeries, ...netWorthSeries];
+    return all.length ? { min: Math.min(...all), max: Math.max(...all) } : undefined;
+  }, [estimateSeries, netWorthSeries]);
 
   // Generate SVG Path
   const { pathString: estimatePath, points: estPoints } = useMemo(() => {
-    return generateLinePath(estimateSeries, 680, 260, 24);
-  }, [estimateSeries]);
+    return generateLinePath(estimateSeries, 680, 260, 24, scale);
+  }, [estimateSeries, scale]);
+  const { pathString: netWorthPath } = useMemo(
+    () => generateLinePath(netWorthSeries, 680, 260, 24, scale),
+    [netWorthSeries, scale],
+  );
 
   const estimateAreaPath = useMemo(() => {
     if (estPoints.length < 2) return '';
@@ -76,6 +90,7 @@ export const EstimateView: React.FC = () => {
   // Final value in N years
   const finalValue = estimateSeries[estimateSeries.length - 1];
   const estimateFinalLabel = finalValue !== undefined ? formatCurrency(finalValue) : '—';
+  const finalNetWorth = netWorthSeries[netWorthSeries.length - 1];
 
   const [firstMilestone, secondMilestone] = projection?.milestones ?? [];
 
@@ -172,6 +187,18 @@ export const EstimateView: React.FC = () => {
           </div>
           {error && <span style={{ fontSize: '12.5px', color: 'var(--color-negative)' }}>{error}</span>}
         </div>
+        {hasDebts && (
+          <div className="chart-legend">
+            <span className="legend-item">
+              <span className="legend-swatch legend-portfolio" aria-hidden />
+              Your portfolio
+            </span>
+            <span className="legend-item">
+              <span className="legend-swatch legend-net-worth" aria-hidden />
+              Net worth, after debts
+            </span>
+          </div>
+        )}
 
         <div style={{ position: 'relative', width: '100%', height: '280px', marginTop: '6px' }}>
           <svg viewBox="0 0 680 260" width="100%" height="100%" preserveAspectRatio="none">
@@ -199,6 +226,20 @@ export const EstimateView: React.FC = () => {
 
             {/* Area Fill */}
             {estimateAreaPath && <path d={estimateAreaPath} fill="url(#baseFill)" opacity="0.75" />}
+
+            {/* Net worth: the portfolio minus what's still owed */}
+            {netWorthPath && (
+              <path
+                d={netWorthPath}
+                fill="none"
+                stroke="var(--color-accent-2)"
+                strokeWidth="2"
+                strokeDasharray="6 5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
 
             {/* Line Path */}
             {estimatePath && (
@@ -262,7 +303,7 @@ export const EstimateView: React.FC = () => {
                 marginTop: '2px',
               }}
             >
-              at this pace
+              {finalNetWorth !== undefined ? `${formatCurrency(finalNetWorth)} net of debts` : 'at this pace'}
             </div>
           </div>
         </div>
