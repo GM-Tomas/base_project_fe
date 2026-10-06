@@ -9,10 +9,12 @@ import type {
   AssetClassInfo,
   AvailableAssetClasses,
   Holding,
+  MovementsSummary,
   Platform,
   Projection,
   ProjectionPoint,
   Snapshot,
+  SummaryBucket,
   WealthSummary,
 } from '@/types/wealth';
 import { DEFAULT_PREFERENCES } from '@/lib/preferences';
@@ -93,8 +95,14 @@ export const ASSET_CLASSES: AvailableAssetClasses = {
   ],
 };
 
-export const snapshot = (id: string, capturedAt: string, totalValueUsd: number, changePctFromPrevious: number | null): Snapshot => ({
-  id, capturedAt, totalValueUsd, assetsUsd: totalValueUsd, debtsUsd: 0, changePctFromPrevious,
+export const snapshot = (
+  id: string,
+  capturedAt: string,
+  totalValueUsd: number,
+  changePctFromPrevious: number | null,
+  over: Partial<Snapshot> = {},
+): Snapshot => ({
+  id, capturedAt, totalValueUsd, assetsUsd: totalValueUsd, debtsUsd: 0, changePctFromPrevious, source: 'AUTO', note: null, ...over,
 });
 
 export const SNAPSHOTS = [
@@ -103,6 +111,22 @@ export const SNAPSHOTS = [
   snapshot('s3', '2026-03-15T12:00:00Z', 11000, 0),
   snapshot('s4', '2026-04-15T12:00:00Z', 9000, -18.2),
 ];
+
+const BUCKETS: SummaryBucket[] = [
+  'GAIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'TRANSFER_FEES', 'OPENING', 'CLOSING', 'ADJUSTMENT', 'DEBT_OPENING',
+  'DEBT_CLOSING', 'DEBT_PAYMENT_EXTERNAL', 'DEBT_PAYMENT_FROM_ASSET', 'DEBT_CHARGE_EXTERNAL', 'DEBT_CHARGE_TO_ASSET', 'DEBT_INTEREST',
+];
+
+/** What a period's movements add up to: nothing recorded, unless told. */
+export const movementsSummary = (over: Partial<MovementsSummary> = {}): MovementsSummary => ({
+  from: '1970-01-01T00:00:00Z',
+  to: '2026-05-01T15:00:00Z',
+  count: 0,
+  transfers: 0,
+  totalsUsd: Object.fromEntries(BUCKETS.map((b) => [b, 0])) as Record<SummaryBucket, number>,
+  netWorthEffectUsd: { investments: 0, saving: 0, addedRemoved: 0, corrections: 0 },
+  ...over,
+});
 
 /** A year of a projection, without debts or inflation (the real values are the same). */
 export const point = (year: number, futureValueUsd: number, totalContributedUsd: number, over: Partial<ProjectionPoint> = {}): ProjectionPoint => ({
@@ -150,6 +174,7 @@ export function installFakeBackend() {
       'GET /api/v1/wealth/snapshots': () => json(SNAPSHOTS),
       'GET /api/v1/wealth/estimate': () => json(projection()),
       'GET /api/v1/movements': () => json({ items: [], nextCursor: null }),
+      'GET /api/v1/movements/summary': () => json(movementsSummary()),
       'GET /api/v1/debts': () => json([]),
       'GET /api/v1/preferences': () => json(DEFAULT_PREFERENCES),
       'PUT /api/v1/preferences': (init) => json(JSON.parse(String(init.body))),

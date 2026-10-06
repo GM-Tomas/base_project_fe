@@ -6,6 +6,18 @@ export function formatCurrency(valUSD: number): string {
   return (rounded < 0 ? '−$' : '$') + Math.abs(rounded).toLocaleString('en-US');
 }
 
+/** A change in whole dollars, with its sign: "+$1,235", "−$50", "$0". */
+export function formatSignedCurrency(usd: number): string {
+  const rounded = Math.round(usd);
+  return (rounded > 0 ? '+' : '') + formatCurrency(rounded);
+}
+
+/** A change in %, to a tenth, with its sign: "+12.3%", "−4.0%", "0.0%". */
+export function formatSignedPercentage(pct: number): string {
+  const tenths = Math.round(pct * 10);
+  return `${tenths > 0 ? '+' : tenths < 0 ? '−' : ''}${(Math.abs(tenths) / 10).toFixed(1)}%`;
+}
+
 /**
  * Format percentage with explicit +/- sign
  */

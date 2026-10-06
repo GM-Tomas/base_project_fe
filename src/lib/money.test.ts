@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AMOUNT_HINT, NEGATIVE_AMOUNT, formatUsd, parseAmount } from './money';
+import { AMOUNT_HINT, NEGATIVE_AMOUNT, formatUsd, parseAmount, parseSignedAmount } from './money';
 
 describe('parseAmount', () => {
   it.each([
@@ -52,6 +52,26 @@ describe('parseAmount', () => {
 
   it('keeps every cent of large amounts', () => {
     expect(parseAmount('999.999.999.999,99')).toEqual({ value: 999999999999.99 });
+  });
+});
+
+describe('parseSignedAmount', () => {
+  it.each([
+    ['1,234.56', 1234.56],
+    ['-1,234.56', -1234.56],
+    ['−500', -500],
+    ['-$5', -5],
+    ['$-5', -5],
+    ['US$ -1.234', -1234],
+    ['- 2.500,5', -2500.5],
+    ['-0', 0],
+    ['0,125', 0.13],
+  ])('reads %j as %d', (text, value) => {
+    expect(parseSignedAmount(text)).toEqual({ value });
+  });
+
+  it.each(['', '-', '--5', '−-5', '5-', '1-2', 'abc', '$'])('rejects %j', (text) => {
+    expect(parseSignedAmount(text)).toEqual({ error: AMOUNT_HINT });
   });
 });
 

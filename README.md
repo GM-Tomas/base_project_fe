@@ -14,8 +14,15 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 - **Expected returns**: say roughly how much each asset grows a year (when adding or editing it, or all at once,
   grouped by class with "Apply to class"). The dashboard shows the portfolio's return, weighted by value (assets
   without one count as 0%), what it would earn in a year and how much of the portfolio it's based on.
-- **History**: delete a checkpoint (with confirmation); the next one's change is recomputed by the API. Its
-  **Activity** lists every recorded change, newest first, filtered by kind (gains & losses, deposits &
+- **History**: pick a **period** (1M, 3M, 6M, YTD, 1Y, 3Y, All, or your own dates) and the chart (on a time
+  axis, with the start value dashed and today's value at the end), the table, the figures and the activity all
+  follow it. The figures: the change in $ and %, annualized (with 90 days or more), the high and low, the
+  biggest drop from a high and the best and worst stretch. **Why it changed** splits the change into
+  investments, saving, assets and debts added or removed, corrections, and what wasn't recorded. **Add a past
+  checkpoint** from before BASE (the net worth, or what you owned and owed), marked as added by hand; delete
+  any checkpoint (with confirmation), and the next one's change is recomputed by the API. After a month without
+  one, History and the dashboard suggest saving a snapshot (dismissable for the day). Its **Activity** lists
+  every recorded change in the period, newest first, filtered by kind (gains & losses, deposits &
   withdrawals, transfers, debts, added & removed, corrections) and by asset or debt. Each checkpoint shows the
   assets and debts behind its net worth.
 - **Movements**: record a gain, loss, deposit or withdrawal on an asset, or **transfer** between assets and
@@ -41,7 +48,6 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
   return its assets without one of their own count with) and your **platforms** (a thumbnail of 1–2 letters or
   an emoji, a color, a type, and a rename or merge on all their assets). Colors and thumbnails show everywhere:
   the dashboard, Platforms, Assets, the asset panel and the platform pickers.
-- **Historical Snapshots**: Net worth timeline curve and snapshot logging.
 - **Add Asset Dialog**: amounts in any usual format (`1.234,56`, `1,234.56`, `$ 1234`) with a preview of how
   they were read; platform and class fields suggest the existing ones and say when a name is new.
 - **Accessible dialogs and toasts** (`src/components/ui`): every dialog closes with Escape, keeps focus inside

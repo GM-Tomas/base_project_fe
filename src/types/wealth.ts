@@ -133,6 +133,50 @@ export interface Snapshot {
   assetsUsd: number;
   debtsUsd: number;
   changePctFromPrevious: number | null;
+  /** AUTO: the net worth when it was taken; MANUAL: one from the past the user entered. */
+  source: 'AUTO' | 'MANUAL';
+  note: string | null;
+}
+
+/** Where a period's movements count (GET /movements/summary). */
+export type SummaryBucket =
+  | 'GAIN'
+  | 'LOSS'
+  | 'DEPOSIT'
+  | 'WITHDRAWAL'
+  | 'TRANSFER'
+  | 'TRANSFER_FEES'
+  | 'OPENING'
+  | 'CLOSING'
+  | 'ADJUSTMENT'
+  | 'DEBT_OPENING'
+  | 'DEBT_CLOSING'
+  | 'DEBT_PAYMENT_EXTERNAL'
+  | 'DEBT_PAYMENT_FROM_ASSET'
+  | 'DEBT_CHARGE_EXTERNAL'
+  | 'DEBT_CHARGE_TO_ASSET'
+  | 'DEBT_INTEREST';
+
+/** A period's change of net worth as its movements explain it, by why. */
+export interface NetWorthEffect {
+  /** Gains − losses − transfer fees − interest on debts. */
+  investments: number;
+  /** Deposits − withdrawals ± debt payments and charges with money from outside. */
+  saving: number;
+  /** Assets added − removed + debts closed − opened. */
+  addedRemoved: number;
+  corrections: number;
+}
+
+/** What a period's movements add up to. */
+export interface MovementsSummary {
+  from: string;
+  to: string;
+  count: number;
+  /** Moves between what's owned and owed: they leave the net worth as it was (but a transfer's fee). */
+  transfers: number;
+  totalsUsd: Record<SummaryBucket, number>;
+  netWorthEffectUsd: NetWorthEffect;
 }
 
 export interface ProjectionPoint {

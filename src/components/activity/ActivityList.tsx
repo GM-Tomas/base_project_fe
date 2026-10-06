@@ -47,6 +47,9 @@ export interface ActivityListProps {
   /** One debt's activity, with amounts as they changed what's owed. */
   debtId?: string;
   kinds?: MovementKind[];
+  /** Only what happened within [from, to] (instants, ISO). */
+  from?: string;
+  to?: string;
   /** What to say when there's nothing (to show). */
   empty?: string;
 }
@@ -55,7 +58,7 @@ type Loaded = { items: Movement[]; next: string | null };
 
 // The activity log, newest first, a page at a time. It reloads whenever the app's data does (after any
 // change, here or in a dialog), so it never disagrees with the values on screen.
-export function ActivityList({ holdingId, debtId, kinds, empty = 'No activity yet' }: ActivityListProps) {
+export function ActivityList({ holdingId, debtId, kinds, from, to, empty = 'No activity yet' }: ActivityListProps) {
   const { dataVersion } = useWealth();
   const { confirmUndo } = useMovementFeedback();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -71,20 +74,20 @@ export function ActivityList({ holdingId, debtId, kinds, empty = 'No activity ye
     setError('');
     setLoadingMore(false);
     api
-      .getMovements({ holdingId, debtId, kinds: kindsKey ? (kindsKey.split(',') as MovementKind[]) : undefined, limit: PAGE_SIZE })
+      .getMovements({ holdingId, debtId, kinds: kindsKey ? (kindsKey.split(',') as MovementKind[]) : undefined, from, to, limit: PAGE_SIZE })
       .then((page) => {
         if (current === generation.current) setLoaded({ items: page.items, next: page.nextCursor });
       })
       .catch((e) => {
         if (current === generation.current) setError(errorMessage(e, "Couldn't load the activity. Please try again."));
       });
-  }, [holdingId, debtId, kindsKey, dataVersion, attempt]);
+  }, [holdingId, debtId, kindsKey, from, to, dataVersion, attempt]);
 
   const loadMore = async () => {
     const current = generation.current;
     setLoadingMore(true);
     try {
-      const page = await api.getMovements({ holdingId, debtId, kinds, limit: PAGE_SIZE, cursor: loaded!.next! });
+      const page = await api.getMovements({ holdingId, debtId, kinds, from, to, limit: PAGE_SIZE, cursor: loaded!.next! });
       if (current !== generation.current) return;
       setLoaded((list) => ({ items: [...list!.items, ...page.items], next: page.nextCursor }));
     } catch (e) {

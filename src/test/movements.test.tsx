@@ -502,7 +502,13 @@ describe('activity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
     expect(await screen.findByText('Nothing recorded matches this filter')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Filter by asset'), { target: { value: '' } });
+    expect(await screen.findByText('Nothing recorded in this period')).toBeTruthy();
+    // History's period: a year back from today, until now.
+    expect(new Date(movementsQuery(5).get('from')!)).toEqual(new Date(2025, 9, 5));
+    expect(movementsQuery(5).get('to')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'All' }));
     expect(await screen.findByText('Nothing recorded yet: gains, losses, deposits and transfers show up here.')).toBeTruthy();
+    expect(movementsQuery(6).get('from')).toBeNull();
   });
 
   it('undoes a change after asking, then reloads everything', async () => {

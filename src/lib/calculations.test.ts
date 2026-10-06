@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { formatCurrency, formatPercentage, generateLinePath } from './calculations';
+import { formatCurrency, formatPercentage, formatSignedCurrency, formatSignedPercentage, generateLinePath } from './calculations';
+
+describe('formatSignedCurrency and formatSignedPercentage', () => {
+  it('sign a change, unless it rounds to nothing', () => {
+    expect(formatSignedCurrency(2345.6)).toBe('+$2,346');
+    expect(formatSignedCurrency(-50)).toBe('−$50');
+    expect(formatSignedCurrency(0.4)).toBe('$0');
+    expect(formatSignedCurrency(-0.4)).toBe('$0');
+    expect(formatSignedPercentage(12.34)).toBe('+12.3%');
+    expect(formatSignedPercentage(-18.18)).toBe('−18.2%');
+    expect(formatSignedPercentage(0.04)).toBe('0.0%');
+    expect(formatSignedPercentage(-0.04)).toBe('0.0%');
+  });
+});
 
 describe('formatCurrency', () => {
   it('rounds to whole dollars with thousands separators', () => {

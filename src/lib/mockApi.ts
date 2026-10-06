@@ -8,6 +8,7 @@ import type {
   HoldingPatch,
   MovementInput,
   MovementQuery,
+  PastCheckpointInput,
   PlatformPatch,
 } from './api';
 import { ApiError } from './apiError';
@@ -15,7 +16,7 @@ import { debtBalances, monthAfter } from './amortization';
 import { normalizeLabel as label, platformKey } from './labels';
 import { createMockCustomization } from './mockCustomization';
 import { createMockDebts } from './mockDebts';
-import { createMockLedger, type MockDebt, type MockLedger } from './mockLedger';
+import { BAD_WHEN, createMockLedger, parseWhen, type MockDebt, type MockLedger } from './mockLedger';
 import { DEFAULT_ESTIMATE, DEFAULT_PREFERENCES, estimateProblems, MAX_MILESTONES, normalizeEstimate } from './preferences';
 import { simulate } from './projection';
 import { expectedReturnOf, RETURN_RANGE, round2, validReturn } from './returns';
@@ -156,6 +157,39 @@ const rejectInvalid = (errors: FieldError[]) => {
   if (errors.length) throw new ApiError(400, errors.map((e) => e.message).join('; '), errors);
 };
 
+// A past checkpoint as POST /wealth/snapshots checks one (WealthHandler, then model.NewManualSnapshot), with its
+// messages: when (to the second, not after now), the net worth and, both or neither, what was owned and owed.
+function pastCheckpoint(past: PastCheckpointInput, now: Date) {
+  const errors: FieldError[] = [];
+  const at = past.capturedAt ? parseWhen(past.capturedAt, '12:00:00.000') : null;
+  if (!past.capturedAt) errors.push({ field: 'capturedAt', message: 'capturedAt is required with a past snapshot' });
+  else if (!at) errors.push({ field: 'capturedAt', message: BAD_WHEN('capturedAt') });
+  const total = past.totalValueUsd as number | null | undefined;
+  if (total === undefined || total === null) errors.push({ field: 'totalValueUsd', message: 'totalValueUsd is required with a past snapshot' });
+  else if (!(Math.abs(total) <= MAX_VALUE_USD)) {
+    errors.push({ field: 'totalValueUsd', message: 'totalValueUsd must be between -1000000000000000 and 1000000000000000' });
+  }
+  for (const field of ['assetsUsd', 'debtsUsd'] as const) {
+    const v = past[field];
+    if (v !== undefined && !(v >= 0 && v <= MAX_VALUE_USD)) errors.push({ field, message: `${field} must be between 0 and 1000000000000000` });
+  }
+  rejectInvalid(errors);
+  const capturedAt = new Date(Math.floor(at!.getTime() / 1000) * 1000);
+  if (capturedAt.getTime() < 0 || capturedAt.getTime() > now.getTime()) throw new ApiError(400, 'capturedAt must be in the past, from 1970 on');
+  const note = (past.note ?? '').trim();
+  if ([...note].length > 200) throw new ApiError(400, `Note exceeds max length (${[...note].length} > 200)`);
+  const net = cents(total!);
+  if ((past.assetsUsd === undefined) !== (past.debtsUsd === undefined)) {
+    throw new ApiError(400, 'assetsUsd and debtsUsd go together: send both or neither');
+  }
+  let [assetsUsd, debtsUsd] = net < 0 ? [0, -net] : [net, 0];
+  if (past.assetsUsd !== undefined) {
+    [assetsUsd, debtsUsd] = [cents(past.assetsUsd), cents(past.debtsUsd!)];
+    if (cents(assetsUsd - debtsUsd) !== net) throw new ApiError(400, 'totalValueUsd must be assetsUsd − debtsUsd');
+  }
+  return { capturedAt: capturedAt.toISOString(), totalValueUsd: net, assetsUsd, debtsUsd, source: 'MANUAL' as const, note: note || null };
+}
+
 // The demo's activity log: each holding's and debt's OPENING when it was added, then SEED_ACTIVITY.
 function seedActivity(ledger: MockLedger, holdings: Holding[], debts: MockDebt[], started: Date) {
   const named = (name: string) => holdings.find((h) => h.name === name)!;
@@ -210,6 +244,8 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       totalValueUsd: net,
       assetsUsd: cents(net + owed),
       debtsUsd: owed,
+      source: 'AUTO' as const,
+      note: null,
     };
   });
 
@@ -476,23 +512,35 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     updateAssetClass: async (id: string, patch: AssetClassPatch) => custom.updateAssetClass(id, patch),
     deleteAssetClass: async (id: string, moveTo?: string) => custom.deleteAssetClass(id, moveTo),
     getSnapshots: async () => snapshots.map((_, i) => withChange(i)),
-    createSnapshot: async () => {
-      // Taken to the second, one per second at most, as the API does.
-      const capturedAt = new Date(Math.floor(now().getTime() / 1000) * 1000).toISOString();
+    createSnapshot: async (past?: PastCheckpointInput) => {
+      // Today's, or a past one the user enters: taken to the second, one per second at most, as the API does.
+      // A body with nothing in it is as good as none.
+      const empty = !past || (!past.capturedAt && past.totalValueUsd == null && past.assetsUsd == null && past.debtsUsd == null && !past.note);
+      const kept = empty ? null : pastCheckpoint(past, now());
+      const capturedAt = kept?.capturedAt ?? new Date(Math.floor(now().getTime() / 1000) * 1000).toISOString();
       if (snapshots.some((s) => s.capturedAt === capturedAt)) {
         throw new ApiError(409, `A snapshot already exists for ${capturedAt.replace('.000Z', 'Z')}`);
       }
       if (snapshots.length >= MAX_SNAPSHOTS) throw new ApiError(409, `You've reached the limit of ${MAX_SNAPSHOTS} snapshots.`);
       const [assets, debtsUsd] = [total(holdings), owed()];
-      snapshots.push({
-        id: `demo-snapshot-${nextSnapshotId++}`,
-        capturedAt,
-        totalValueUsd: cents(assets - debtsUsd),
-        assetsUsd: assets,
-        debtsUsd,
-      });
-      return withChange(snapshots.length - 1);
+      const snapshot = kept
+        ? { id: `demo-snapshot-${nextSnapshotId++}`, ...kept }
+        : {
+            id: `demo-snapshot-${nextSnapshotId++}`,
+            capturedAt,
+            totalValueUsd: cents(assets - debtsUsd),
+            assetsUsd: assets,
+            debtsUsd,
+            source: 'AUTO' as const,
+            note: null,
+          };
+      // Kept in order: a past one goes where it belongs.
+      const at = snapshots.findIndex((s) => s.capturedAt > capturedAt);
+      const index = at < 0 ? snapshots.length : at;
+      snapshots.splice(index, 0, snapshot);
+      return withChange(index);
     },
+    getMovementsSummary: async (period?: { from?: string; to?: string }) => ledger.summary(period),
     deleteSnapshot: async (id: string) => {
       const index = snapshots.findIndex((s) => s.id === id);
       if (index < 0) throw new ApiError(404, `Snapshot ${id} not found`);

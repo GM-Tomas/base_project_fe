@@ -68,3 +68,13 @@ const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD',
 
 /** "$1,234.56" — with cents, for previews and anywhere an exact amount matters. */
 export const formatUsd = (value: number) => usd.format(value);
+
+/** An amount that can be below zero (a net worth): "-1,234.56", "−$500", "$-500". */
+export function parseSignedAmount(raw: string): ParsedAmount {
+  const text = raw.replace(/\s/g, '').replace(CURRENCY, '');
+  const negative = /^[-−]/.test(text);
+  const parsed = parseAmount(negative ? text.slice(1) : text);
+  // A second minus ("--5") is a typo, not a negative amount.
+  if (parsed.error !== undefined) return { error: AMOUNT_HINT };
+  return { value: negative && parsed.value !== 0 ? -parsed.value : parsed.value };
+}

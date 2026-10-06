@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/calculations';
 import { formatReturn } from '@/lib/returns';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
 import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
+import { SnapshotReminder } from '@/components/history/SnapshotReminder';
 
 /** "Cash", "Cash and Crypto", "Cash, Equity, Crypto and Gold", "Cash, Equity, Crypto and 2 more". */
 export function listNames(names: string[], max = 3): string {
@@ -58,6 +59,8 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      <SnapshotReminder />
+
       {/* Top Grid: Hero Net Worth + 4 Quick Metric Cards */}
       <div
         style={{

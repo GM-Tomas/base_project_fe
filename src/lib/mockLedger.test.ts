@@ -438,3 +438,76 @@ describe('mock activity log', () => {
     await expect(api.createMovement({ kind: 'GAIN', holdingId: savings.id, amountUsd: 1 })).rejects.toMatchObject(limit);
   });
 });
+
+describe('mock movements summary', () => {
+  const cents = (n: number) => Math.round(n * 100) / 100;
+
+  it("explains the demo's whole net worth over all time: every change was recorded", async () => {
+    const { api } = demo();
+
+    const all = await api.getMovementsSummary();
+    expect(all).toMatchObject({ from: '1970-01-01T00:00:00.000Z', to: '2026-10-04T10:00:00.000Z', count: 20, transfers: 2 });
+    const e = all.netWorthEffectUsd;
+    expect(cents(e.investments + e.saving + e.addedRemoved + e.corrections)).toBe((await api.getSummary()).netWorth.usd);
+  });
+
+  it('adds up the period asked, by bucket, as service.MovementsEffect does', async () => {
+    const { api, tick, holding } = demo();
+    const before = (await api.getSummary()).netWorth.usd;
+    const [btc, savings, fund] = [await holding('Bitcoin'), await holding('Savings account'), await holding('Emergency fund')];
+    const [car, visa] = await api.getDebts();
+    tick();
+
+    await api.createMovement({ kind: 'GAIN', holdingId: btc.id, amountUsd: 100 });
+    await api.createMovement({ kind: 'LOSS', holdingId: btc.id, amountUsd: 40 });
+    await api.createMovement({ kind: 'DEPOSIT', holdingId: savings.id, amountUsd: 500 });
+    await api.createMovement({ kind: 'WITHDRAWAL', holdingId: savings.id, amountUsd: 200 });
+    await api.createMovement({ kind: 'TRANSFER', fromHoldingId: savings.id, toHoldingId: fund.id, amountUsd: 300, feeUsd: 5 });
+    await api.createMovement({ kind: 'DEBT_PAYMENT', debtId: visa.id, fromHoldingId: savings.id, amountUsd: 50 });
+    await api.createMovement({ kind: 'DEBT_PAYMENT', debtId: visa.id, amountUsd: 70 });
+    await api.createMovement({ kind: 'DEBT_CHARGE', debtId: visa.id, amountUsd: 30 });
+    await api.createMovement({ kind: 'DEBT_CHARGE', debtId: visa.id, toHoldingId: fund.id, amountUsd: 20 });
+    await api.createMovement({ kind: 'DEBT_INTEREST', debtId: car.id, amountUsd: 10 });
+    // Corrections: an asset up by 15, a debt up by 25 (which lowers the net worth).
+    await api.updateHolding(btc.id, { valueUsd: 18_525, valueChangeReason: 'CORRECTION' });
+    await api.updateDebt(car.id, { balanceUsd: 8_435 });
+    const gold = await api.createHolding({ name: 'Gold', assetClass: 'Commodity', platform: 'Vault', valueUsd: 1_000 });
+    await api.deleteHolding(gold.id);
+    const mom = await api.createDebt({ name: 'Mom', balanceUsd: 400 });
+    await api.deleteDebt(mom.id);
+
+    const period = await api.getMovementsSummary({ from: new Date(start + 1).toISOString() });
+    expect(period).toEqual({
+      from: '2026-10-04T10:00:00.001Z',
+      to: '2026-10-04T10:01:00.000Z',
+      count: 16,
+      transfers: 3,
+      totalsUsd: {
+        GAIN: 100, LOSS: 40, DEPOSIT: 500, WITHDRAWAL: 200, TRANSFER: 300, TRANSFER_FEES: 5, OPENING: 1_000, CLOSING: 1_000,
+        ADJUSTMENT: -10, DEBT_OPENING: 400, DEBT_CLOSING: 400, DEBT_PAYMENT_EXTERNAL: 70, DEBT_PAYMENT_FROM_ASSET: 50,
+        DEBT_CHARGE_EXTERNAL: 30, DEBT_CHARGE_TO_ASSET: 20, DEBT_INTEREST: 10,
+      },
+      netWorthEffectUsd: { investments: 45, saving: 340, addedRemoved: 0, corrections: -10 },
+    });
+    // Which is just what the net worth did.
+    expect(cents((await api.getSummary()).netWorth.usd - before)).toBe(375);
+
+    // Dates are whole days (UTC); up to before all that, the seeded activity only.
+    const seeded = await api.getMovementsSummary({ from: '2026-01-01', to: '2026-10-03' });
+    expect(seeded).toMatchObject({ from: '2026-01-01T00:00:00.000Z', to: '2026-10-03T23:59:59.999Z' });
+    expect(seeded.count).toBeGreaterThan(0);
+    expect(seeded.count).toBeLessThan(20);
+  });
+
+  it("rejects a period the API would reject, with its messages", async () => {
+    const { api } = demo();
+    const fails = (period: object) => api.getMovementsSummary(period).catch((e) => e);
+
+    expect(await fails({ from: 'yesterday', to: '2026-02-30' })).toMatchObject({
+      status: 400,
+      message: 'from must be a date (YYYY-MM-DD) or a date and time (RFC 3339); to must be a date (YYYY-MM-DD) or a date and time (RFC 3339)',
+    });
+    expect(await fails({ from: '2026-10-02', to: '2026-10-01' })).toMatchObject({ status: 400, message: 'from must not be after to' });
+    expect(await fails({ from: '2026-10-01', to: '2026-10-01' })).toMatchObject({ count: 0 });
+  });
+});

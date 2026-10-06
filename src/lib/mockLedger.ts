@@ -7,6 +7,8 @@ import type {
   MovementHolding,
   MovementKind,
   MovementPage,
+  MovementsSummary,
+  SummaryBucket,
   ValueChangeReason,
 } from '@/types/wealth';
 import type { MovementInput, MovementQuery } from './api';
@@ -24,6 +26,10 @@ const DEBT_KINDS: MovementKind[] = ['DEBT_PAYMENT', 'DEBT_CHARGE', 'DEBT_INTERES
 const RECORDABLE: MovementKind[] = ['GAIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', ...DEBT_KINDS];
 const ALL_KINDS: MovementKind[] = ['OPENING', 'CLOSING', 'GAIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'ADJUSTMENT', ...DEBT_KINDS];
 const REASONS: (ValueChangeReason | '')[] = ['', 'MARKET', 'CASH_FLOW', 'CORRECTION'];
+const SUMMARY_BUCKETS: SummaryBucket[] = [
+  'GAIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'TRANSFER_FEES', 'OPENING', 'CLOSING', 'ADJUSTMENT', 'DEBT_OPENING',
+  'DEBT_CLOSING', 'DEBT_PAYMENT_EXTERNAL', 'DEBT_PAYMENT_FROM_ASSET', 'DEBT_CHARGE_EXTERNAL', 'DEBT_CHARGE_TO_ASSET', 'DEBT_INTEREST',
+];
 const BALANCE_REASONS: (BalanceChangeReason | '')[] = ['', 'PAYMENT', 'CHARGE', 'INTEREST', 'CORRECTION'];
 
 const WHY_NOT_BELOW_ZERO: Partial<Record<MovementKind, string>> = {
@@ -409,6 +415,80 @@ export function createMockLedger({ holdings, debts, now, newHolding }: LedgerSto
       return {
         items: items.map(view),
         nextCursor: list.length > limit ? encodeCursor(items[items.length - 1]) : null,
+      };
+    },
+
+    /**
+     * What the movements of [from, to] add up to, by bucket, and what they did to the net worth
+     * (base_project_go service.MovementsEffect): transfers, and debt payments from (or charges into) an asset,
+     * leave it as it was but for their fee.
+     */
+    summary(period: { from?: string; to?: string } = {}): MovementsSummary {
+      const errors: FieldError[] = [];
+      const bound = (field: 'from' | 'to', dayTime: string, otherwise: string) => {
+        const raw = period[field];
+        if (!raw) return otherwise;
+        const at = parseWhen(raw, dayTime);
+        if (!at) errors.push({ field, message: BAD_WHEN(field) });
+        return at?.toISOString() ?? otherwise;
+      };
+      const from = bound('from', '00:00:00.000', '1970-01-01T00:00:00.000Z');
+      const to = bound('to', '23:59:59.999', now().toISOString());
+      if (errors.length) throw invalid(errors);
+      if (from > to) throw invalid([{ field: 'from', message: 'from must not be after to' }]);
+
+      const totals = Object.fromEntries(SUMMARY_BUCKETS.map((b) => [b, 0])) as Record<SummaryBucket, number>;
+      const add = (b: SummaryBucket, v: number) => (totals[b] += v);
+      let count = 0;
+      let transfers = 0;
+      for (const m of movements) {
+        if (m.occurredAt < from || m.occurredAt > to) continue;
+        count++;
+        const amount = m.amountUsd;
+        switch (m.kind) {
+          case 'OPENING':
+            add(m.debt ? 'DEBT_OPENING' : 'OPENING', amount);
+            break;
+          case 'CLOSING':
+            add(m.debt ? 'DEBT_CLOSING' : 'CLOSING', amount);
+            break;
+          case 'TRANSFER':
+            add('TRANSFER', amount);
+            add('TRANSFER_FEES', m.feeUsd ?? 0);
+            transfers++;
+            break;
+          case 'ADJUSTMENT': {
+            // A debt's balance going up lowers the net worth.
+            const change = (m.newValueUsd ?? 0) - (m.previousValueUsd ?? 0);
+            add('ADJUSTMENT', m.debt ? -change : change);
+            break;
+          }
+          case 'DEBT_PAYMENT':
+            add(m.holding ? 'DEBT_PAYMENT_FROM_ASSET' : 'DEBT_PAYMENT_EXTERNAL', amount);
+            if (m.holding) transfers++;
+            break;
+          case 'DEBT_CHARGE':
+            add(m.toHolding ? 'DEBT_CHARGE_TO_ASSET' : 'DEBT_CHARGE_EXTERNAL', amount);
+            if (m.toHolding) transfers++;
+            break;
+          default:
+            add(m.kind, amount); // GAIN, LOSS, DEPOSIT, WITHDRAWAL, DEBT_INTEREST
+        }
+      }
+      for (const b of SUMMARY_BUCKETS) totals[b] = cents(totals[b]);
+      const t = totals;
+      return {
+        from,
+        to,
+        count,
+        transfers,
+        totalsUsd: totals,
+        netWorthEffectUsd: {
+          investments: cents(t.GAIN - t.LOSS - t.TRANSFER_FEES - t.DEBT_INTEREST),
+          saving: cents(t.DEPOSIT - t.WITHDRAWAL + t.DEBT_PAYMENT_EXTERNAL - t.DEBT_CHARGE_EXTERNAL),
+          addedRemoved: cents(t.OPENING - t.CLOSING + t.DEBT_CLOSING - t.DEBT_OPENING),
+          corrections: cents(t.ADJUSTMENT),
+        },
       };
     },
 

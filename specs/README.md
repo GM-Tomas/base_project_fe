@@ -34,7 +34,7 @@ Estas specs cubren los dos repositorios:
 | F3 — Deudas | Hecha | ✔ | ✔ |
 | F4 — Retorno esperado y proyección | Hecha | ✔ | ✔ |
 | F5 — Personalización | Hecha | ✔ | ✔ |
-| F6 — Historial por períodos | Lista para implementar | ✔ | ✔ |
+| F6 — Historial por períodos | Hecha | ✔ | ✔ |
 | F7 — UX global | Lista para implementar | ✔ | ✔ |
 
 Estados posibles: *Borrador* → *Lista para implementar* → *En curso* → *Hecha*.

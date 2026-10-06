@@ -180,6 +180,30 @@ describe('api', () => {
     ]);
   });
 
+  it("asks what a period's movements add up to: all time, or between two instants", async () => {
+    fetchMock.mockImplementation(async () => json({ count: 0 }));
+    await api.getMovementsSummary();
+    await api.getMovementsSummary({ from: '2026-01-15T12:00:00.000Z', to: '2026-05-01T15:00:00.000Z' });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://localhost:8080/api/v1/movements/summary',
+      'http://localhost:8080/api/v1/movements/summary?from=2026-01-15T12%3A00%3A00.000Z&to=2026-05-01T15%3A00%3A00.000Z',
+    ]);
+  });
+
+  it("saves today's snapshot with no body, and a past one with its figures", async () => {
+    fetchMock.mockImplementation(async () => json({ id: 's1' }, 201));
+    await api.createSnapshot();
+    expect(lastCall().init.method).toBe('POST');
+    expect(lastCall().init.body).toBeUndefined();
+    await api.createSnapshot({ capturedAt: '2025-12-31T12:00:00.000Z', totalValueUsd: -2_500, note: 'From my spreadsheet' });
+    expect(lastCall().init.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(String(lastCall().init.body))).toEqual({
+      capturedAt: '2025-12-31T12:00:00.000Z',
+      totalValueUsd: -2_500,
+      note: 'From my spreadsheet',
+    });
+  });
+
   it('records and undoes movements', async () => {
     fetchMock.mockResolvedValueOnce(json({ id: 'm1' }, 201)).mockResolvedValueOnce(new Response(null, { status: 204 }));
     await expect(api.createMovement({ kind: 'GAIN', holdingId: 'h1', amountUsd: 5 })).resolves.toEqual({ id: 'm1' });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@supabase/supabase-js';
 import HomePage from '@/app/page';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -27,6 +27,15 @@ import {
 } from './harness';
 
 installFakeBackend();
+
+// Pinned a couple of weeks after the last checkpoint (no reminder to save one; History's 1Y has them all).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-05-01T15:00:00'));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('auth', () => {
   it('renders nothing while the session is loading', () => {
@@ -806,29 +815,49 @@ describe('history', () => {
     expect(screen.getByText('▼ -18.2%')).toBeTruthy();
   });
 
-  it('shows a tooltip on hover and focus', async () => {
+  it('reads each point on hover and with the arrow keys', async () => {
     await renderApp();
     nav('History');
+    const plot = screen.getByRole('group', { name: 'Net worth over the period: use the arrow keys to read each point' });
+    plot.getBoundingClientRect = () => ({ left: 0, width: 680 }) as DOMRect;
+    const read = () =>
+      [...plot.querySelectorAll('.chart-tooltip > div')].map((d) => [...d.childNodes].map((c) => c.textContent).join(' '));
+    const JAN = ['Jan 15, 2026', 'Net worth $10,000'];
+    const TODAY = ['Today', 'Net worth $12,346', 'Since Apr 15, 2026 +$3,346'];
 
-    for (const label of ['Jan 15, 2026: $10,000', 'Feb 15, 2026: $11,000', 'Apr 15, 2026: $9,000']) {
-      const dot = screen.getByLabelText(label);
-      fireEvent.mouseEnter(dot);
-      expect(within(dot).getByText(label.split(': ')[1])).toBeTruthy();
-      fireEvent.mouseLeave(dot);
-      expect(within(dot).queryByText(label.split(': ')[1])).toBeNull();
-    }
+    // The point nearest the pointer: the first checkpoint at the left, today's value at the right.
+    fireEvent.mouseMove(plot, { clientX: 0 });
+    expect(read()).toEqual(JAN);
+    fireEvent.mouseMove(plot, { clientX: 680 });
+    expect(read()).toEqual(TODAY);
+    fireEvent.mouseLeave(plot);
+    expect(read()).toEqual([]);
 
-    const dot = screen.getByLabelText('Mar 15, 2026: $11,000');
-    fireEvent.focus(dot);
-    expect(within(dot).getByText('$11,000')).toBeTruthy();
-    fireEvent.blur(dot);
-    expect(within(dot).queryByText('$11,000')).toBeNull();
+    // With the focus, from the last point; the arrows, Home and End move along.
+    fireEvent.focus(plot);
+    expect(read()).toEqual(TODAY);
+    fireEvent.keyDown(plot, { key: 'ArrowLeft' });
+    expect(read()).toEqual(['Apr 15, 2026', 'Net worth $9,000', 'Since Mar 15, 2026 −$2,000']);
+    fireEvent.keyDown(plot, { key: 'Home' });
+    expect(read()).toEqual(JAN);
+    fireEvent.keyDown(plot, { key: 'ArrowLeft' });
+    expect(read()).toEqual(JAN);
+    fireEvent.keyDown(plot, { key: 'ArrowRight' });
+    expect(read()).toEqual(['Feb 15, 2026', 'Net worth $11,000', 'Since Jan 15, 2026 +$1,000']);
+    fireEvent.keyDown(plot, { key: 'End' });
+    expect(read()).toEqual(TODAY);
+    fireEvent.keyDown(plot, { key: 'ArrowRight' });
+    expect(read()).toEqual(TODAY);
+    fireEvent.keyDown(plot, { key: 'a' });
+    expect(read()).toEqual(TODAY);
+    fireEvent.blur(plot);
+    expect(read()).toEqual([]);
   });
 
   it('takes a snapshot and refreshes', async () => {
     routes['GET /api/v1/wealth/snapshots'] = () => json([]);
     routes['POST /api/v1/wealth/snapshots'] = () => {
-      routes['GET /api/v1/wealth/snapshots'] = () => json([snapshot('s9', '2026-05-15T12:00:00Z', 12345.6, null)]);
+      routes['GET /api/v1/wealth/snapshots'] = () => json([snapshot('s9', '2026-05-01T12:00:00Z', 12345.6, null)]);
       return json({}, 201);
     };
     await renderApp();
@@ -837,7 +866,7 @@ describe('history', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save a snapshot' }));
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeTruthy();
-    expect(await screen.findByText('May 15, 2026')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Delete checkpoint of May 1, 2026' })).toBeTruthy();
     expect(screen.getByText('Snapshot saved')).toBeTruthy();
   });
 

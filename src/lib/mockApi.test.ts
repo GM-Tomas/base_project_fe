@@ -223,6 +223,8 @@ describe('mock API (the data previews run on)', () => {
       assetsUsd: 92_350,
       debtsUsd: 12_350,
       changePctFromPrevious: null,
+      source: 'AUTO',
+      note: null,
     });
     expect(history[1].changePctFromPrevious).toBe(2.2);
 
@@ -235,6 +237,74 @@ describe('mock API (the data previews run on)', () => {
       assetsUsd: 107_420,
       debtsUsd: 9_650,
       changePctFromPrevious: Math.round(((97_770 - grown(8)) / grown(8)) * 1000) / 10,
+      source: 'AUTO',
+      note: null,
+    });
+    expect(await api.getSnapshots()).toHaveLength(10);
+  });
+
+  it('adds checkpoints from the past where they belong, marked as added by hand', async () => {
+    const api = createMockApi(at('2026-10-04T10:00:00Z'));
+
+    // A date is noon UTC; the net worth alone is all owned (or, below zero, all owed).
+    const december = await api.createSnapshot({ capturedAt: '2025-12-31', totalValueUsd: 78_000, note: '  From my spreadsheet  ' });
+    expect(december).toEqual({
+      id: 'demo-snapshot-10',
+      capturedAt: '2025-12-31T12:00:00.000Z',
+      totalValueUsd: 78_000,
+      assetsUsd: 78_000,
+      debtsUsd: 0,
+      changePctFromPrevious: null,
+      source: 'MANUAL',
+      note: 'From my spreadsheet',
+    });
+    expect(await api.createSnapshot({ capturedAt: '2025-06-30', totalValueUsd: -2_500 })).toMatchObject({
+      totalValueUsd: -2_500,
+      assetsUsd: 0,
+      debtsUsd: 2_500,
+      note: null,
+    });
+    // With what was owned and owed, to the second; the change from the one before is worked out again.
+    const september = await api.createSnapshot({ capturedAt: '2025-09-30T15:30:00.900Z', totalValueUsd: 50_000, assetsUsd: 65_000, debtsUsd: 15_000 });
+    expect(september).toMatchObject({ capturedAt: '2025-09-30T15:30:00.000Z', assetsUsd: 65_000, debtsUsd: 15_000, changePctFromPrevious: null });
+
+    const history = await api.getSnapshots();
+    expect(history.map((s) => s.id).slice(0, 4)).toEqual(['demo-snapshot-11', 'demo-snapshot-12', 'demo-snapshot-10', 'demo-snapshot-1']);
+    expect(history[2].changePctFromPrevious).toBe(56);
+    expect(history[3].changePctFromPrevious).toBe(2.6);
+    // An empty body takes today's, as none does.
+    expect(await api.createSnapshot({} as never)).toMatchObject({ capturedAt: '2026-10-04T10:00:00.000Z', source: 'AUTO', totalValueUsd: 97_770 });
+  });
+
+  it("rejects a past checkpoint the API would reject, with its messages", async () => {
+    const api = createMockApi(at('2026-10-04T10:00:00Z'));
+    const fails = (past: object) => api.createSnapshot(past as never).catch((e) => e);
+
+    expect(await fails({ note: 'Lost' })).toMatchObject({
+      status: 400,
+      message: 'capturedAt is required with a past snapshot; totalValueUsd is required with a past snapshot',
+    });
+    expect(await fails({ capturedAt: '2025-02-30', totalValueUsd: 1e16, assetsUsd: -1, debtsUsd: 1e16 })).toMatchObject({
+      message:
+        'capturedAt must be a date (YYYY-MM-DD) or a date and time (RFC 3339); totalValueUsd must be between -1000000000000000 and 1000000000000000; assetsUsd must be between 0 and 1000000000000000; debtsUsd must be between 0 and 1000000000000000',
+    });
+    for (const capturedAt of ['2026-10-04T10:00:01Z', '1969-12-31T23:59:59Z']) {
+      expect(await fails({ capturedAt, totalValueUsd: 1 })).toMatchObject({ status: 400, message: 'capturedAt must be in the past, from 1970 on' });
+    }
+    expect(await fails({ capturedAt: '2025-01-01', totalValueUsd: 1, note: 'x'.repeat(201) })).toMatchObject({
+      message: 'Note exceeds max length (201 > 200)',
+    });
+    expect(await fails({ capturedAt: '2025-01-01', totalValueUsd: 1, assetsUsd: 1 })).toMatchObject({
+      message: 'assetsUsd and debtsUsd go together: send both or neither',
+    });
+    expect(await fails({ capturedAt: '2025-01-01', totalValueUsd: 10, assetsUsd: 20, debtsUsd: 5 })).toMatchObject({
+      message: 'totalValueUsd must be assetsUsd − debtsUsd',
+    });
+    // One per second, as today's.
+    await api.createSnapshot({ capturedAt: '2025-01-01', totalValueUsd: 1 });
+    expect(await fails({ capturedAt: '2025-01-01T12:00:00Z', totalValueUsd: 2 })).toMatchObject({
+      status: 409,
+      message: 'A snapshot already exists for 2025-01-01T12:00:00Z',
     });
     expect(await api.getSnapshots()).toHaveLength(10);
   });

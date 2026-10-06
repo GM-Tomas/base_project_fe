@@ -29,10 +29,23 @@ import {
   HoldingInput,
   HoldingPatch,
   MovementInput,
+  PastCheckpointInput,
   PlatformPatch,
 } from '@/lib/api';
 import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
+import { DEFAULT_PERIOD, type PeriodPreset } from '@/lib/periods';
+
+/** How History is looked at: its period (a preset, or two dates), and whether today's value is in it. */
+export interface HistoryPeriodState {
+  preset: PeriodPreset;
+  /** A custom period's dates (YYYY-MM-DD). */
+  from: string;
+  to: string;
+  includeToday: boolean;
+}
+
+export const INITIAL_HISTORY_PERIOD: HistoryPeriodState = { preset: DEFAULT_PERIOD, from: '', to: '', includeToday: true };
 
 interface ClassDistributionItem {
   label: AssetClass;
@@ -78,6 +91,8 @@ interface WealthContextType {
   view: ViewType;
   selectedPlatform: string | null;
   assetsTable: AssetsTableState;
+  /** History's period: it outlives a trip to another view. */
+  historyPeriod: HistoryPeriodState;
   holdings: Holding[];
   /** Largest balance first. */
   debts: Debt[];
@@ -124,6 +139,7 @@ interface WealthContextType {
   /** Platforms view, with that platform's holdings open. */
   openPlatform: (platform: string) => void;
   setAssetsTable: React.Dispatch<React.SetStateAction<AssetsTableState>>;
+  setHistoryPeriod: React.Dispatch<React.SetStateAction<HistoryPeriodState>>;
   /** Changes how Estimate is set up (saved a second later). */
   setEstimatePrefs: (change: (prefs: EstimatePreferences) => EstimatePreferences) => void;
   addHolding: (holding: HoldingInput) => Promise<void>;
@@ -131,7 +147,8 @@ interface WealthContextType {
   deleteHolding: (id: string) => Promise<void>;
   /** Sets many holdings' expected returns at once, all or none. */
   setExpectedReturns: (items: ExpectedReturnItem[]) => Promise<void>;
-  takeSnapshot: () => Promise<void>;
+  /** Saves today's net worth, or, given one, a checkpoint from the past. */
+  takeSnapshot: (past?: PastCheckpointInput) => Promise<void>;
   deleteSnapshot: (id: string) => Promise<void>;
   addDebt: (input: DebtInput) => Promise<Debt>;
   updateDebt: (id: string, patch: DebtPatch) => Promise<void>;
@@ -184,6 +201,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   // The Assets table's search, filters and order outlive a trip to another view (but not the account).
   const [assetsTable, setAssetsTable] = useState<AssetsTableState>(INITIAL_ASSETS_TABLE);
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriodState>(INITIAL_HISTORY_PERIOD);
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const holdingsRef = useRef<Holding[]>([]);
@@ -425,10 +443,13 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [refresh, reloadAfterChange],
   );
 
-  const takeSnapshot = useCallback(async () => {
-    await api.createSnapshot();
-    await reloadAfterChange();
-  }, [reloadAfterChange]);
+  const takeSnapshot = useCallback(
+    async (past?: PastCheckpointInput) => {
+      await api.createSnapshot(past);
+      await reloadAfterChange();
+    },
+    [reloadAfterChange],
+  );
 
   const deleteSnapshot = useCallback(
     async (id: string) => {
@@ -568,6 +589,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         view,
         selectedPlatform,
         assetsTable,
+        historyPeriod,
         holdings,
         debts,
         platforms,
@@ -606,6 +628,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setSelectedPlatform(platform);
         },
         setAssetsTable,
+        setHistoryPeriod,
         setEstimatePrefs,
         addHolding,
         updateHolding,

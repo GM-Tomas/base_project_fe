@@ -1,6 +1,6 @@
 # F6 — Historial por períodos de análisis
 
-**Estado:** Lista para implementar · **Repos:** backend + frontend · **Depende de:** F2, F3
+**Estado:** Hecha · **Repos:** backend + frontend · **Depende de:** F2, F3
 
 ## Objetivo
 
@@ -123,15 +123,15 @@ Body opcional. Sin body (o `{}`), como hoy: guarda el patrimonio actual (`source
 ## Tareas
 
 **Backend**
-- [ ] `MovementsEffect` (dominio, 100 % cubierto) + `GET /movements/summary` (agregación por tipo en Go).
-- [ ] Snapshots manuales (`source`, `note`) y validaciones.
-- [ ] `openapi.json`, README; e2e de aislamiento del resumen.
+- [x] `MovementsEffect` (dominio, 100 % cubierto) + `GET /movements/summary` (agregación por tipo en Go).
+- [x] Snapshots manuales (`source`, `note`) y validaciones.
+- [x] `openapi.json`, README; e2e de aislamiento del resumen.
 
 **Frontend**
-- [ ] `lib/periods.ts` + tests.
-- [ ] Selector, gráfico con ejes, estadísticas, desglose, Activity del período.
-- [ ] Checkpoint pasado, recordatorio.
-- [ ] Mock + tests de flujos.
+- [x] `lib/periods.ts` + tests.
+- [x] Selector, gráfico con ejes, estadísticas, desglose, Activity del período.
+- [x] Checkpoint pasado, recordatorio.
+- [x] Mock + tests de flujos.
 
 ## Pruebas
 
@@ -152,3 +152,56 @@ Body opcional. Sin body (o `{}`), como hoy: guarda el patrimonio actual (`source
   barra *Investments* del desglose.
 - **Riesgo**: la categoría *Not recorded* puede ser grande si el usuario no registra movimientos; es
   información útil (le muestra cuánto falta registrar), con un texto que lo explica.
+
+### Decisiones al implementar
+
+**Backend**
+
+- **Agregación en Mongo, reglas en el dominio**: `GET /movements/summary` agrupa con un `$group` por *forma*
+  (`kind`, si es de una deuda, si toca un asset) y suma montos, comisiones y `new − previous` como `decimal`
+  (`$convert`, sin pérdida de centavos); `service.MovementsEffect` reparte esos grupos en los 16 *buckets* y
+  calcula el efecto. Nunca se bajan los movimientos para sumarlos.
+- **`from`/`to` en la respuesta** son los límites que se usaron (por defecto 1970 y ahora; una fecha sola es el
+  día entero en UTC). `from` posterior a `to` → `400` *"from must not be after to"*.
+- **`transfers`** cuenta las transferencias, los pagos de deuda hechos desde un asset y los cargos que fueron a
+  un asset: los tres mueven plata sin cambiar el patrimonio.
+- **Ajustes**: suman `newValue − previousValue`; los de una deuda con el signo invertido (más deuda, menos
+  patrimonio).
+- **Body vacío = snapshot de hoy**: un `POST /wealth/snapshots` con `{}` (o sin ningún campo) guarda el
+  patrimonio actual, como sin body. Con algún campo es uno del pasado y se valida entero.
+- **Un checkpoint del pasado con solo el neto** guarda assets = neto (o deudas = −neto si es negativo), para que
+  la tabla y el *tooltip* puedan mostrar de qué estaba hecho sin inventar más.
+- **`source` de los snapshots viejos**: los documentos sin `source` se leen como `AUTO`.
+
+**Frontend**
+
+- **El período vive en `WealthContext`** (`historyPeriod`): se mantiene al cambiar de vista mientras la app está
+  abierta y vuelve a *1Y* al cambiar de cuenta. Guardarlo en preferencias queda para F7.
+- **Custom arranca con las fechas del período que se estaba viendo**; con fechas que no forman un período
+  (falta una, fin antes del inicio, fin futuro) se ve todo el historial y se dice por qué
+  (*"…: showing all time."*).
+- **"Include today's value"** solo aparece cuando el período llega a hoy (en un Custom que termina antes no
+  hay punto *Today*).
+- **Eje X en el tiempo**: cada checkpoint se dibuja en su fecha, no a intervalos iguales. Cuando el inicio de
+  la medición es un checkpoint anterior al período, no se dibuja como punto: queda la línea punteada y la
+  leyenda *"Start: $X on <fecha>"*.
+- **Lectura del gráfico**: con el mouse (el punto más cercano) o con el foco y las flechas, Home y End. El
+  *tooltip* muestra el neto, assets y deudas si había deudas, y el cambio desde el punto anterior; los
+  checkpoints manuales se ven huecos y dicen *"added by hand"*; *Today* lleva un halo.
+- **Estadísticas en dos filas de cuatro** (*Change* ocupa dos). Montos y % con signo tipográfico (`−`), y sin
+  signo cuando redondean a cero (`formatSignedCurrency`, `formatSignedPercentage`).
+- **El desglose pide el resumen entre los instantes exactos** del inicio y del fin (los mismos de las
+  estadísticas) y se vuelve a pedir cuando cambian los datos (`dataVersion`). *Not recorded* se redondea a
+  centavos.
+- **Sin checkpoints en el período** pero con uno anterior y el valor de hoy, igual se muestran las
+  estadísticas y el desglose (*"It went from $X to $Y."*). Sin ningún checkpoint se ve *"No checkpoints yet"*
+  aunque haya valor de hoy.
+- **Checkpoint del pasado**: se manda el **mediodía local** del día elegido como instante (o ahora, si es hoy y
+  todavía es de mañana), para que caiga en ese día en el huso del usuario. La casilla *"I know what I owned and
+  owed"* cambia el neto por dos campos y muestra el neto calculado en vivo. El neto acepta negativos
+  (`parseSignedAmount`: `-2.500`, `−$500`; un segundo `-` es un error de tipeo).
+- **Recordatorio**: en History no repite el botón *Save a snapshot* (está en la tarjeta de abajo). *Dismiss*
+  se guarda por navegador y por día; si el navegador no deja guardar, se oculta solo en esa visita.
+- **Activity del período**: `from` es el inicio del período; `to` solo cuando el período no llega a hoy (el
+  final de su último día), así lo recién registrado aparece sin recargar.
+

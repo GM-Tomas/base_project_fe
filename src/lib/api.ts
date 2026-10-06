@@ -12,6 +12,7 @@ import type {
   Movement,
   MovementKind,
   MovementPage,
+  MovementsSummary,
   Platform,
   Preferences,
   Projection,
@@ -191,6 +192,16 @@ export interface PlatformPatch {
   mergeIfExists?: boolean;
 }
 
+/** POST /wealth/snapshots with a body: a past checkpoint (assetsUsd and debtsUsd both or neither). */
+export interface PastCheckpointInput {
+  /** YYYY-MM-DD (noon UTC) or an instant; not in the future. */
+  capturedAt: string;
+  totalValueUsd: number;
+  assetsUsd?: number;
+  debtsUsd?: number;
+  note?: string;
+}
+
 /** GET /movements: newest first, a page at a time. */
 export interface MovementQuery {
   holdingId?: string;
@@ -252,8 +263,19 @@ const liveApi = {
       { method: 'DELETE' },
     ),
 
+  /** What the movements of [from, to] add up to (instants or dates; all time until now without them). */
+  getMovementsSummary: (period: { from?: string; to?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (period.from) params.set('from', period.from);
+    if (period.to) params.set('to', period.to);
+    const search = params.toString();
+    return request<MovementsSummary>(`/api/v1/movements/summary${search ? `?${search}` : ''}`);
+  },
+
   getSnapshots: () => request<Snapshot[]>('/api/v1/wealth/snapshots'),
-  createSnapshot: () => request<Snapshot>('/api/v1/wealth/snapshots', { method: 'POST' }),
+  /** Today's net worth, or, given one, a checkpoint from the past. */
+  createSnapshot: (past?: PastCheckpointInput) =>
+    request<Snapshot>('/api/v1/wealth/snapshots', { method: 'POST', ...(past && { body: JSON.stringify(past) }) }),
   deleteSnapshot: (id: string) => request<void>(`/api/v1/wealth/snapshots/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getEstimate: (params: EstimateQuery) => {

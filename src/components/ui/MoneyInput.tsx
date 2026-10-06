@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useId } from 'react';
-import { formatUsd, parseAmount } from '@/lib/money';
+import { formatUsd, parseAmount, parseSignedAmount } from '@/lib/money';
 
 export interface MoneyInputProps {
   label: string;
@@ -11,14 +11,16 @@ export interface MoneyInputProps {
   autoFocus?: boolean;
   disabled?: boolean;
   inputRef?: React.Ref<HTMLInputElement>;
+  /** Whether it can be below zero (a net worth). */
+  signed?: boolean;
 }
 
 // A text field for an amount in any usual format (see parseAmount), showing how it was read ("= $1,234.56")
 // or why it can't be. The form parses the same text again when it submits.
-export function MoneyInput({ label, value, onChange, placeholder = '0.00', autoFocus, disabled, inputRef }: MoneyInputProps) {
+export function MoneyInput({ label, value, onChange, placeholder = '0.00', autoFocus, disabled, inputRef, signed }: MoneyInputProps) {
   const id = useId();
   const hintId = `${id}-hint`;
-  const parsed = value.trim() ? parseAmount(value) : null;
+  const parsed = value.trim() ? (signed ? parseSignedAmount(value) : parseAmount(value)) : null;
   const hint = parsed && (parsed.error ?? `= ${formatUsd(parsed.value)}`);
 
   return (
