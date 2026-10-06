@@ -6,11 +6,11 @@ import { IconButton } from '@/components/ui/IconButton';
 import type { Holding } from '@/types/wealth';
 import { useHoldingActions } from './useHoldingActions';
 
-/** A holding row's buttons: record a change, transfer from it, edit, remove. */
+/** A holding row's buttons: record a change, transfer from it, edit, remove (on a phone, only the first: the row opens the rest). */
 export function HoldingRowActions({ holding: h }: { holding: Holding }) {
   const actions = useHoldingActions();
   return (
-    <div className="row-actions">
+    <div className="row-actions holding-actions">
       <IconButton label={`Record a change to ${h.name}`} onClick={() => actions.record(h)}>
         <Diff size={15} aria-hidden />
       </IconButton>

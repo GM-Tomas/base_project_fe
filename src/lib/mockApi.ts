@@ -17,7 +17,14 @@ import { normalizeLabel as label, platformKey } from './labels';
 import { createMockCustomization } from './mockCustomization';
 import { createMockDebts } from './mockDebts';
 import { BAD_WHEN, createMockLedger, parseWhen, type MockDebt, type MockLedger } from './mockLedger';
-import { DEFAULT_ESTIMATE, DEFAULT_PREFERENCES, estimateProblems, MAX_MILESTONES, normalizeEstimate } from './preferences';
+import {
+  DEFAULT_ESTIMATE,
+  DEFAULT_PREFERENCES,
+  estimateProblems,
+  MAX_MILESTONES,
+  normalizeEstimate,
+  preferencesProblems,
+} from './preferences';
 import { simulate } from './projection';
 import { expectedReturnOf, RETURN_RANGE, round2, validReturn } from './returns';
 
@@ -422,8 +429,13 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     const e = { ...DEFAULT_ESTIMATE, ...sent.estimate };
     // JSON's 1.5 isn't an int: the API can't even read the body.
     if (!Number.isInteger(e.years)) throw new ApiError(400, 'Malformed JSON body');
-    rejectInvalid(estimateProblems(e));
-    preferences = { estimate: normalizeEstimate(e) };
+    const rest = {
+      autoSnapshot: sent.autoSnapshot ?? DEFAULT_PREFERENCES.autoSnapshot,
+      defaultView: sent.defaultView ?? DEFAULT_PREFERENCES.defaultView,
+      historyPeriod: sent.historyPeriod ?? DEFAULT_PREFERENCES.historyPeriod,
+    };
+    rejectInvalid([...estimateProblems(e), ...preferencesProblems(rest)]);
+    preferences = { estimate: normalizeEstimate(e), ...rest };
     return structuredClone(preferences);
   };
 

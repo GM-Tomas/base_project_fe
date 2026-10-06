@@ -1,6 +1,6 @@
 # F7 — UX global
 
-**Estado:** Lista para implementar · **Repos:** frontend (+ preferencias en el backend) · **Depende de:** F0–F6
+**Estado:** Hecha · **Repos:** frontend (+ preferencias en el backend) · **Depende de:** F0–F6
 
 ## Objetivo
 
@@ -98,16 +98,16 @@ Preferencias nuevas en memoria.
 ## Tareas
 
 **Backend**
-- [ ] Campos nuevos de preferencias (validación, por defecto), `openapi.json`.
+- [x] Campos nuevos de preferencias (validación, por defecto), `openapi.json`.
 
 **Frontend**
-- [ ] `Amount` + privacidad en todas las vistas.
-- [ ] Shell responsive (barra inferior, More, tablas y diálogos móviles).
-- [ ] New ▾, atajos y ayuda.
-- [ ] Exportación JSON/CSV.
-- [ ] Preferencias y snapshot automático.
-- [ ] Skeletons, error boundary, revisión de accesibilidad.
-- [ ] Tests (privacidad, atajos, exportación, auto-snapshot una sola vez, vista inicial).
+- [x] `Amount` + privacidad en todas las vistas.
+- [x] Shell responsive (barra inferior, More, tablas y diálogos móviles).
+- [x] New ▾, atajos y ayuda.
+- [x] Exportación JSON/CSV.
+- [x] Preferencias y snapshot automático.
+- [x] Skeletons, error boundary, revisión de accesibilidad.
+- [x] Tests (privacidad, atajos, exportación, auto-snapshot una sola vez, vista inicial).
 
 ## Pruebas
 
@@ -128,3 +128,60 @@ Preferencias nuevas en memoria.
   infraestructura nueva; si la app no se abre en un mes, ese mes no tiene checkpoint (se puede cargar a
   mano con F6).
 - **Exportar sin endpoint nuevo**: la API ya da todo; evita otra superficie que proteger.
+
+### Decisiones al implementar
+
+**Backend**
+
+- **`historyPeriod` no acepta `CUSTOM`**: un rango propio necesita sus fechas; se guardan solo los presets
+  (`1M`…`ALL`). Valores desconocidos responden `400` con la lista de los válidos.
+- **El PUT sigue reemplazando el documento entero**: lo que no se manda vuelve a su valor por defecto, así que
+  el frontend manda siempre todas las preferencias (también al guardar Estimate). Un valor guardado que no es
+  válido (o que no existía antes de F7) se lee como su valor por defecto, campo por campo.
+
+**Frontend**
+
+- **Privacidad en los formateadores, no en un componente `<Amount>`**: `formatCurrency`, `formatSignedCurrency`,
+  `formatUsd` y `compactUsd` consultan el modo privacidad (`lib/privacy.ts`, guardado por dispositivo en
+  `localStorage` y sincronizado entre pestañas). Así se ocultan también los montos dentro de frases, *tooltips*,
+  ejes y nombres accesibles de los gráficos sin envolver cada uno. `WealthProvider` se suscribe para que todo
+  se vuelva a dibujar al cambiarlo. La máscara es siempre `$•••••` (`$•••` en los ejes): sin signo ni largo, para
+  no dar pistas. Lo que se escribe en un campo, y el valor actual que precarga un formulario de edición, se ven
+  (`exactUsd`): ocultarlos impediría usarlos. El mock usa `exactUsd` para que sus mensajes sean los de la API.
+- **New ▾ reemplaza al botón "Add an asset / Add a debt" del header.** Cada opción muestra su tecla; las que no
+  se pueden usar quedan deshabilitadas con el motivo (*"Add an asset first"*, *"No debts yet"*). *Gain or loss* y
+  *Debt payment* preguntan sobre qué asset o deuda (salvo que haya uno solo); *Checkpoint* guarda el de hoy. El
+  menú se maneja con flechas, Home, End, Escape y Tab, y el foco vuelve a New al cerrar lo que abrió.
+- **Atajos**: no se disparan escribiendo en un campo de texto, una lista (`select`) o un área de texto (sí con el
+  foco en una casilla o un radio), ni con un diálogo o un menú abierto, ni con Ctrl, ⌘ o Alt, ni al mantener la
+  tecla. `/` lleva a Assets y pone el foco en la búsqueda. Si un atajo no se puede usar (G sin assets), un aviso
+  dice qué falta.
+- **Exportar** está en Settings → *Your data*. El JSON lleva `format: "base-wealth-export"`, `version: 1` y
+  `exportedAt`, y los movimientos de todas las páginas (de a 200). Los CSV: UTF-8 con BOM, CRLF, comillas cuando
+  hace falta, y el texto que una planilla ejecutaría como fórmula (`=`, `+`, `-`, `@` al principio) queda como
+  texto con un apóstrofo. Nombres: `base-<qué>-AAAA-MM-DD`. Los montos van como números, nunca ocultos.
+- **Preferencias** en Settings, arriba de todo, guardadas al instante. *Start on* vale desde la próxima vez que
+  se abre la app; el período de History también se aplica en el momento. Si la API todavía no tiene los campos
+  nuevos, se usan los valores por defecto.
+- **Checkpoint mensual**: se revisa una vez al abrir la app (o al activarlo), con el mes calendario en la hora
+  del navegador, solo si hay algo registrado (assets o deudas). Antes de guardar, el navegador "reserva" el mes
+  (`base.monthlyCheckpoint.<cuenta>` en `localStorage`, así otra pestaña no guarda otro) y vuelve a leer los
+  snapshots (por si otro dispositivo ya lo guardó). Si falla, libera la reserva y avisa que se reintenta la
+  próxima vez. Si se borra el checkpoint automático, ese navegador no vuelve a guardarlo ese mes.
+- **Responsive** con `matchMedia` (`useMediaQuery`, hasta 900 px) para cambiar la barra lateral por la inferior
+  (Dashboard, Assets, Debts, History, More) y CSS para el resto. *More* es una hoja que sube desde abajo, con
+  Platforms, Estimate, Settings y el perfil. Las tablas ocultan sus columnas secundarias (`col-optional`); en una
+  fila de asset queda solo *Record a change* y el resto está en su panel (tocando la fila). Los diálogos ocupan
+  toda la pantalla; los períodos de History van en dos filas. Botones, campos y chips de al menos 40 px. Se
+  verificó con Playwright a 375 px que ninguna vista desborda en horizontal.
+- **Carga**: un *skeleton* con la forma de la app (navegación, header y las tarjetas del dashboard); *"Loading
+  your data…"* queda como estado para lectores de pantalla.
+- **Error boundary por vista** (con la vista como `key`): si una vista falla, se ve *"Something went wrong in
+  this view"* con **Reload**, que la vuelve a dibujar y relee los datos; la navegación y las demás vistas siguen
+  andando.
+- **Accesibilidad**: `aria-current="page"` en la navegación (escritorio y celular), el título de cada vista es un
+  `h1`, y los gráficos se nombran por lo que muestran (*"Net worth from $10,000 to $12,346 over 3 months. Use the
+  arrow keys…"*, *"Portfolio from $12,346 now to $25,000 in 1 year…"*, la dona con cada clase y su %). Contraste
+  medido: los grises de texto van del 50 % (4,7:1 sobre las tarjetas) en adelante, todos AA; el subtítulo del
+  header pasó al 60 %.
+

@@ -13,7 +13,7 @@ import type {
 } from '@/types/wealth';
 import type { MovementInput, MovementQuery } from './api';
 import { ApiError } from './apiError';
-import { formatUsd } from './money';
+import { exactUsd } from './money';
 
 // The API's activity log (base_project_go: MovementService), in memory: the same kinds, effects, limits,
 // order and messages. Holdings and debts keep their current value; movements say how it got there.
@@ -55,7 +55,7 @@ const cents = (n: number) => Math.round(n * 100) / 100;
 const refOf = (h: Holding): Ref => ({ id: h.id, name: h.name, platform: h.platform, assetClass: h.assetClass });
 const debtRefOf = (d: MockDebt): DebtRef => ({ id: d.id, name: d.name, lender: d.lender });
 const invalid = (errors: FieldError[]) => new ApiError(400, errors.map((e) => e.message).join('; '), errors);
-const insufficient = (h: Holding, why: string) => new ApiError(409, `${h.name} is worth ${formatUsd(h.valueUsd)}: ${why}`);
+const insufficient = (h: Holding, why: string) => new ApiError(409, `${h.name} is worth ${exactUsd(h.valueUsd)}: ${why}`);
 // JSON has no NaN or Infinity: the API gets null for them, which it reads as 0.
 const sent = (n: number | undefined) => (n !== undefined && Number.isFinite(n) ? n : 0);
 const isDebtKind = (kind: MovementKind) => DEBT_KINDS.includes(kind);
@@ -258,7 +258,7 @@ export function createMockLedger({ holdings, debts, now, newHolding }: LedgerSto
       input.kind === 'DEBT_PAYMENT' ? input.fromHoldingId : input.kind === 'DEBT_CHARGE' ? input.toHoldingId : undefined;
     const h = holdingId ? find(holdingId) : null;
     const delta = input.kind === 'DEBT_PAYMENT' ? -value : value;
-    if (cents(d.balanceUsd + delta) < 0) throw new ApiError(409, `${d.name} only has ${formatUsd(d.balanceUsd)} left to pay.`);
+    if (cents(d.balanceUsd + delta) < 0) throw new ApiError(409, `${d.name} only has ${exactUsd(d.balanceUsd)} left to pay.`);
     if (h && input.kind === 'DEBT_PAYMENT' && cents(h.valueUsd - value) < 0) throw insufficient(h, WHY_NOT_BELOW_ZERO.DEBT_PAYMENT!);
     roomForOneMore();
     const [debtRef, ref] = [debtRefOf(d), h && refOf(h)];
@@ -512,7 +512,7 @@ export function createMockLedger({ holdings, debts, now, newHolding }: LedgerSto
         debt = debts.find((d) => d.id === m.debt!.id);
         if (!debt) throw new ApiError(409, `${m.debt!.name} was removed, so this can't be undone.`);
         if (cents(debt.balanceUsd - debtDelta) < 0) {
-          throw new ApiError(409, `${debt.name} has ${formatUsd(debt.balanceUsd)} left to pay: undoing this would take it below zero.`);
+          throw new ApiError(409, `${debt.name} has ${exactUsd(debt.balanceUsd)} left to pay: undoing this would take it below zero.`);
         }
       }
       const stamp = now().toISOString();

@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HOLDINGS, holding, installFakeBackend, json, nav, point, projection, renderApp, requests, routes, summary } from './harness';
+import { HOLDINGS, holding, installFakeBackend, json, nav, newItem, point, projection, renderApp, requests, routes, summary } from './harness';
 import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 
 // F4: each asset's expected yearly return (its field, column and panel line, and setting them all at once),
@@ -55,7 +55,7 @@ describe('an asset’s expected return', () => {
   it('is asked for when adding one, typed either way', async () => {
     routes['POST /api/v1/holdings'] = () => json(holding('h9', 'Bond', 'Fixed Income', 'Balanz', 100, 4.5), 201);
     await renderApp();
-    fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
+    newItem('Asset');
     const d = dialog('Add an asset');
 
     fill(d, 'Name', 'Bond');
@@ -293,12 +293,13 @@ describe('Estimate', () => {
     fireEvent.change(screen.getAllByRole('slider')[2], { target: { value: '30' } });
     fireEvent.change(screen.getAllByRole('slider')[2], { target: { value: '31' } });
     await waitFor(() => expect(requests('PUT', '/api/v1/preferences')).toHaveLength(1), { timeout: 3000 });
-    expect(sent('PUT', '/api/v1/preferences')).toEqual({ estimate: { ...DEFAULT_PREFERENCES.estimate, years: 31 } });
+    // The whole document (a PUT replaces it): the rest as it was.
+    expect(sent('PUT', '/api/v1/preferences')).toEqual({ ...DEFAULT_PREFERENCES, estimate: { ...DEFAULT_PREFERENCES.estimate, years: 31 } });
 
     routes['PUT /api/v1/preferences'] = () => Promise.reject(new TypeError('offline'));
     fireEvent.change(screen.getAllByRole('slider')[2], { target: { value: '32' } });
     expect(
-      await screen.findByText("Couldn't save your Estimate settings. They'll be saved with your next change.", {}, { timeout: 3000 }),
+      await screen.findByText("Couldn't save your settings. They'll be saved with your next change.", {}, { timeout: 3000 }),
     ).toBeTruthy();
   });
 
@@ -373,7 +374,7 @@ describe('Estimate', () => {
     await renderApp();
     nav('Estimate');
     await screen.findByText('$25,000');
-    const chart = screen.getByRole('group', { name: 'Projection by year: use the arrow keys to read each year' });
+    const chart = screen.getByRole('group', { name: /Use the arrow keys to read each year\.$/ });
     expect([...document.querySelectorAll('.chart-x span')].map((s) => s.textContent)).toEqual(['Now', '1y']);
     expect([...document.querySelectorAll('.chart-y span')].map((s) => s.textContent)).toEqual(['$0', '$10k', '$20k', '$30k']);
 

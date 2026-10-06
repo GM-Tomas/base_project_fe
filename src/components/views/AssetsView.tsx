@@ -7,20 +7,22 @@ import { formatCurrency } from '@/lib/calculations';
 import { ClassTag } from '@/components/ui/ClassTag';
 import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
 import { PlatformSelectFrame } from '@/components/ui/PlatformSelectFrame';
-import { ALL, INITIAL_ASSETS_TABLE, selectAssets, sumValues, toggleSort, type AssetSortKey } from '@/lib/assetsTable';
+import { ALL, INITIAL_ASSETS_TABLE, selectAssets, sumValues, toggleSort, type AssetSortKey, ASSETS_SEARCH_ID } from '@/lib/assetsTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
 import { HoldingRowActions } from '@/components/dialogs/HoldingRowActions';
 import { useOpenFromRow, useOpenHolding } from '@/components/dialogs/HoldingDrawer';
 import { formatReturn } from '@/lib/returns';
 
-const COLUMNS: { key: AssetSortKey; label: string }[] = [
+// On a phone, the optional ones are left out (they're in each asset's panel).
+const COLUMNS: { key: AssetSortKey; label: string; optional?: boolean }[] = [
   { key: 'name', label: 'Name' },
-  { key: 'assetClass', label: 'Class' },
-  { key: 'platform', label: 'Platform' },
+  { key: 'assetClass', label: 'Class', optional: true },
+  { key: 'platform', label: 'Platform', optional: true },
   { key: 'valueUsd', label: 'Value' },
-  { key: 'effectiveReturnPct', label: 'Return/yr' },
+  { key: 'effectiveReturnPct', label: 'Return/yr', optional: true },
 ];
+const OPTIONAL = 'col-optional';
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : '—');
 
@@ -69,6 +71,7 @@ export const AssetsView: React.FC = () => {
           <Search size={15} aria-hidden />
           <input
             className="input"
+            id={ASSETS_SEARCH_ID}
             type="search"
             aria-label="Search assets"
             placeholder="Search by name, platform or class"
@@ -141,11 +144,15 @@ export const AssetsView: React.FC = () => {
           <table className="table">
             <thead>
               <tr>
-                {COLUMNS.map(({ key, label }) => {
+                {COLUMNS.map(({ key, label, optional }) => {
                   const active = table.sort.key === key;
                   const SortIcon = active ? (table.sort.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
                   return (
-                    <th key={key} aria-sort={active ? (table.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                    <th
+                      key={key}
+                      className={optional ? OPTIONAL : undefined}
+                      aria-sort={active ? (table.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                    >
                       <button type="button" className="th-sort" onClick={() => update({ sort: toggleSort(table.sort, key) })}>
                         {label}
                         <SortIcon size={13} aria-hidden style={{ opacity: active ? 1 : 0.4 }} />
@@ -154,8 +161,8 @@ export const AssetsView: React.FC = () => {
                   );
                 })}
                 {/* The share of all assets: sorts like Value, so it has no sort of its own. */}
-                <th>Share</th>
-                <th style={{ width: '132px' }}>
+                <th className={OPTIONAL}>Share</th>
+                <th className="col-actions" style={{ width: '132px' }}>
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
@@ -168,10 +175,10 @@ export const AssetsView: React.FC = () => {
                       {h.name}
                     </button>
                   </td>
-                  <td style={{ padding: '12px 10px' }}>
+                  <td style={{ padding: '12px 10px' }} className={OPTIONAL}>
                     <ClassTag name={h.assetClass} />
                   </td>
-                  <td style={{ padding: '12px 10px' }}>
+                  <td style={{ padding: '12px 10px' }} className={OPTIONAL}>
                     <button type="button" className="link-btn text-muted with-avatar" title={`Open ${h.platform}`} onClick={() => openPlatform(h.platform)}>
                       <PlatformAvatar {...platformLook(h.platform)} size={18} />
                       {h.platform}
@@ -180,10 +187,10 @@ export const AssetsView: React.FC = () => {
                   <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
                     {formatCurrency(h.valueUsd)}
                   </td>
-                  <td style={{ padding: '12px 10px', fontVariantNumeric: 'tabular-nums' }} className="text-nowrap">
+                  <td style={{ padding: '12px 10px', fontVariantNumeric: 'tabular-nums' }} className={`text-nowrap ${OPTIONAL}`}>
                     {h.effectiveReturnPct === null ? <span className="text-muted">—</span> : formatReturn(h.effectiveReturnPct, 2)}
                   </td>
-                  <td style={{ padding: '12px 10px', fontVariantNumeric: 'tabular-nums' }} className="text-muted">
+                  <td style={{ padding: '12px 10px', fontVariantNumeric: 'tabular-nums' }} className={`text-muted ${OPTIONAL}`}>
                     {pctOf(h.valueUsd, totalAssets)}
                   </td>
                   <td style={{ padding: '8px 6px', textAlign: 'right' }}>

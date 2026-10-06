@@ -28,7 +28,8 @@ describe('on mock data', () => {
     expect(screen.getByText('Demo data')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy(); // the tag stays out of the title
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Asset' }));
     fireEvent.change(screen.getByPlaceholderText('e.g. Vanguard S&P 500 ETF'), { target: { value: 'Solana' } });
     const [platform, assetClass] = screen.getAllByRole('combobox');
     fireEvent.change(platform, { target: { value: 'Binance' } });

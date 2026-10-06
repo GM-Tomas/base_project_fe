@@ -66,6 +66,12 @@ export function ProjectionChart({ series, showNetWorth, real, startYear }: Proje
     setActive((i) => move(i ?? 0));
   };
 
+  // What it shows, in a sentence: its name for screen readers.
+  const drawn = showNetWorth ? netWorth : portfolio;
+  const label = `${showNetWorth ? 'Net worth' : 'Portfolio'} from ${formatCurrency(drawn[0])} now to ${formatCurrency(drawn[years])} in ${years} ${
+    years === 1 ? 'year' : 'years'
+  }${real ? ", in today's dollars" : ''}`;
+
   const point = active !== null ? series[active] : null;
   const summary = point && describe(point, startYear, showNetWorth, real);
 
@@ -82,7 +88,7 @@ export function ProjectionChart({ series, showNetWorth, real, startYear }: Proje
         className="chart-plot"
         tabIndex={0}
         role="group"
-        aria-label="Projection by year: use the arrow keys to read each year"
+        aria-label={`${label}. Use the arrow keys to read each year.`}
         onMouseMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
         onMouseLeave={() => setActive(null)}
         onFocus={() => setActive((i) => i ?? years)}

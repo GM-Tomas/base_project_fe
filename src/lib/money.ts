@@ -1,3 +1,5 @@
+import { amountsHidden, HIDDEN_AMOUNT } from './privacy';
+
 // Amounts as people type them: "1.234,56" in Argentina, "1,234.56" in the US, with or without "$", "US$",
 // "USD" or spaces. The API keeps 2 decimals, so amounts are rounded to cents here as it rounds them (half-up,
 // on the digits as typed): what the preview shows is what gets stored.
@@ -66,8 +68,11 @@ export function parseAmount(raw: string): ParsedAmount {
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
 
-/** "$1,234.56" — with cents, for previews and anywhere an exact amount matters. */
-export const formatUsd = (value: number) => usd.format(value);
+/** "$1,234.56" — with cents, for previews and anywhere an exact amount matters ("$•••••" in privacy mode). */
+export const formatUsd = (value: number) => (amountsHidden() ? HIDDEN_AMOUNT : usd.format(value));
+
+/** formatUsd, also in privacy mode: what goes into a field, or what the user just typed. */
+export const exactUsd = (value: number) => usd.format(value);
 
 /** An amount that can be below zero (a net worth): "-1,234.56", "−$500", "$-500". */
 export function parseSignedAmount(raw: string): ParsedAmount {

@@ -48,6 +48,17 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
   return its assets without one of their own count with) and your **platforms** (a thumbnail of 1–2 letters or
   an emoji, a color, a type, and a rename or merge on all their assets). Colors and thumbnails show everywhere:
   the dashboard, Platforms, Assets, the asset panel and the platform pickers.
+- **Privacy mode**: the eye in the header (or **H**) hides every amount as `$•••••`, percentages stay; it's
+  remembered on the device, not the account.
+- **New ▾ and keyboard shortcuts**: add an asset (**N**), record a gain or loss (**G**), transfer (**T**), add
+  a debt (**D**) or a debt payment, save a checkpoint (**S**), search your assets (**/**); **?** lists them all.
+- **Preferences** (Settings): an automatic checkpoint each month, the view BASE opens on and History's period,
+  for every device.
+- **Your data** (Settings): export everything as JSON (with all the activity), or assets, debts, activity and
+  checkpoints as CSV for a spreadsheet.
+- **On a phone**: a bottom bar (Dashboard, Assets, Debts, History, More), full-screen dialogs, tables with the
+  columns that matter; the app's shape while it loads, and a view that fails says so without taking the rest
+  down.
 - **Add Asset Dialog**: amounts in any usual format (`1.234,56`, `1,234.56`, `$ 1234`) with a preview of how
   they were read; platform and class fields suggest the existing ones and say when a name is new.
 - **Accessible dialogs and toasts** (`src/components/ui`): every dialog closes with Escape, keeps focus inside

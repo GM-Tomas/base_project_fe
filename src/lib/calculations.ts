@@ -1,13 +1,17 @@
+import { amountsHidden, HIDDEN_AMOUNT } from './privacy';
+
 /**
  * Format a USD value for display, in whole dollars: "$1,234", or "−$1,234" below zero (a net worth can be).
  */
 export function formatCurrency(valUSD: number): string {
+  if (amountsHidden()) return HIDDEN_AMOUNT;
   const rounded = Math.round(valUSD);
   return (rounded < 0 ? '−$' : '$') + Math.abs(rounded).toLocaleString('en-US');
 }
 
 /** A change in whole dollars, with its sign: "+$1,235", "−$50", "$0". */
 export function formatSignedCurrency(usd: number): string {
+  if (amountsHidden()) return HIDDEN_AMOUNT;
   const rounded = Math.round(usd);
   return (rounded > 0 ? '+' : '') + formatCurrency(rounded);
 }

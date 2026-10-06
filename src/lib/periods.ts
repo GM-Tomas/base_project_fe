@@ -1,10 +1,10 @@
-import type { Snapshot } from '@/types/wealth';
+import type { HistoryPeriodPreset, Snapshot } from '@/types/wealth';
 
 // History's periods of analysis: the range each one covers (in the browser's time zone), the points of the
 // net worth in it, and what they say: the change, annualized, the high and low, the worst drop from a high,
 // and the best and worst stretch between two checkpoints.
 
-export type PeriodPreset = '1M' | '3M' | '6M' | 'YTD' | '1Y' | '3Y' | 'ALL' | 'CUSTOM';
+export type PeriodPreset = HistoryPeriodPreset | 'CUSTOM';
 
 export const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: '1M', label: '1M' },
@@ -17,7 +17,7 @@ export const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: 'CUSTOM', label: 'Custom' },
 ];
 
-export const DEFAULT_PERIOD: PeriodPreset = '1Y';
+export const DEFAULT_PERIOD: HistoryPeriodPreset = '1Y';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTHS: Partial<Record<PeriodPreset, number>> = { '1M': 1, '3M': 3, '6M': 6, '1Y': 12, '3Y': 36 };
@@ -169,6 +169,16 @@ export function periodStats(start: PeriodPoint | null, points: PeriodPoint[], en
     if (step.usd < 0 && (!worst || step.usd < worst.usd)) worst = step;
   });
   return { start, end, change: stretch(start, end), days, annualizedPct, high, low, drawdown, best, worst };
+}
+
+/** How long from one date to another, as a chart's summary says it: "12 days", "3 months", "1 year", "2.5 years". */
+export function describeSpan(from: Date, to: Date): string {
+  const days = Math.max(0, Math.round((to.getTime() - from.getTime()) / DAY_MS));
+  if (days < 60) return `${days} ${days === 1 ? 'day' : 'days'}`;
+  const months = Math.round(days / 30.44);
+  if (months < 12) return `${months} months`;
+  const years = Math.round((days / 365.25) * 10) / 10;
+  return `${years} ${years === 1 ? 'year' : 'years'}`;
 }
 
 /** Labels for a time axis from `from` to `to`: `count` evenly spaced, the ends included. */

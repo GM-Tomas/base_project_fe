@@ -41,7 +41,7 @@ const stat = (label: string) => {
   const tile = within(screen.getByRole('group', { name: 'This period in figures' })).getByText(label).parentElement!;
   return [tile.querySelector('.stat-value')!.textContent, tile.querySelector('.stat-sub')!.textContent];
 };
-const plot = () => screen.getByRole('group', { name: 'Net worth over the period: use the arrow keys to read each point' });
+const plot = () => screen.getByRole('group', { name: /Use the arrow keys to read each point\.$/ });
 const tooltip = () =>
   [...plot().querySelectorAll('.chart-tooltip > div')].map((d) => [...d.childNodes].map((c) => c.textContent).join(' '));
 

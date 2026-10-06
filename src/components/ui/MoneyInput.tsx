@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useId } from 'react';
-import { formatUsd, parseAmount, parseSignedAmount } from '@/lib/money';
+import { exactUsd, parseAmount, parseSignedAmount } from '@/lib/money';
 
 export interface MoneyInputProps {
   label: string;
@@ -21,7 +21,7 @@ export function MoneyInput({ label, value, onChange, placeholder = '0.00', autoF
   const id = useId();
   const hintId = `${id}-hint`;
   const parsed = value.trim() ? (signed ? parseSignedAmount(value) : parseAmount(value)) : null;
-  const hint = parsed && (parsed.error ?? `= ${formatUsd(parsed.value)}`);
+  const hint = parsed && (parsed.error ?? `= ${exactUsd(parsed.value)}`);
 
   return (
     <div className="field">

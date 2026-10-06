@@ -1,3 +1,5 @@
+import { amountsHidden, HIDDEN_COMPACT } from './privacy';
+
 // What a chart's axes say: round values for the Y axis ($250k, $1.2M) and which years to label.
 
 const STEPS = [1, 2, 2.5, 5, 10];
@@ -31,6 +33,7 @@ const UNITS: [size: number, suffix: string][] = [
 
 /** "$950", "$12.5k", "$250k", "$1.2M", "−$40k": an amount in a few characters. */
 export function compactUsd(v: number): string {
+  if (amountsHidden()) return HIDDEN_COMPACT;
   const abs = Math.abs(v);
   const sign = v < 0 ? '−' : '';
   const unit = UNITS.find(([size]) => abs >= size);

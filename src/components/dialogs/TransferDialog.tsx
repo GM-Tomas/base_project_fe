@@ -8,7 +8,7 @@ import { DateInput } from '@/components/ui/DateInput';
 import { Combobox } from '@/components/ui/Combobox';
 import { FormError } from '@/components/ui/FormError';
 import { errorMessage } from '@/lib/apiError';
-import { formatUsd, parseAmount } from '@/lib/money';
+import { exactUsd, formatUsd, parseAmount } from '@/lib/money';
 import { normalizeLabel } from '@/lib/labels';
 import { dateProblem, occurredAtFor, today } from '@/lib/movements';
 import type { MovementInput } from '@/lib/api';
@@ -212,7 +212,7 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
           {source && (
             <div className="field-hint">
               Available: {formatUsd(source.valueUsd)}{' '}
-              <button type="button" className="link-btn link-accent" onClick={() => setAmount(formatUsd(source.valueUsd))}>
+              <button type="button" className="link-btn link-accent" onClick={() => setAmount(exactUsd(source.valueUsd))}>
                 Max
               </button>
             </div>

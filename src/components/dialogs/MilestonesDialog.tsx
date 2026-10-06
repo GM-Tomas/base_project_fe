@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FormError } from '@/components/ui/FormError';
 import { IconButton } from '@/components/ui/IconButton';
-import { formatUsd, parseAmount } from '@/lib/money';
+import { exactUsd, parseAmount } from '@/lib/money';
 import { DEFAULT_ESTIMATE, MAX_MILESTONE_USD, MAX_MILESTONES } from '@/lib/preferences';
 
 const textsOf = (amounts: number[]) => amounts.map((a) => String(a));
@@ -31,7 +31,7 @@ export function MilestonesDialog({ onClose }: { onClose: () => void }) {
         return;
       }
       if (parsed.value <= 0 || parsed.value > MAX_MILESTONE_USD) {
-        setError(`Milestones go from more than $0 up to ${formatUsd(MAX_MILESTONE_USD)}`);
+        setError(`Milestones go from more than $0 up to ${exactUsd(MAX_MILESTONE_USD)}`);
         return;
       }
       amounts.push(parsed.value);

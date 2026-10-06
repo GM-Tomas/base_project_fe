@@ -309,6 +309,24 @@ describe('mock API (the data previews run on)', () => {
     expect(await api.getSnapshots()).toHaveLength(10);
   });
 
+  it('keeps how the app opens, checked as the API checks it', async () => {
+    const api = createMockApi(at('2026-10-04T10:00:00Z'));
+    expect(await api.getPreferences()).toMatchObject({ autoSnapshot: 'OFF', defaultView: 'dashboard', historyPeriod: '1Y' });
+
+    const saved = await api.savePreferences({ estimate: { years: 20 } as never, autoSnapshot: 'MONTHLY', defaultView: 'history', historyPeriod: '3M' });
+    expect(saved).toMatchObject({ estimate: { years: 20, contributionUsd: 900 }, autoSnapshot: 'MONTHLY', defaultView: 'history', historyPeriod: '3M' });
+    // What a PUT leaves out takes its default.
+    expect(await api.savePreferences({ estimate: {} as never } as never)).toMatchObject({ autoSnapshot: 'OFF', defaultView: 'dashboard' });
+
+    await expect(
+      api.savePreferences({ estimate: {} as never, autoSnapshot: 'WEEKLY' as never, defaultView: 'reports' as never, historyPeriod: 'CUSTOM' as never }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message:
+        'autoSnapshot must be one of OFF, MONTHLY; defaultView must be one of dashboard, platforms, assets, debts, estimate, history, settings; historyPeriod must be one of 1M, 3M, 6M, YTD, 1Y, 3Y, ALL',
+    });
+  });
+
   it('projects like the API: compound monthly, with the two milestones', async () => {
     const api = createMockApi(at('2026-10-04T10:00:00Z'));
 

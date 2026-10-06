@@ -10,11 +10,14 @@ import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
 import { ClassFormDialog } from '@/components/settings/ClassFormDialog';
 import { DeleteClassDialog } from '@/components/settings/DeleteClassDialog';
 import { PlatformCustomizeDialog } from '@/components/settings/PlatformCustomizeDialog';
+import { PreferencesSection } from '@/components/settings/PreferencesSection';
+import { DataSection } from '@/components/settings/DataSection';
 import { formatCurrency } from '@/lib/calculations';
 import { formatReturn } from '@/lib/returns';
 import type { AssetClassInfo, Platform } from '@/types/wealth';
 
-// Where the user sets up what they group their assets by (their classes) and how their platforms look.
+// Where the user sets up how the app opens, what they group their assets by (their classes) and how their
+// platforms look, and takes their data with them.
 export const SettingsView: React.FC = () => {
   const { assetClassInfos, platforms, classLook, platformLook } = useWealth();
   const { openDialog } = useUi();
@@ -26,6 +29,8 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="settings">
+      <PreferencesSection />
+
       <section className="card elev-sm" aria-labelledby="settings-classes">
         <div className="settings-head">
           <div>
@@ -47,10 +52,10 @@ export const SettingsView: React.FC = () => {
             <thead>
               <tr>
                 <th>Class</th>
-                <th>Liquidity</th>
+                <th className="col-optional">Liquidity</th>
                 <th>Default return</th>
-                <th>Assets</th>
-                <th>Value</th>
+                <th className="col-optional">Assets</th>
+                <th className="col-optional">Value</th>
                 <th style={{ width: '88px' }}>
                   <span className="sr-only">Actions</span>
                 </th>
@@ -66,12 +71,16 @@ export const SettingsView: React.FC = () => {
                       {c.isDefault && <span className="tag tag-neutral">Default</span>}
                     </span>
                   </td>
-                  <td style={{ padding: '10px' }}>{c.liquid ? 'Ready to spend' : <span className="text-muted">Locked in</span>}</td>
+                  <td style={{ padding: '10px' }} className="col-optional">
+                    {c.liquid ? 'Ready to spend' : <span className="text-muted">Locked in</span>}
+                  </td>
                   <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }}>
                     {c.expectedReturnPct === null ? <span className="text-muted">—</span> : `${formatReturn(c.expectedReturnPct, 2)} a year`}
                   </td>
-                  <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }}>{c.holdingsCount}</td>
-                  <td style={{ padding: '10px' }} className="text-nowrap">
+                  <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }} className="col-optional">
+                    {c.holdingsCount}
+                  </td>
+                  <td style={{ padding: '10px' }} className="text-nowrap col-optional">
                     {formatCurrency(c.valueUsd)}
                   </td>
                   <td style={{ padding: '6px', textAlign: 'right' }}>
@@ -113,8 +122,8 @@ export const SettingsView: React.FC = () => {
               <thead>
                 <tr>
                   <th>Platform</th>
-                  <th>Type</th>
-                  <th>Assets</th>
+                  <th className="col-optional">Type</th>
+                  <th className="col-optional">Assets</th>
                   <th>Value</th>
                   <th style={{ width: '56px' }}>
                     <span className="sr-only">Actions</span>
@@ -132,8 +141,12 @@ export const SettingsView: React.FC = () => {
                           {p.name}
                         </span>
                       </td>
-                      <td style={{ padding: '10px' }}>{p.type}</td>
-                      <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }}>{p.holdingsCount}</td>
+                      <td style={{ padding: '10px' }} className="col-optional">
+                        {p.type}
+                      </td>
+                      <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }} className="col-optional">
+                        {p.holdingsCount}
+                      </td>
                       <td style={{ padding: '10px' }} className="text-nowrap">
                         {formatCurrency(p.valueUsd)}
                       </td>
@@ -150,6 +163,8 @@ export const SettingsView: React.FC = () => {
           </div>
         )}
       </section>
+
+      <DataSection />
     </div>
   );
 };

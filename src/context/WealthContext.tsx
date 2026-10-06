@@ -32,9 +32,10 @@ import {
   PastCheckpointInput,
   PlatformPatch,
 } from '@/lib/api';
-import { DEFAULT_PREFERENCES } from '@/lib/preferences';
+import { DEFAULT_PREFERENCES, withDefaults } from '@/lib/preferences';
 import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
 import { DEFAULT_PERIOD, type PeriodPreset } from '@/lib/periods';
+import { useAmountsHidden } from '@/lib/privacy';
 
 /** How History is looked at: its period (a preset, or two dates), and whether today's value is in it. */
 export interface HistoryPeriodState {
@@ -99,7 +100,11 @@ interface WealthContextType {
   platforms: Platform[];
   snapshots: Snapshot[];
   /** How the user left Estimate: saved for every device, a second after each change. */
+  /** Whether amounts are hidden (privacy mode): the formatters hide them; this re-renders what shows them. */
+  amountsHidden: boolean;
   estimatePrefs: EstimatePreferences;
+  /** All of them: Estimate's, the monthly checkpoint, the view to open on and History's period. */
+  preferences: Preferences;
   /** Goes up each time saving the preferences fails (the change stays on screen, and is saved with the next). */
   preferencesSaveFailures: number;
   loading: boolean;
@@ -142,6 +147,8 @@ interface WealthContextType {
   setHistoryPeriod: React.Dispatch<React.SetStateAction<HistoryPeriodState>>;
   /** Changes how Estimate is set up (saved a second later). */
   setEstimatePrefs: (change: (prefs: EstimatePreferences) => EstimatePreferences) => void;
+  /** Changes how the app opens (saved at once). A new History period applies to History now too. */
+  setGeneralPrefs: (change: Partial<Omit<Preferences, 'estimate'>>) => void;
   addHolding: (holding: HoldingInput) => Promise<void>;
   updateHolding: (id: string, patch: HoldingPatch) => Promise<void>;
   deleteHolding: (id: string) => Promise<void>;
@@ -220,10 +227,15 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
 
+  // Amounts are formatted as "$•••••" in privacy mode: everything that shows them follows it from here.
+  const amountsHidden = useAmountsHidden();
+
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
   const preferencesRef = useRef<Preferences>(DEFAULT_PREFERENCES);
   const [preferencesSaveFailures, setPreferencesSaveFailures] = useState(0);
   const pendingSave = useRef<{ timer: ReturnType<typeof setTimeout>; preferences: Preferences } | null>(null);
+  // Whether the app has opened: how it opens (the view, History's period) is applied once, on the first load.
+  const opened = useRef(false);
 
   // Every read comes from the backend now (Fase 6 cutover) — no localStorage, no client-side
   // aggregation. A mutation is followed by a full refresh rather than an optimistic update: this
@@ -272,10 +284,17 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setLoading(true);
       setLoadError(null);
       try {
-        const [saved] = await Promise.all([api.getPreferences().catch(() => null), refresh()]);
+        const [read] = await Promise.all([api.getPreferences().catch(() => null), refresh()]);
+        const saved = read && withDefaults(read);
         if (saved && isCurrent() && !pendingSave.current) {
           preferencesRef.current = saved;
           setPreferences(saved);
+        }
+        if (isCurrent() && !opened.current) {
+          opened.current = true;
+          const start = saved ?? DEFAULT_PREFERENCES;
+          setViewState(start.defaultView);
+          setHistoryPeriod((period) => ({ ...period, preset: start.historyPeriod }));
         }
       } catch (e) {
         if (isCurrent()) setLoadError(`Couldn't load your data${reason(e)}`);
@@ -299,19 +318,32 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const savePreferences = useCallback((next: Preferences) => {
     api.savePreferences(next).catch(() => setPreferencesSaveFailures((n) => n + 1));
   }, []);
-  const setEstimatePrefs = useCallback(
-    (change: (prefs: EstimatePreferences) => EstimatePreferences) => {
-      const next = { ...preferencesRef.current, estimate: change(preferencesRef.current.estimate) };
+  const changePreferences = useCallback(
+    (change: (prefs: Preferences) => Preferences, delayMs: number) => {
+      const next = change(preferencesRef.current);
       preferencesRef.current = next;
       setPreferences(next);
       if (pendingSave.current) clearTimeout(pendingSave.current.timer);
       const timer = setTimeout(() => {
         pendingSave.current = null;
         savePreferences(next);
-      }, PREFERENCES_SAVE_DELAY_MS);
+      }, delayMs);
       pendingSave.current = { timer, preferences: next };
     },
     [savePreferences],
+  );
+  const setEstimatePrefs = useCallback(
+    (change: (prefs: EstimatePreferences) => EstimatePreferences) =>
+      changePreferences((prefs) => ({ ...prefs, estimate: change(prefs.estimate) }), PREFERENCES_SAVE_DELAY_MS),
+    [changePreferences],
+  );
+  const setGeneralPrefs = useCallback(
+    (change: Partial<Omit<Preferences, 'estimate'>>) => {
+      changePreferences((prefs) => ({ ...prefs, ...change }), 0);
+      const preset = change.historyPeriod;
+      if (preset) setHistoryPeriod((period) => ({ ...period, preset }));
+    },
+    [changePreferences],
   );
   useEffect(
     () => () => {
@@ -327,7 +359,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Computed values — all sourced from GET /wealth/summary (server-side aggregation), not
   // recomputed from the raw holdings list on every render.
   const netWorthUSD = summary.netWorth.usd;
-  const netWorthFormatted = useMemo(() => formatCurrency(netWorthUSD), [netWorthUSD]);
+  const netWorthFormatted = useMemo(() => formatCurrency(netWorthUSD), [netWorthUSD, amountsHidden]); // eslint-disable-line react-hooks/exhaustive-deps
   const assetsUSD = summary.assets.usd;
   const debtsUSD = summary.debts.usd;
   const monthlyDebtPaymentsUSD = summary.debts.monthlyPaymentUsd;
@@ -388,7 +420,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         initial: item.avatarText ?? initialOf(item.name),
         isActive: selectedPlatform === item.name,
       })),
-    [summary.byPlatform, selectedPlatform],
+    [summary.byPlatform, selectedPlatform, amountsHidden], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const selectedPlatformHoldings = useMemo(() => {
@@ -594,7 +626,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         debts,
         platforms,
         snapshots,
+        amountsHidden,
         estimatePrefs: preferences.estimate,
+        preferences,
         preferencesSaveFailures,
         loading,
         loadError,
@@ -630,6 +664,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setAssetsTable,
         setHistoryPeriod,
         setEstimatePrefs,
+        setGeneralPrefs,
         addHolding,
         updateHolding,
         deleteHolding,

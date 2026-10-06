@@ -15,6 +15,7 @@ import {
   installFakeBackend,
   json,
   nav,
+  newItem,
   PLATFORMS,
   projection,
   renderApp,
@@ -265,7 +266,7 @@ describe('platforms without assets', () => {
 describe('platform drill-down across refreshes', () => {
   // A refresh while the drill-down is open: adding an asset from the header.
   const addAsset = async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
+    newItem('Asset');
     fireEvent.change(screen.getByPlaceholderText('e.g. Vanguard S&P 500 ETF'), { target: { value: 'VOO' } });
     const [platform, assetClass] = screen.getAllByRole('combobox');
     fireEvent.change(platform, { target: { value: 'Balanz' } });
@@ -818,7 +819,10 @@ describe('history', () => {
   it('reads each point on hover and with the arrow keys', async () => {
     await renderApp();
     nav('History');
-    const plot = screen.getByRole('group', { name: 'Net worth over the period: use the arrow keys to read each point' });
+    // Named by what it shows.
+    const plot = screen.getByRole('group', {
+      name: 'Net worth from $10,000 to $12,346 over 3 months. Use the arrow keys to read each point.',
+    });
     plot.getBoundingClientRect = () => ({ left: 0, width: 680 }) as DOMRect;
     const read = () =>
       [...plot.querySelectorAll('.chart-tooltip > div')].map((d) => [...d.childNodes].map((c) => c.textContent).join(' '));
@@ -884,7 +888,7 @@ describe('history', () => {
 });
 
 describe('add asset', () => {
-  const open = () => fireEvent.click(screen.getByRole('button', { name: 'Add an asset' }));
+  const open = () => newItem('Asset');
   const form = () => screen.getByRole('button', { name: 'Save asset' }).closest('form')!;
   const fill = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
   const suggestions = (label: string) =>
@@ -1041,9 +1045,9 @@ describe('add asset', () => {
 
   it('closes with Cancel, Escape or the backdrop, but not when clicking or selecting inside', async () => {
     await renderApp();
-    const opener = screen.getByRole('button', { name: 'Add an asset' });
+    const opener = screen.getByRole('button', { name: 'New' });
 
-    opener.focus();
+    // Back to New, where it was opened from.
     open();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).toBeNull();

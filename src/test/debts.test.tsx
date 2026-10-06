@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Debt, Movement, MovementDebt } from '@/types/wealth';
-import { installFakeBackend, json, nav, point, projection, renderApp, requests, routes, snapshot, summary } from './harness';
+import { installFakeBackend, json, nav, newItem, point, projection, renderApp, requests, routes, snapshot, summary } from './harness';
 
 // F3: debts. The Debts view, adding, editing and removing one, paying it (from an asset or not), new charges
 // and interest, its panel, and what debts do to the dashboard, Estimate and History. The backend is faked
@@ -97,11 +97,10 @@ describe('Debts view', () => {
     expect(screen.getByText("What you owe, what it costs and when it's paid off.")).toBeTruthy();
     expect(screen.getByText('Nothing owed')).toBeTruthy();
     expect(screen.getByText('If you have a card balance, a loan or a mortgage, add it to see your real net worth.')).toBeTruthy();
-    // The header's button adds a debt here, as the empty state's does.
-    const [header, empty] = screen.getAllByRole('button', { name: 'Add a debt' });
-    fireEvent.click(header);
+    // New ▾ in the header adds a debt, as the empty state's button does.
+    newItem('Debt');
     fireEvent.click(within(dialog('Add a debt')).getByRole('button', { name: 'Cancel' }));
-    fireEvent.click(empty);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a debt' }));
     expect(dialog('Add a debt')).toBeTruthy();
   });
 
@@ -171,7 +170,7 @@ describe('add, edit and remove a debt', () => {
     };
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add a debt' })[0]);
+    newItem('Debt');
     const d = dialog('Add a debt');
 
     // What's missing, one thing at a time.
@@ -222,7 +221,7 @@ describe('add, edit and remove a debt', () => {
       json({ status: 409, detail: 'You can track up to 200 debts. Remove one to add another.' }, 409);
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add a debt' })[0]);
+    newItem('Debt');
     const d = dialog('Add a debt');
 
     fill(d, 'Name', 'Mom');

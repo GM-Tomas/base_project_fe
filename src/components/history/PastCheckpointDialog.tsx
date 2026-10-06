@@ -9,7 +9,7 @@ import { MoneyInput } from '@/components/ui/MoneyInput';
 import { DateInput } from '@/components/ui/DateInput';
 import { errorMessage } from '@/lib/apiError';
 import type { PastCheckpointInput } from '@/lib/api';
-import { formatUsd, parseAmount, parseSignedAmount } from '@/lib/money';
+import { exactUsd, parseAmount, parseSignedAmount } from '@/lib/money';
 import { dateProblem, formatDay } from '@/lib/movements';
 import { localDay } from '@/lib/periods';
 import { round2 } from '@/lib/returns';
@@ -97,7 +97,7 @@ export function PastCheckpointDialog({ onClose }: { onClose: () => void }) {
               <MoneyInput label="What you owed (USD)" value={debts} onChange={setDebts} />
             </div>
             <div className="preview" aria-live="polite">
-              Net worth: {worked === null ? '—' : formatUsd(worked)}
+              Net worth: {worked === null ? '—' : exactUsd(worked)}
             </div>
           </>
         ) : (

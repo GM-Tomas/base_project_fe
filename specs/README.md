@@ -35,7 +35,7 @@ Estas specs cubren los dos repositorios:
 | F4 — Retorno esperado y proyección | Hecha | ✔ | ✔ |
 | F5 — Personalización | Hecha | ✔ | ✔ |
 | F6 — Historial por períodos | Hecha | ✔ | ✔ |
-| F7 — UX global | Lista para implementar | ✔ | ✔ |
+| F7 — UX global | Hecha | ✔ | ✔ |
 
 Estados posibles: *Borrador* → *Lista para implementar* → *En curso* → *Hecha*.
 

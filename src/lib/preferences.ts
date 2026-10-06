@@ -1,8 +1,9 @@
-import type { EstimatePreferences, Preferences } from '@/types/wealth';
+import type { EstimatePreferences, HistoryPeriodPreset, Preferences, ViewType } from '@/types/wealth';
 import { round2 } from './returns';
 
-// What each user sets up the way they like it (how they left Estimate): the defaults, and the API's checks
-// and messages for a PUT /preferences (base_project_go: PreferencesHandler).
+// What each user sets up the way they like it (how they left Estimate, the monthly checkpoint, the view to
+// open on, History's period): the defaults, and the API's checks and messages for a PUT /preferences
+// (base_project_go: PreferencesHandler).
 
 export const MAX_MILESTONES = 5;
 export const MAX_CONTRIBUTION_USD = 1e9;
@@ -20,9 +21,44 @@ export const DEFAULT_ESTIMATE: EstimatePreferences = {
   contributionGrowthPct: 0,
 };
 
-export const DEFAULT_PREFERENCES: Preferences = { estimate: DEFAULT_ESTIMATE };
+/** The views the app can open on, in the navigation's order. */
+export const START_VIEWS: ViewType[] = ['dashboard', 'platforms', 'assets', 'debts', 'estimate', 'history', 'settings'];
+export const HISTORY_PERIODS: HistoryPeriodPreset[] = ['1M', '3M', '6M', 'YTD', '1Y', '3Y', 'ALL'];
+
+export const DEFAULT_PREFERENCES: Preferences = {
+  estimate: DEFAULT_ESTIMATE,
+  autoSnapshot: 'OFF',
+  defaultView: 'dashboard',
+  historyPeriod: '1Y',
+};
 
 type FieldError = { field: string; message: string };
+
+/** Preferences as read: what an older API leaves out, or a value this app doesn't know, takes its default. */
+export function withDefaults(saved: Partial<Preferences>): Preferences {
+  return {
+    estimate: { ...DEFAULT_ESTIMATE, ...saved.estimate },
+    autoSnapshot: saved.autoSnapshot === 'MONTHLY' ? 'MONTHLY' : 'OFF',
+    defaultView: saved.defaultView && START_VIEWS.includes(saved.defaultView) ? saved.defaultView : DEFAULT_PREFERENCES.defaultView,
+    historyPeriod:
+      saved.historyPeriod && HISTORY_PERIODS.includes(saved.historyPeriod) ? saved.historyPeriod : DEFAULT_PREFERENCES.historyPeriod,
+  };
+}
+
+/** What the API finds wrong with the rest of the document (after estimate's problems, in its order). */
+export function preferencesProblems(p: Omit<Preferences, 'estimate'>): FieldError[] {
+  const errors: FieldError[] = [];
+  if (p.autoSnapshot !== 'OFF' && p.autoSnapshot !== 'MONTHLY') {
+    errors.push({ field: 'autoSnapshot', message: 'autoSnapshot must be one of OFF, MONTHLY' });
+  }
+  if (!START_VIEWS.includes(p.defaultView)) {
+    errors.push({ field: 'defaultView', message: `defaultView must be one of ${START_VIEWS.join(', ')}` });
+  }
+  if (!HISTORY_PERIODS.includes(p.historyPeriod)) {
+    errors.push({ field: 'historyPeriod', message: `historyPeriod must be one of ${HISTORY_PERIODS.join(', ')}` });
+  }
+  return errors;
+}
 
 const inRange = (v: number, min: number, max: number) => v >= min && v <= max;
 

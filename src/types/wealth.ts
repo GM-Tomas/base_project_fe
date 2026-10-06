@@ -327,8 +327,18 @@ export interface EstimatePreferences {
   contributionGrowthPct: number;
 }
 
+/** Whether the app saves a checkpoint on its own: never, or once a calendar month (when it's opened). */
+export type AutoSnapshot = 'OFF' | 'MONTHLY';
+
+/** The periods History can open with (a period of your own dates isn't one to keep). */
+export type HistoryPeriodPreset = '1M' | '3M' | '6M' | 'YTD' | '1Y' | '3Y' | 'ALL';
+
 export interface Preferences {
   estimate: EstimatePreferences;
+  autoSnapshot: AutoSnapshot;
+  /** The view the app opens on. */
+  defaultView: ViewType;
+  historyPeriod: HistoryPeriodPreset;
 }
 
 /** GET /wealth/estimate: without yieldPct, the portfolio's expected return. */

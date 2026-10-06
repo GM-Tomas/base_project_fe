@@ -62,13 +62,7 @@ export const DashboardView: React.FC = () => {
       <SnapshotReminder />
 
       {/* Top Grid: Hero Net Worth + 4 Quick Metric Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(320px, 1.3fr) 1fr',
-          gap: '18px',
-        }}
-      >
+      <div className="dash-top">
         {/* Hero Card */}
         <div
           style={{
@@ -175,7 +169,7 @@ export const DashboardView: React.FC = () => {
         </div>
 
         {/* 4 Metric Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="dash-metrics">
           <div className="card elev-sm">
             <div className="card-kicker">Ready to spend</div>
             <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--color-text)' }}>
@@ -238,19 +232,15 @@ export const DashboardView: React.FC = () => {
 
       {/* Bottom Grid: Donut Chart + Exposure Bars */}
       {holdings.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1.4fr',
-            gap: '18px',
-          }}
-        >
+        <div className="dash-bottom">
           {/* What you're holding (Asset Class Donut) */}
           <div className="card elev-sm">
             <div className="card-kicker">What you&apos;re holding</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '22px', marginTop: '6px' }}>
               {/* Donut graphic */}
               <div
+                role="img"
+                aria-label={`Your assets by class: ${classDistribution.map((c) => `${c.label} ${c.pctLabel}`).join(', ')}`}
                 style={{
                   width: '128px',
                   height: '128px',

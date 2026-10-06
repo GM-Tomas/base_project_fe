@@ -9,7 +9,7 @@ import { FormError } from '@/components/ui/FormError';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { errorMessage } from '@/lib/apiError';
 import type { MovementInput } from '@/lib/api';
-import { formatUsd, parseAmount } from '@/lib/money';
+import { exactUsd, formatUsd, parseAmount } from '@/lib/money';
 import { dateProblem, occurredAtFor, today, type DebtMovementKind } from '@/lib/movements';
 import type { Debt, Holding } from '@/types/wealth';
 import { MAX_NOTE, noteFor, noteProblem } from './RecordChangeDialog';
@@ -58,7 +58,7 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
 
   const [kind, setKind] = useState<DebtMovementKind>(initialKind);
   // A payment starts at the monthly payment.
-  const [amount, setAmount] = useState(initialKind === 'DEBT_PAYMENT' && suggested ? formatUsd(suggested) : '');
+  const [amount, setAmount] = useState(initialKind === 'DEBT_PAYMENT' && suggested ? exactUsd(suggested) : '');
   const [holdingId, setHoldingId] = useState('');
   const [date, setDate] = useState(today);
   const [note, setNote] = useState('');
@@ -77,8 +77,8 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
 
   // An amount nobody typed (empty, or the monthly payment it started at) follows the kind picked.
   const pickKind = (next: DebtMovementKind) => {
-    const untouched = amount === '' || (suggested !== null && amount === formatUsd(suggested));
-    if (untouched) setAmount(next === 'DEBT_PAYMENT' && suggested ? formatUsd(suggested) : '');
+    const untouched = amount === '' || (suggested !== null && amount === exactUsd(suggested));
+    if (untouched) setAmount(next === 'DEBT_PAYMENT' && suggested ? exactUsd(suggested) : '');
     // Where a payment came from isn't where a charge went.
     if ((next === 'DEBT_PAYMENT') !== (kind === 'DEBT_PAYMENT')) setHoldingId('');
     setKind(next);
@@ -140,11 +140,11 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
           {paying && debt.balanceUsd > 0 && (
             <div className="field-hint quick-amounts">
               {suggested !== null && suggested < debt.balanceUsd && (
-                <button type="button" className="link-btn link-accent" onClick={() => setAmount(formatUsd(suggested))}>
+                <button type="button" className="link-btn link-accent" onClick={() => setAmount(exactUsd(suggested))}>
                   Monthly payment
                 </button>
               )}
-              <button type="button" className="link-btn link-accent" onClick={() => setAmount(formatUsd(debt.balanceUsd))}>
+              <button type="button" className="link-btn link-accent" onClick={() => setAmount(exactUsd(debt.balanceUsd))}>
                 Full balance
               </button>
             </div>

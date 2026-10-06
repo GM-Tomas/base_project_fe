@@ -210,3 +210,9 @@ export async function renderApp(session: Session | null = SESSION, netWorth = '$
 }
 
 export const nav = (label: string) => fireEvent.click(screen.getByRole('button', { name: label }));
+
+/** Opens New ▾ in the header and picks one of its items ("Asset", "Debt", …). */
+export const newItem = (label: string) => {
+  fireEvent.click(screen.getByRole('button', { name: 'New' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: label }));
+};

@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { formatCurrency, formatSignedCurrency } from '@/lib/calculations';
 import { compactUsd, niceTicks } from '@/lib/chartScale';
 import { formatDay } from '@/lib/movements';
-import { timeTicks, type PeriodPoint } from '@/lib/periods';
+import { describeSpan, timeTicks, type PeriodPoint } from '@/lib/periods';
 
 // As the projection's chart: the SVG is stretched to its box, so lines are drawn in its coordinates and the
 // round things and text (dots, axis labels, the tooltip) are laid over it in %.
@@ -63,6 +63,13 @@ export function HistoryChart({ points, start, from, to }: HistoryChartProps) {
     setActive((i) => move(i ?? last));
   };
 
+  // What it shows, in a sentence: its name for screen readers.
+  const [first, end] = [points[0], points[last]];
+  const label =
+    last > 0
+      ? `Net worth from ${formatCurrency(first.value)} to ${formatCurrency(end.value)} over ${describeSpan(first.at, end.at)}`
+      : `Net worth: ${formatCurrency(first.value)}`;
+
   const point = active !== null ? points[active] : null;
   const previous = active ? points[active - 1] : start && point !== start ? start : null;
   const summary = point && describe(point, previous);
@@ -80,7 +87,7 @@ export function HistoryChart({ points, start, from, to }: HistoryChartProps) {
         className="chart-plot"
         tabIndex={0}
         role="group"
-        aria-label="Net worth over the period: use the arrow keys to read each point"
+        aria-label={`${label}. Use the arrow keys to read each point.`}
         onMouseMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
         onMouseLeave={() => setActive(null)}
         onFocus={() => setActive((i) => i ?? last)}

@@ -14,6 +14,12 @@ import { EstimateView } from '@/components/views/EstimateView';
 import { HistoryView } from '@/components/views/HistoryView';
 import { SettingsView } from '@/components/views/SettingsView';
 import { UiProvider, useUi } from '@/context/UiContext';
+import { MonthlyCheckpoint } from '@/components/app/MonthlyCheckpoint';
+import { Hotkeys } from '@/components/app/Hotkeys';
+import { ViewBoundary } from '@/components/app/ViewBoundary';
+import { AppSkeleton } from '@/components/app/AppSkeleton';
+import { BottomNav } from '@/components/layout/BottomNav';
+import { NARROW, useMediaQuery } from '@/lib/useMediaQuery';
 
 const canSkipLogin = process.env.NODE_ENV !== 'production';
 
@@ -38,53 +44,26 @@ export default function HomePage() {
   );
 }
 
-// Saving Estimate's settings happens in the background: say so when it fails (the next change saves them).
+// Saving the preferences happens in the background: say so when it fails (the next change saves them).
 function PreferencesSaveFailures() {
   const { preferencesSaveFailures } = useWealth();
   const { toast } = useUi();
   useEffect(() => {
-    if (preferencesSaveFailures > 0) toast.error("Couldn't save your Estimate settings. They'll be saved with your next change.");
+    if (preferencesSaveFailures > 0) toast.error("Couldn't save your settings. They'll be saved with your next change.");
   }, [preferencesSaveFailures, toast]);
   return null;
 }
 
 function Dashboard() {
-  const { view, loading: dataLoading, loadError, retry } = useWealth();
+  const { view, loading: dataLoading, loadError, retry, refresh } = useWealth();
   const { user, signOut } = useAuth();
+  const narrow = useMediaQuery(NARROW);
 
-  if (dataLoading) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          width: '100vw',
-          background: 'var(--color-bg)',
-          color: 'var(--color-text)',
-        }}
-      >
-        Loading your data…
-      </div>
-    );
-  }
+  if (dataLoading) return <AppSkeleton />;
 
   if (loadError) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          height: '100vh',
-          width: '100vw',
-          background: 'var(--color-bg)',
-          color: 'var(--color-text)',
-        }}
-      >
+      <div className="app-message">
         <div>{loadError}</div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button className="btn btn-primary" onClick={() => void retry()}>
@@ -102,68 +81,31 @@ function Dashboard() {
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        height: '100vh',
-        width: '100vw',
-        background: 'var(--color-bg)',
-        color: 'var(--color-text)',
-        fontFamily: 'inherit',
-        fontSize: '15px',
-        overflow: 'hidden',
-        position: 'relative',
-      }}
-    >
-      {/* Background Grid Accent Overlay */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
-          backgroundSize: '64px 64px',
-          opacity: 0.5,
-        }}
-      />
-
+    <div className={narrow ? 'app-shell app-shell-narrow' : 'app-shell'}>
       <PreferencesSaveFailures />
+      <MonthlyCheckpoint />
+      <Hotkeys />
 
-      {/* Sidebar Navigation */}
-      <Sidebar />
+      {!narrow && <Sidebar />}
 
-      {/* Main Content Area */}
-      <main
-        style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          minWidth: 0,
-          position: 'relative',
-          zIndex: 2,
-          overflow: 'hidden',
-        }}
-      >
+      <main className="app-main">
         <Header />
 
-        {/* Scrollable View Content */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '26px 28px 60px',
-          }}
-        >
-          {view === 'dashboard' && <DashboardView />}
-          {view === 'platforms' && <PlatformsView />}
-          {view === 'assets' && <AssetsView />}
-          {view === 'debts' && <DebtsView />}
-          {view === 'estimate' && <EstimateView />}
-          {view === 'history' && <HistoryView />}
-          {view === 'settings' && <SettingsView />}
+        {/* The view: one that fails to render is replaced by a message, the rest of the app keeps working. */}
+        <div className="app-content">
+          <ViewBoundary key={view} onReload={() => void refresh().catch(() => {})}>
+            {view === 'dashboard' && <DashboardView />}
+            {view === 'platforms' && <PlatformsView />}
+            {view === 'assets' && <AssetsView />}
+            {view === 'debts' && <DebtsView />}
+            {view === 'estimate' && <EstimateView />}
+            {view === 'history' && <HistoryView />}
+            {view === 'settings' && <SettingsView />}
+          </ViewBoundary>
         </div>
       </main>
+
+      {narrow && <BottomNav />}
     </div>
   );
 }

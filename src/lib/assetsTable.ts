@@ -56,3 +56,6 @@ export function toggleSort(sort: AssetsTableState['sort'], key: AssetSortKey): A
 }
 
 export const sumValues = (holdings: Holding[]) => Math.round(holdings.reduce((sum, h) => sum + h.valueUsd, 0) * 100) / 100;
+
+/** The search field's id: "/" jumps to it from anywhere. */
+export const ASSETS_SEARCH_ID = 'assets-search';
