@@ -12,6 +12,7 @@ import { AssetsView } from '@/components/views/AssetsView';
 import { DebtsView } from '@/components/views/DebtsView';
 import { EstimateView } from '@/components/views/EstimateView';
 import { HistoryView } from '@/components/views/HistoryView';
+import { SettingsView } from '@/components/views/SettingsView';
 import { UiProvider, useUi } from '@/context/UiContext';
 
 const canSkipLogin = process.env.NODE_ENV !== 'production';
@@ -160,6 +161,7 @@ function Dashboard() {
           {view === 'debts' && <DebtsView />}
           {view === 'estimate' && <EstimateView />}
           {view === 'history' && <HistoryView />}
+          {view === 'settings' && <SettingsView />}
         </div>
       </main>
     </div>

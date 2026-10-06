@@ -1,6 +1,6 @@
 # F5 — Personalización: clases y plataformas
 
-**Estado:** Lista para implementar · **Repos:** backend + frontend · **Depende de:** F4
+**Estado:** Hecha · **Repos:** backend + frontend · **Depende de:** F4
 
 ## Objetivo
 
@@ -129,16 +129,16 @@ Clases y plataformas personalizadas, rename/merge, borrar con `moveTo`, liquidez
 ## Tareas
 
 **Backend**
-- [ ] IDs derivados; repositorios de configuración de clases y plataformas.
-- [ ] Servicio de clases (listar con stats, crear, editar, renombrar/merge, borrar/mover) en transacción.
-- [ ] Servicio de plataformas (personalizar, renombrar/merge) en transacción.
-- [ ] Liquidez y retorno efectivos; resumen con colores y miniaturas.
-- [ ] Handlers, `openapi.json`, README; e2e de aislamiento (configuración y renombres ajenos).
+- [x] IDs derivados; repositorios de configuración de clases y plataformas.
+- [x] Servicio de clases (listar con stats, crear, editar, renombrar/merge, borrar/mover) en transacción.
+- [x] Servicio de plataformas (personalizar, renombrar/merge) en transacción.
+- [x] Liquidez y retorno efectivos; resumen con colores y miniaturas.
+- [x] Handlers, `openapi.json`, README; e2e de aislamiento (configuración y renombres ajenos).
 
 **Frontend**
-- [ ] `api.ts` + mock + tests.
-- [ ] Settings, diálogos, `PlatformAvatar`, `ColorPicker`; colores en todas las vistas.
-- [ ] Tests de flujos.
+- [x] `api.ts` + mock + tests.
+- [x] Settings, diálogos, `PlatformAvatar`, `ColorPicker`; colores en todas las vistas.
+- [x] Tests de flujos.
 
 ## Pruebas
 
@@ -156,3 +156,33 @@ Clases y plataformas personalizadas, rename/merge, borrar con `moveTo`, liquidez
   la tocó.
 - **Riesgo**: renombrar una plataforma con muchos assets toca muchos documentos en una transacción (hasta
   1000): dentro de los límites de Mongo, con *timeout* de operación de 10 s.
+
+### Decisiones al implementar
+
+- **Unicidad por `_id`**: cada documento de `asset_class_settings` y `platform_settings` tiene `_id` = id del
+  usuario + id de la clase o plataforma. Garantiza uno por clase/plataforma igual que el índice único
+  `{user_id, name|key}` de la spec, sin un índice más; hay un índice `{user_id, _id}` para leer los de un usuario.
+- **Qué documento se guarda**: una clase creada existe por su documento (aparece sin assets); una por defecto
+  solo lo necesita para lo que difiere (incluido estar oculta). Una plataforma sin nada personalizado no tiene
+  documento. Cada documento cuenta en la cuota (100 clases, 1000 plataformas); volver una clase por defecto o
+  una plataforma a lo de por defecto libera su lugar.
+- **Renombrar sobre un nombre nuevo** lleva la configuración consigo y reemplaza la que hubiera quedado con ese
+  nombre (una clase por defecto oculta, el *look* de una plataforma que se vació). En un **merge** la de destino
+  conserva la suya y se ignora el resto del pedido.
+- **Renombrar no cambia el `updatedAt` de los holdings**: no es una edición del asset ("Updated" en su panel
+  sigue diciendo cuándo se editó él).
+- **Una clase por defecto oculta que algún holding usa** sigue visible (está en uso), ordenada con las demás
+  (no en su lugar de por defecto) hasta que se cree de nuevo.
+- **`liquidity.liquidAssetClasses`** pasa a ser las clases visibles del usuario que cuentan como líquidas, en el
+  orden en que se ofrecen (antes: la lista configurada). El dashboard dice cuáles tiene ("Equity and Crypto you
+  can move quickly") con un enlace **Change** a Settings, en lugar del texto fijo "Cash, funds & crypto".
+- **Tipo de plataforma vacío** (o solo espacios) = el de por defecto, como `null`.
+- **Customize desde la tarjeta**: un botón (pincel) junto a *Transfer*, en lugar de un menú ⋯ con una sola
+  opción. En Settings, cada fila tiene el suyo.
+- **Miniaturas en los selectores**: las opciones de un `<select>` nativo no pueden mostrar imágenes; el campo sí:
+  la miniatura de la plataforma elegida aparece dentro del selector (filtro de Assets, origen y destino de
+  *Transfer*). En el resto de las vistas va junto al nombre.
+- **Paleta**: los 12 colores salen de los *tokens* del sistema de diseño (acentos y matices con la misma
+  luminosidad), en hex porque así los guarda la API. "Default" es el color derivado de siempre.
+- **Errores con `code`**: `ApiError` expone el final del `type` del *problem* (`class-exists`,
+  `platform-exists`, `class-in-use`, `limit-exceeded`), para distinguir conflictos sin depender del texto.

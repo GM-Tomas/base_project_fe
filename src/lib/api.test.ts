@@ -199,3 +199,44 @@ describe('api', () => {
     ]);
   });
 });
+
+describe('api: classes and platforms', () => {
+  it('creates, edits and removes classes, the id escaped and moveTo in the query', async () => {
+    fetchMock.mockImplementation(async () => json({ id: 'QXJ0', name: 'Art' }));
+    await api.createAssetClass({ name: 'Art', color: '#aabbcc', liquid: false });
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/asset-classes');
+    expect(lastCall().init.method).toBe('POST');
+    expect(JSON.parse(lastCall().init.body as string)).toEqual({ name: 'Art', color: '#aabbcc', liquid: false });
+
+    await api.updateAssetClass('a/b', { name: 'Equity', mergeIfExists: true, color: null });
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/asset-classes/a%2Fb');
+    expect(lastCall().init.method).toBe('PATCH');
+    expect(JSON.parse(lastCall().init.body as string)).toEqual({ name: 'Equity', mergeIfExists: true, color: null });
+
+    fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    await api.deleteAssetClass('QXJ0');
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/asset-classes/QXJ0');
+    expect(lastCall().init.method).toBe('DELETE');
+    await api.deleteAssetClass('QXJ0', 'Real Estate & Land');
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/asset-classes/QXJ0?moveTo=Real%20Estate%20%26%20Land');
+  });
+
+  it('customizes a platform', async () => {
+    fetchMock.mockImplementation(async () => json({ id: 'YmluYW5jZQ', name: 'Binance' }));
+    await api.updatePlatform('YmluYW5jZQ', { avatarText: '🟡', color: null });
+    expect(lastCall().url).toBe('http://localhost:8080/api/v1/platforms/YmluYW5jZQ');
+    expect(lastCall().init.method).toBe('PATCH');
+    expect(JSON.parse(lastCall().init.body as string)).toEqual({ avatarText: '🟡', color: null });
+  });
+
+  it("tells what kind of problem it was, from the problem's type", async () => {
+    fetchMock.mockResolvedValue(
+      json({ type: 'https://base.wealth/errors/class-exists', title: 'Conflict', status: 409, detail: 'There\'s already a class named "Equity"' }, 409),
+    );
+    const err = await api.updateAssetClass('x', { name: 'Equity' }).catch((e) => e);
+    expect(err).toMatchObject({ status: 409, code: 'class-exists', message: 'There\'s already a class named "Equity"' });
+
+    fetchMock.mockResolvedValue(json({ title: 'Conflict' }, 409));
+    expect(await api.updateAssetClass('x', {}).catch((e) => e.code)).toBeUndefined();
+  });
+});

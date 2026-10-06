@@ -5,7 +5,16 @@ import type { Session } from '@supabase/supabase-js';
 import HomePage from '@/app/page';
 import { AuthProvider } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
-import type { Holding, Platform, Projection, ProjectionPoint, Snapshot, WealthSummary } from '@/types/wealth';
+import type {
+  AssetClassInfo,
+  AvailableAssetClasses,
+  Holding,
+  Platform,
+  Projection,
+  ProjectionPoint,
+  Snapshot,
+  WealthSummary,
+} from '@/types/wealth';
 import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 
 // The app tests' harness: the whole app runs for real; only Supabase (see setup.ts) and the backend (fetch)
@@ -29,13 +38,13 @@ export const summary = (over: Partial<WealthSummary> = {}): WealthSummary => ({
   ytd: { basis: 'YEAR_START_SNAPSHOT', growthPct: 12.34 },
   liquidity: { liquidPct: 70, illiquidPct: 30, liquidAssetClasses: ['Equity'] },
   byAssetClass: [
-    { assetClass: 'Equity', valueUsd: 8000, pct: 64.8, count: 1 },
-    { assetClass: 'Gold', valueUsd: 4345.6, pct: 35.2, count: 2 },
+    { assetClass: 'Equity', valueUsd: 8000, pct: 64.8, count: 1, color: null, liquid: true },
+    { assetClass: 'Gold', valueUsd: 4345.6, pct: 35.2, count: 2, color: null, liquid: false },
   ],
   byPlatform: [
-    { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2 },
-    { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1 },
-    { name: 'Empty', type: 'Bank', valueUsd: 0, pct: 0, count: 0 },
+    { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null },
+    { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1, avatarText: null, color: null },
+    { name: 'Empty', type: 'Bank', valueUsd: 0, pct: 0, count: 0, avatarText: null, color: null },
   ],
   ...over,
 });
@@ -59,7 +68,30 @@ export const HOLDINGS = [
   holding('h3', 'Coins', 'Gold', 'Vault', 345.6),
 ];
 
-export const PLATFORMS: Platform[] = ['Balanz', 'Vault', 'Empty'].map((name) => ({ name, type: 'Other', createdAt: '' }));
+export const platform = (name: string, over: Partial<Platform> = {}): Platform => ({
+  id: `id-${name}`, name, type: 'Other', avatarText: null, color: null, holdingsCount: 0, valueUsd: 0, createdAt: '', ...over,
+});
+
+export const PLATFORMS: Platform[] = [
+  platform('Balanz', { holdingsCount: 1, valueUsd: 8000 }),
+  platform('Vault', { holdingsCount: 2, valueUsd: 4345.6 }),
+  platform('Empty'),
+];
+
+export const assetClass = (name: string, over: Partial<AssetClassInfo> = {}): AssetClassInfo => ({
+  id: `id-${name}`, name, color: null, liquid: false, expectedReturnPct: null, isDefault: false, holdingsCount: 0, valueUsd: 0, ...over,
+});
+
+export const ASSET_CLASSES: AvailableAssetClasses = {
+  defaults: ['Cash'],
+  inUse: ['Equity', 'Gold'],
+  all: ['Cash', 'Equity', 'Gold'],
+  classes: [
+    assetClass('Cash', { isDefault: true, liquid: true }),
+    assetClass('Equity', { liquid: true, holdingsCount: 1, valueUsd: 8000 }),
+    assetClass('Gold', { holdingsCount: 2, valueUsd: 4345.6 }),
+  ],
+};
 
 export const snapshot = (id: string, capturedAt: string, totalValueUsd: number, changePctFromPrevious: number | null): Snapshot => ({
   id, capturedAt, totalValueUsd, assetsUsd: totalValueUsd, debtsUsd: 0, changePctFromPrevious,
@@ -114,7 +146,7 @@ export function installFakeBackend() {
       'GET /api/v1/wealth/summary': () => json(summary()),
       'GET /api/v1/holdings': () => json(HOLDINGS),
       'GET /api/v1/platforms': () => json(PLATFORMS),
-      'GET /api/v1/asset-classes': () => json({ defaults: ['Cash'], inUse: ['Equity', 'Gold'], all: ['Cash', 'Equity', 'Gold'] }),
+      'GET /api/v1/asset-classes': () => json(ASSET_CLASSES),
       'GET /api/v1/wealth/snapshots': () => json(SNAPSHOTS),
       'GET /api/v1/wealth/estimate': () => json(projection()),
       'GET /api/v1/movements': () => json({ items: [], nextCursor: null }),

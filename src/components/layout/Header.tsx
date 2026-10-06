@@ -22,6 +22,7 @@ export const Header: React.FC = () => {
     debts: 'Debts',
     estimate: 'Estimate',
     history: 'History',
+    settings: 'Settings',
   };
 
   const viewSubtitles: Record<string, string> = {
@@ -31,6 +32,7 @@ export const Header: React.FC = () => {
     debts: "What you owe, what it costs and when it's paid off.",
     estimate: "See where you're headed — move the sliders and watch it change.",
     history: 'How your net worth has moved, checkpoint by checkpoint.',
+    settings: 'Your classes and platforms, the way you like them.',
   };
 
   return (

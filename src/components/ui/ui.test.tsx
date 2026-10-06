@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ColorPicker } from './ColorPicker';
+import { PlatformAvatar } from './PlatformAvatar';
 import { TOAST_MS } from './Toaster';
 import { UiProvider, useUi } from '@/context/UiContext';
 import { ApiError } from '@/lib/apiError';
@@ -270,5 +272,56 @@ describe('UiProvider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<Probe />)).toThrow('useUi must be used within a UiProvider');
     window.removeEventListener('error', swallow);
+  });
+});
+
+describe('ColorPicker', () => {
+  const Picker = ({ initial }: { initial: string | null }) => {
+    const [color, setColor] = useState<string | null>(initial);
+    return (
+      <>
+        <ColorPicker label="Color" value={color} onChange={setColor} defaultColor="var(--color-accent)" />
+        <output aria-label="Picked">{color ?? 'default'}</output>
+      </>
+    );
+  };
+  const picked = () => screen.getByLabelText('Picked').textContent;
+
+  it('picks the default, one of the palette or one of your own', () => {
+    render(<Picker initial="#123456" />);
+    // A color of one's own shows in the hex field.
+    expect((screen.getByLabelText('Or your own') as HTMLInputElement).value).toBe('#123456');
+    expect((screen.getByRole('radio', { name: 'Default' }) as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Teal' }));
+    expect(picked()).toBe('#00c0c2');
+    expect((screen.getByLabelText('Or your own') as HTMLInputElement).value).toBe('');
+    fireEvent.click(screen.getByRole('radio', { name: 'Default' }));
+    expect(picked()).toBe('default');
+
+    fireEvent.change(screen.getByLabelText('Or your own'), { target: { value: 'zz' } });
+    expect(screen.getByText('Use a hex color like #1a2b3c')).toBeTruthy();
+    expect(picked()).toBe('default');
+    fireEvent.change(screen.getByLabelText('Or your own'), { target: { value: ' #ABCDEF ' } });
+    expect(picked()).toBe('#abcdef');
+
+    fireEvent.change(screen.getByLabelText('Pick a color'), { target: { value: '#00ff88' } });
+    expect(picked()).toBe('#00ff88');
+    expect((screen.getByLabelText('Or your own') as HTMLInputElement).value).toBe('#00ff88');
+  });
+});
+
+describe('PlatformAvatar', () => {
+  it('fits two characters a little smaller than one', () => {
+    const { container } = render(
+      <>
+        <PlatformAvatar text="B" color="#ff0000" />
+        <PlatformAvatar text="BN" color="#ff0000" size={18} />
+      </>,
+    );
+    const [one, two] = container.querySelectorAll<HTMLElement>('.platform-avatar');
+    expect(one.style.fontSize).toBe('14px');
+    expect(two.style.fontSize).toBe('8px'); // never under 8px
+    expect(one.getAttribute('aria-hidden')).toBe('true');
   });
 });

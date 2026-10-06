@@ -4,7 +4,9 @@ import React from 'react';
 import { ChevronDown, ChevronUp, ChevronsUpDown, Percent, Search } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
-import { assetClassTag } from '@/lib/constants';
+import { ClassTag } from '@/components/ui/ClassTag';
+import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
+import { PlatformSelectFrame } from '@/components/ui/PlatformSelectFrame';
 import { ALL, INITIAL_ASSETS_TABLE, selectAssets, sumValues, toggleSort, type AssetSortKey } from '@/lib/assetsTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
@@ -23,7 +25,7 @@ const COLUMNS: { key: AssetSortKey; label: string }[] = [
 const pctOf = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : '—');
 
 export const AssetsView: React.FC = () => {
-  const { holdings, platforms, availableAssetClasses, assetsTable, setAssetsTable, openPlatform } = useWealth();
+  const { holdings, platforms, availableAssetClasses, assetsTable, setAssetsTable, openPlatform, platformLook, classLook } = useWealth();
   const actions = useHoldingActions();
   const openHolding = useOpenHolding();
   const openFromRow = useOpenFromRow();
@@ -74,20 +76,22 @@ export const AssetsView: React.FC = () => {
             onChange={(e) => update({ query: e.target.value })}
           />
         </div>
-        <select
-          className="input"
-          aria-label="Filter by platform"
-          style={{ width: 'auto', minWidth: '180px' }}
-          value={table.platform}
-          onChange={(e) => update({ platform: e.target.value })}
-        >
-          <option value={ALL}>All platforms</option>
-          {platformNames.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
+        <PlatformSelectFrame platform={table.platform === ALL ? null : table.platform}>
+          <select
+            className="input"
+            aria-label="Filter by platform"
+            style={{ width: 'auto', minWidth: '180px' }}
+            value={table.platform}
+            onChange={(e) => update({ platform: e.target.value })}
+          >
+            <option value={ALL}>All platforms</option>
+            {platformNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </PlatformSelectFrame>
         <button type="button" className="btn btn-secondary toolbar-end" onClick={actions.setReturns}>
           <Percent size={14} aria-hidden />
           Set expected returns
@@ -115,6 +119,7 @@ export const AssetsView: React.FC = () => {
                 transition: 'all 0.15s ease',
               }}
             >
+              {opt !== ALL && <span className="class-dot" style={{ background: classLook(opt).color }} aria-hidden />}
               {opt}
             </button>
           );
@@ -164,10 +169,11 @@ export const AssetsView: React.FC = () => {
                     </button>
                   </td>
                   <td style={{ padding: '12px 10px' }}>
-                    <span className={assetClassTag(h.assetClass)}>{h.assetClass}</span>
+                    <ClassTag name={h.assetClass} />
                   </td>
                   <td style={{ padding: '12px 10px' }}>
-                    <button type="button" className="link-btn text-muted" title={`Open ${h.platform}`} onClick={() => openPlatform(h.platform)}>
+                    <button type="button" className="link-btn text-muted with-avatar" title={`Open ${h.platform}`} onClick={() => openPlatform(h.platform)}>
+                      <PlatformAvatar {...platformLook(h.platform)} size={18} />
                       {h.platform}
                     </button>
                   </td>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Settings } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { useAuth } from '@/context/AuthContext';
 import { ProfileModal } from '@/components/modals/ProfileModal';
@@ -83,6 +84,11 @@ export const Sidebar: React.FC = () => {
           <path d="M12 7.5V12L15 14" />
         </svg>
       ),
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: <Settings size={18} strokeWidth={1.6} aria-hidden />,
     },
   ];
 

@@ -14,6 +14,7 @@ import { dateProblem, occurredAtFor, today } from '@/lib/movements';
 import type { MovementInput } from '@/lib/api';
 import type { Holding } from '@/types/wealth';
 import { classHint, platformHint } from './HoldingFormDialog';
+import { PlatformSelectFrame } from '@/components/ui/PlatformSelectFrame';
 import { MAX_NOTE, noteFor, noteProblem } from './RecordChangeDialog';
 import { useMovementFeedback } from './useMovementFeedback';
 
@@ -175,16 +176,18 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
           <div className="form-grid-2">
             <div className="field">
               <label htmlFor={ids.fromPlatform}>Platform</label>
-              <select id={ids.fromPlatform} className="input" value={fromPlatform} onChange={(e) => pickFromPlatform(e.target.value)}>
-                <option value={NEW} disabled>
-                  Choose a platform
-                </option>
-                {platformNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
+              <PlatformSelectFrame platform={fromPlatform}>
+                <select id={ids.fromPlatform} className="input" value={fromPlatform} onChange={(e) => pickFromPlatform(e.target.value)}>
+                  <option value={NEW} disabled>
+                    Choose a platform
                   </option>
-                ))}
-              </select>
+                  {platformNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </PlatformSelectFrame>
             </div>
             <div className="field">
               <label htmlFor={ids.fromAsset}>Asset</label>
@@ -221,17 +224,19 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
           <div className="form-grid-2">
             <div className="field">
               <label htmlFor={ids.toPlatform}>Platform</label>
-              <select id={ids.toPlatform} className="input" value={toPlatform} onChange={(e) => pickToPlatform(e.target.value)}>
-                <option value={NEW} disabled>
-                  Choose a platform
-                </option>
-                {platformNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
+              <PlatformSelectFrame platform={toPlatform}>
+                <select id={ids.toPlatform} className="input" value={toPlatform} onChange={(e) => pickToPlatform(e.target.value)}>
+                  <option value={NEW} disabled>
+                    Choose a platform
                   </option>
-                ))}
-                <option value={NEW_PLATFORM}>A new platform…</option>
-              </select>
+                  {platformNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                  <option value={NEW_PLATFORM}>A new platform…</option>
+                </select>
+              </PlatformSelectFrame>
             </div>
             {toPlatform !== NEW_PLATFORM && (
               <div className="field">

@@ -1,18 +1,19 @@
+import type { EstimateQuery, Holding, Milestone, Preferences, Projection, Snapshot, WealthSummary } from '@/types/wealth';
 import type {
-  AvailableAssetClasses,
-  EstimateQuery,
-  Holding,
-  Milestone,
-  Platform,
-  Preferences,
-  Projection,
-  Snapshot,
-  WealthSummary,
-} from '@/types/wealth';
-import type { Api, ExpectedReturnItem, HoldingInput, HoldingPatch, MovementInput, MovementQuery } from './api';
+  Api,
+  AssetClassInput,
+  AssetClassPatch,
+  ExpectedReturnItem,
+  HoldingInput,
+  HoldingPatch,
+  MovementInput,
+  MovementQuery,
+  PlatformPatch,
+} from './api';
 import { ApiError } from './apiError';
 import { debtBalances, monthAfter } from './amortization';
 import { normalizeLabel as label, platformKey } from './labels';
+import { createMockCustomization } from './mockCustomization';
 import { createMockDebts } from './mockDebts';
 import { createMockLedger, type MockDebt, type MockLedger } from './mockLedger';
 import { DEFAULT_ESTIMATE, DEFAULT_PREFERENCES, estimateProblems, MAX_MILESTONES, normalizeEstimate } from './preferences';
@@ -105,7 +106,6 @@ const growthPct = (value: number, from: number) => (from > 0 ? tenths(((value - 
 const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' }) || a.localeCompare(b);
 const byValueThenName = (a: { name: string; value: number }, b: { name: string; value: number }) =>
   b.value - a.value || byName(a.name, b.name);
-const platformType = (name: string) => PLATFORM_TYPES.get(name) ?? 'Other';
 
 function groupBy(holdings: Holding[], key: (h: Holding) => string) {
   const groups = new Map<string, Holding[]>();
@@ -146,6 +146,7 @@ function holdingErrors(fields: Partial<Record<keyof HoldingInput, unknown>>): Fi
   return errors;
 }
 
+// A holding's own return as kept (its effective one is worked out when it's read: see present).
 const withReturn = (pct: number | null | undefined) => {
   const own = pct === undefined || pct === null ? null : round2(pct);
   return { expectedReturnPct: own, effectiveReturnPct: own };
@@ -246,6 +247,14 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
   const ledger = createMockLedger({ holdings, debts, now, newHolding: (input) => newHolding({ ...input, valueUsd: 0 }) });
   seedActivity(ledger, holdings, debts, started);
   const debtsApi = createMockDebts({ debts, ledger, now, nextId: () => `demo-debt-${nextId++}` });
+  const custom = createMockCustomization({
+    holdings,
+    defaultClasses: DEFAULT_CLASSES,
+    liquidClasses: LIQUID_CLASSES,
+    legacyType: (name) => PLATFORM_TYPES.get(name) ?? null,
+  });
+  // A holding as the API answers with it: the return it counts with is its own, or else its class's.
+  const present = (h: Holding): Holding => ({ ...h, effectiveReturnPct: h.expectedReturnPct ?? custom.classReturn(h.assetClass) });
   const owed = () => cents(debts.reduce((sum, d) => sum + d.balanceUsd, 0));
 
   // Ids are never reused, also after a snapshot is deleted.
@@ -262,7 +271,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     const netWorth = cents(assets - debtsUsd);
     // Shares of what's owned: the net worth can be zero or below.
     const pct = (value: number) => (assets > 0 ? tenths((value / assets) * 100) : 0);
-    const liquid = total(holdings.filter((h) => LIQUID_CLASSES.includes(h.assetClass)));
+    const liquid = total(holdings.filter((h) => custom.liquid(h.assetClass)));
     // The year's first snapshot, else the earliest one.
     const year = now().getUTCFullYear();
     const yearStart = snapshots.find((s) => new Date(s.capturedAt).getUTCFullYear() === year);
@@ -277,7 +286,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         monthlyPaymentUsd: cents(debts.reduce((sum, d) => sum + (d.monthlyPaymentUsd ?? 0), 0)),
       },
       holdingsCount: holdings.length,
-      expectedReturn: expectedReturnOf(holdings),
+      expectedReturn: expectedReturnOf(holdings.map(present)),
       ytd:
         baseline && ytdGrowth !== null
           ? {
@@ -290,14 +299,17 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       liquidity: {
         liquidPct: pct(liquid),
         illiquidPct: assets > 0 ? tenths(100 - pct(liquid)) : 0,
-        liquidAssetClasses: LIQUID_CLASSES,
+        liquidAssetClasses: custom.liquidClasses(),
       },
       byAssetClass: groupBy(holdings, (h) => h.assetClass)
         .sort(byValueThenName)
-        .map((g) => ({ assetClass: g.name, valueUsd: g.value, pct: pct(g.value), count: g.count })),
+        .map((g) => ({
+          assetClass: g.name, valueUsd: g.value, pct: pct(g.value), count: g.count,
+          color: custom.classColor(g.name), liquid: custom.liquid(g.name),
+        })),
       byPlatform: groupBy(holdings, (h) => h.platform)
         .sort(byValueThenName)
-        .map((g) => ({ name: g.name, type: platformType(g.name), valueUsd: g.value, pct: pct(g.value), count: g.count })),
+        .map((g) => ({ name: g.name, ...custom.look(g.name), valueUsd: g.value, pct: pct(g.value), count: g.count })),
     };
   };
 
@@ -324,7 +336,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
   const estimate = (q: EstimateQuery): Projection => {
     rejectInvalid(estimateErrors(q));
     const principal = total(holdings);
-    const portfolio = expectedReturnOf(holdings).weightedPct;
+    const portfolio = expectedReturnOf(holdings.map(present)).weightedPct;
     const yieldPct = q.yieldPct ?? portfolio ?? 0;
     const [inflationPct, contributionGrowthPct] = [q.inflationPct ?? 0, q.contributionGrowthPct ?? 0];
     const months = simulate({ principal, contribution: q.contribution, yieldPct, years: q.years, contributionGrowthPct, inflationPct });
@@ -409,12 +421,12 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       const next = withReturn(item.expectedReturnPct);
       if (found[i].expectedReturnPct !== next.expectedReturnPct) Object.assign(found[i], next, { updatedAt: at });
     });
-    return found.map((h) => ({ ...h }));
+    return found.map(present);
   };
 
   return {
     getSummary: async () => summary(),
-    getHoldings: async () => holdings.map((h) => ({ ...h })),
+    getHoldings: async () => holdings.map(present),
     createHolding: async (input: HoldingInput) => {
       // Added with its OPENING; the cap, then the activity quota, as the API checks them.
       const fresh = newHolding(input);
@@ -422,7 +434,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       ledger.roomForOneMore();
       const holding = fresh.add();
       ledger.opened(holding);
-      return { ...holding };
+      return present(holding);
     },
     updateHolding: async (id: string, patch: HoldingPatch) => {
       // Only what's sent changes; sending what's there writes nothing (updatedAt stays). A new value is
@@ -440,12 +452,12 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
         ...(patch.expectedReturnPct !== undefined && withReturn(patch.expectedReturnPct)),
       };
       const changed = (['name', 'assetClass', 'platform', 'valueUsd', 'expectedReturnPct'] as const).some((k) => updated[k] !== holding[k]);
-      if (!changed) return { ...holding };
+      if (!changed) return present(holding);
       const previous = holding.valueUsd;
       if (updated.valueUsd !== previous) ledger.roomForOneMore();
       Object.assign(holding, updated, { updatedAt: now().toISOString() });
       if (holding.valueUsd !== previous) ledger.edited(holding, previous, edit);
-      return { ...holding };
+      return present(holding);
     },
     deleteHolding: async (id: string) => {
       const index = holdings.findIndex((h) => h.id === id);
@@ -457,18 +469,12 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
     getMovements: async (query?: MovementQuery) => ledger.list(query),
     createMovement: async (input: MovementInput) => ledger.record(input),
     deleteMovement: async (id: string) => ledger.revert(id),
-    getPlatforms: async (): Promise<Platform[]> => {
-      // Holdings are kept oldest first, so a platform's first one is its earliest.
-      const first = new Map<string, Holding>();
-      for (const h of holdings) if (!first.has(h.platform)) first.set(h.platform, h);
-      return [...first.values()]
-        .map((h) => ({ name: h.platform, type: platformType(h.platform), createdAt: h.createdAt }))
-        .sort((a, b) => byName(a.name, b.name));
-    },
-    getAssetClasses: async (): Promise<AvailableAssetClasses> => {
-      const inUse = [...new Set(holdings.map((h) => h.assetClass))].sort(byName);
-      return { defaults: DEFAULT_CLASSES, inUse, all: [...new Set([...DEFAULT_CLASSES, ...inUse])] };
-    },
+    getPlatforms: async () => custom.getPlatforms(),
+    updatePlatform: async (id: string, patch: PlatformPatch) => custom.updatePlatform(id, patch),
+    getAssetClasses: async () => custom.getAssetClasses(),
+    createAssetClass: async (input: AssetClassInput) => custom.createAssetClass(input),
+    updateAssetClass: async (id: string, patch: AssetClassPatch) => custom.updateAssetClass(id, patch),
+    deleteAssetClass: async (id: string, moveTo?: string) => custom.deleteAssetClass(id, moveTo),
     getSnapshots: async () => snapshots.map((_, i) => withChange(i)),
     createSnapshot: async () => {
       // Taken to the second, one per second at most, as the API does.

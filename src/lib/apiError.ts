@@ -1,12 +1,15 @@
 export class ApiError extends Error {
   status: number;
   errors?: { field: string; message: string }[];
+  /** What kind of problem it is, the end of its type (class-exists, limit-exceeded...), when the API says. */
+  code?: string;
 
-  constructor(status: number, message: string, errors?: { field: string; message: string }[]) {
+  constructor(status: number, message: string, errors?: { field: string; message: string }[], code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.errors = errors;
+    this.code = code;
   }
 }
 

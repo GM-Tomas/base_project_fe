@@ -10,22 +10,51 @@ export interface Holding {
   valueUsd: number;
   /** Roughly how much it grows in a year (%), if the user said. */
   expectedReturnPct: number | null;
-  /** The yearly return it counts with in the portfolio's: its own, for now. */
+  /** The yearly return it counts with in the portfolio's: its own, or else its class's default one. */
   effectiveReturnPct: number | null;
   createdAt: string;
   updatedAt: string;
 }
 
+/** One of the user's platforms (a name their holdings use), as they set it up. */
 export interface Platform {
+  /** What the API names it with in its paths. */
+  id: string;
   name: string;
   type: PlatformType;
+  /** What its thumbnail shows (1 or 2 characters, an emoji counting as one); null: its initial. */
+  avatarText: string | null;
+  /** #rrggbb; null: a color picked from its name. */
+  color: string | null;
+  holdingsCount: number;
+  valueUsd: number;
   createdAt: string;
+}
+
+/** One of the user's asset classes, as they set it up. */
+export interface AssetClassInfo {
+  /** What the API names it with in its paths. */
+  id: string;
+  name: string;
+  /** #rrggbb; null: its default color. */
+  color: string | null;
+  /** Whether it counts as ready to spend. */
+  liquid: boolean;
+  /** The yearly return its holdings without one of their own count with. */
+  expectedReturnPct: number | null;
+  /** One of the classes every account starts with. */
+  isDefault: boolean;
+  holdingsCount: number;
+  valueUsd: number;
 }
 
 export interface AvailableAssetClasses {
   defaults: string[];
   inUse: string[];
+  /** The user's classes, in the order they're offered. */
   all: string[];
+  /** The same, each with how it's set up. */
+  classes: AssetClassInfo[];
 }
 
 /** Assets minus debts: below zero when more is owed than owned. */
@@ -59,6 +88,9 @@ export interface AssetClassBreakdown {
   valueUsd: number;
   pct: number;
   count: number;
+  /** The user's color for it (null: the default one). */
+  color: string | null;
+  liquid: boolean;
 }
 
 export interface PlatformBreakdown {
@@ -67,6 +99,9 @@ export interface PlatformBreakdown {
   valueUsd: number;
   pct: number;
   count: number;
+  /** Its thumbnail, as the user set it (null: the default). */
+  avatarText: string | null;
+  color: string | null;
 }
 
 /** What the portfolio is expected to earn in a year: each holding's return weighted by its value. */
@@ -231,7 +266,7 @@ export interface Debt {
 /** What an edit of a debt's balance was. */
 export type BalanceChangeReason = 'PAYMENT' | 'CHARGE' | 'INTEREST' | 'CORRECTION';
 
-export type ViewType = 'dashboard' | 'platforms' | 'assets' | 'debts' | 'estimate' | 'history';
+export type ViewType = 'dashboard' | 'platforms' | 'assets' | 'debts' | 'estimate' | 'history' | 'settings';
 
 /** How Estimate picks the yearly growth: the portfolio's expected return, or the user's own. */
 export type YieldMode = 'PORTFOLIO' | 'CUSTOM';

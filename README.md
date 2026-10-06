@@ -36,6 +36,11 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
   labeled axes and each year's figures on hover or with the arrow keys; below it, what the expected return is
   made of, by class and by asset. With debts, a second line shows the net worth as they're paid off, and the
   milestones are about it. How you leave it is saved for every device.
+- **Settings**: your **asset classes** (create one before it has assets, rename it on all its assets, merge it
+  into another, remove it moving its assets, and set its color, whether it counts as ready to spend and the
+  return its assets without one of their own count with) and your **platforms** (a thumbnail of 1–2 letters or
+  an emoji, a color, a type, and a rename or merge on all their assets). Colors and thumbnails show everywhere:
+  the dashboard, Platforms, Assets, the asset panel and the platform pickers.
 - **Historical Snapshots**: Net worth timeline curve and snapshot logging.
 - **Add Asset Dialog**: amounts in any usual format (`1.234,56`, `1,234.56`, `$ 1234`) with a preview of how
   they were read; platform and class fields suggest the existing ones and say when a name is new.
@@ -94,7 +99,7 @@ npm run dev
 
 Vercel preview deployments (every branch and pull request) run on **mock data**: a demo account is signed in
 from the start, and every API call is answered in the browser with made-up holdings, debts, platforms and
-snapshots (`src/lib/mockApi.ts`, `src/lib/mockLedger.ts` and `src/lib/mockDebts.ts`, same rules and messages as
+snapshots (`src/lib/mockApi.ts`, `src/lib/mockLedger.ts`, `src/lib/mockDebts.ts` and `src/lib/mockCustomization.ts`, same rules and messages as
 the API, with some made-up activity that adds up to the demo's values). Nothing is sent to Supabase or the API, so a preview never
 touches production data and needs no environment variables; a "Demo data" tag marks it, and changes last until
 the tab reloads. Every other build uses the real backend, whatever its variables say: `next.config.mjs` picks

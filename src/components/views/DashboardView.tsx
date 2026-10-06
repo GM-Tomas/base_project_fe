@@ -8,6 +8,15 @@ import { HoldingFormDialog } from '@/components/dialogs/HoldingFormDialog';
 import { formatCurrency } from '@/lib/calculations';
 import { formatReturn } from '@/lib/returns';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
+import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
+
+/** "Cash", "Cash and Crypto", "Cash, Equity, Crypto and Gold", "Cash, Equity, Crypto and 2 more". */
+export function listNames(names: string[], max = 3): string {
+  if (names.length <= 1) return names.join('');
+  // "and 1 more" says less than the name itself.
+  if (names.length <= max + 1) return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return `${names.slice(0, max).join(', ')} and ${names.length - max} more`;
+}
 
 export const DashboardView: React.FC = () => {
   const {
@@ -44,6 +53,8 @@ export const DashboardView: React.FC = () => {
 
   // Sort platforms by balance descending for the exposure bars
   const sortedPlatforms = [...platformDistribution].sort((a, b) => b.balanceUSD - a.balanceUSD);
+  // What counts as ready to spend: the user's liquid classes they hold something in.
+  const liquidNames = classDistribution.filter((c) => c.liquid).map((c) => c.label);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
@@ -168,7 +179,11 @@ export const DashboardView: React.FC = () => {
               {liquidityPct}%
             </div>
             <div className="card-body">
-              Cash, funds & crypto you can move quickly · {illiquidPct}% locked in
+              {liquidNames.length > 0 ? `${listNames(liquidNames)} you can move quickly` : 'Nothing you hold counts as ready to spend'}
+              {holdings.length > 0 && ` · ${illiquidPct}% locked in`} ·{' '}
+              <button type="button" className="link-btn link-accent" onClick={() => setView('settings')}>
+                Change
+              </button>
             </div>
           </div>
 
@@ -292,7 +307,10 @@ export const DashboardView: React.FC = () => {
               {sortedPlatforms.map((p) => (
                 <div key={p.name}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '5px' }}>
-                    <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{p.name}</span>
+                    <span className="with-avatar" style={{ fontWeight: 500, color: 'var(--color-text)' }}>
+                      <PlatformAvatar text={p.initial} color={p.color} size={18} />
+                      {p.name}
+                    </span>
                     <span
                       style={{
                         fontVariantNumeric: 'tabular-nums',

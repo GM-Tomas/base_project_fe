@@ -2,6 +2,7 @@ import { ApiError } from './apiError';
 import { createMockApi } from './mockApi';
 import { supabase } from './supabaseClient';
 import type {
+  AssetClassInfo,
   AvailableAssetClasses,
   BalanceChangeReason,
   Debt,
@@ -24,6 +25,7 @@ export { ApiError };
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
 interface ProblemDetail {
+  type?: string;
   title?: string;
   detail?: string;
   errors?: { field: string; message: string }[];
@@ -66,6 +68,7 @@ async function request<T>(path: string, options: RequestInit = {}, isRetry = fal
       res.status,
       problem?.detail ?? problem?.title ?? `Request failed with status ${res.status}`,
       problem?.errors,
+      problem?.type?.split('/').pop() || undefined,
     );
   }
 
@@ -155,6 +158,39 @@ export type MovementInput =
   | (MovementCommon & { kind: 'DEBT_CHARGE'; debtId: string; toHoldingId?: string })
   | (MovementCommon & { kind: 'DEBT_INTEREST'; debtId: string });
 
+/** POST /asset-classes: a class the user doesn't have yet. */
+export interface AssetClassInput {
+  name: string;
+  color?: string | null;
+  liquid?: boolean | null;
+  expectedReturnPct?: number | null;
+}
+
+/**
+ * PATCH /asset-classes/{id}, a merge patch: null clears color and the return, and sets liquid back to its
+ * default. A new name renames it on all its holdings; one the user has merges into it, only with mergeIfExists.
+ */
+export interface AssetClassPatch {
+  name?: string;
+  color?: string | null;
+  liquid?: boolean | null;
+  expectedReturnPct?: number | null;
+  mergeIfExists?: boolean;
+}
+
+/**
+ * PATCH /platforms/{id}, a merge patch: null sets type, avatarText and color back to their defaults. A new
+ * name renames it on all its holdings; another of the user's platforms (case aside) merges into it, only with
+ * mergeIfExists.
+ */
+export interface PlatformPatch {
+  name?: string;
+  type?: string | null;
+  avatarText?: string | null;
+  color?: string | null;
+  mergeIfExists?: boolean;
+}
+
 /** GET /movements: newest first, a page at a time. */
 export interface MovementQuery {
   holdingId?: string;
@@ -202,7 +238,19 @@ const liveApi = {
   deleteMovement: (id: string) => request<void>(`/api/v1/movements/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getPlatforms: () => request<Platform[]>('/api/v1/platforms'),
+  updatePlatform: (id: string, patch: PlatformPatch) =>
+    request<Platform>(`/api/v1/platforms/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   getAssetClasses: () => request<AvailableAssetClasses>('/api/v1/asset-classes'),
+  createAssetClass: (body: AssetClassInput) =>
+    request<AssetClassInfo>('/api/v1/asset-classes', { method: 'POST', body: JSON.stringify(body) }),
+  updateAssetClass: (id: string, patch: AssetClassPatch) =>
+    request<AssetClassInfo>(`/api/v1/asset-classes/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  /** Its holdings, if any, move to moveTo. */
+  deleteAssetClass: (id: string, moveTo?: string) =>
+    request<void>(
+      `/api/v1/asset-classes/${encodeURIComponent(id)}${moveTo === undefined ? '' : `?moveTo=${encodeURIComponent(moveTo)}`}`,
+      { method: 'DELETE' },
+    ),
 
   getSnapshots: () => request<Snapshot[]>('/api/v1/wealth/snapshots'),
   createSnapshot: () => request<Snapshot>('/api/v1/wealth/snapshots', { method: 'POST' }),

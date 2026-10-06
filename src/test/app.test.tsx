@@ -176,13 +176,17 @@ describe('dashboard', () => {
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy();
     expect(screen.getByText('+12.3% since January')).toBeTruthy();
     expect(screen.getByText('70%')).toBeTruthy();
-    expect(screen.getByText('Cash, funds & crypto you can move quickly · 30% locked in')).toBeTruthy();
+    const liquidity = screen.getByText('Ready to spend').parentElement!;
+    expect(liquidity.querySelector('.card-body')!.textContent).toBe('Equity you can move quickly · 30% locked in · Change');
     expect(screen.getByText('Across 3 accounts')).toBeTruthy();
     expect(screen.getByText('64.8%')).toBeTruthy();
     expect(screen.getByText('$8,000 · 64.8%')).toBeTruthy();
     // Exposure bars are sorted by balance, largest first.
     const bars = screen.getByText('Where it lives').parentElement!;
-    expect(within(bars).getAllByText(/^(Balanz|Vault|Empty)$/).map((el) => el.textContent)).toEqual(['Balanz', 'Vault', 'Empty']);
+    const names = within(bars).getAllByText(/^(Balanz|Vault|Empty)$/);
+    expect(names.map((el) => el.lastChild!.textContent)).toEqual(['Balanz', 'Vault', 'Empty']);
+    // Each with its thumbnail: its initial, without one of the user's.
+    expect(names.map((el) => el.querySelector('.platform-avatar')!.textContent)).toEqual(['B', 'V', 'E']);
   });
 
   it.each([
@@ -265,7 +269,7 @@ describe('platform drill-down across refreshes', () => {
     routes['GET /api/v1/holdings'] = () => json(holdings);
     routes['GET /api/v1/wealth/summary'] = () => json(summary({ byPlatform }));
   };
-  const BALANZ = { name: 'Balanz', type: 'Broker', valueUsd: 8001, pct: 64.8, count: 2 };
+  const BALANZ = { name: 'Balanz', type: 'Broker', valueUsd: 8001, pct: 64.8, count: 2, avatarText: null, color: null };
   const VOO = holding('h4', 'VOO', 'Equity', 'Balanz', 1);
 
   beforeEach(() => {
@@ -277,12 +281,12 @@ describe('platform drill-down across refreshes', () => {
     nav('Platforms');
     fireEvent.click(screen.getByText('Vault'));
 
-    serve([...HOLDINGS, VOO], [{ name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2 }, BALANZ]);
+    serve([...HOLDINGS, VOO], [{ name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null }, BALANZ]);
     await addAsset();
     expect(screen.getByText("Vault · what's there")).toBeTruthy();
 
     // "Gold bar", the earliest Vault holding, was deleted elsewhere; "Coins" was stored as "vault".
-    serve([HOLDINGS[0], { ...HOLDINGS[2], platform: 'vault' }, VOO], [{ name: 'vault', type: 'Safe', valueUsd: 345.6, pct: 4, count: 1 }, BALANZ]);
+    serve([HOLDINGS[0], { ...HOLDINGS[2], platform: 'vault' }, VOO], [{ name: 'vault', type: 'Safe', valueUsd: 345.6, pct: 4, count: 1, avatarText: null, color: null }, BALANZ]);
     await addAsset();
     expect(await screen.findByText("vault · what's there")).toBeTruthy();
     expect(screen.getByText('Coins')).toBeTruthy();
@@ -1076,13 +1080,14 @@ describe('profile', () => {
     } as unknown as Session);
 
     fireEvent.click(screen.getByRole('button', { name: /bo@example.com/ }));
-    expect(screen.getAllByText('B')).toHaveLength(2);
+    expect(within(screen.getByRole('complementary')).getAllByText('B')).toHaveLength(1);
+    expect(within(screen.getByRole('dialog')).getAllByText('B')).toHaveLength(1);
     expect(document.querySelectorAll('img')).toHaveLength(0);
   });
 
   it('takes whole characters as initials, emoji included', async () => {
     routes['GET /api/v1/wealth/summary'] = () =>
-      json(summary({ byPlatform: [{ name: '\u{1F3E6} Bank', type: 'Bank', valueUsd: 12345.6, pct: 100, count: 3 }] }));
+      json(summary({ byPlatform: [{ name: '\u{1F3E6} Bank', type: 'Bank', valueUsd: 12345.6, pct: 100, count: 3, avatarText: null, color: null }] }));
     await renderApp({
       ...SESSION,
       user: { id: 'u3', email: 'e@example.com', user_metadata: { full_name: '\u{1F600} Tomás' } },
@@ -1104,8 +1109,8 @@ describe('multiple accounts', () => {
   const bobSummary = summary({
     netWorth: { usd: 777 },
     holdingsCount: 1,
-    byAssetClass: [{ assetClass: 'Fixed Income', valueUsd: 777, pct: 100, count: 1 }],
-    byPlatform: [{ name: 'Bob Bank', type: 'Bank', valueUsd: 777, pct: 100, count: 1 }],
+    byAssetClass: [{ assetClass: 'Fixed Income', valueUsd: 777, pct: 100, count: 1, color: null, liquid: false }],
+    byPlatform: [{ name: 'Bob Bank', type: 'Bank', valueUsd: 777, pct: 100, count: 1, avatarText: null, color: null }],
   });
 
   // Like the real backend: what comes back depends only on whose token the request carries.

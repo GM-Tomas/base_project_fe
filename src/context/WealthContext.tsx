@@ -7,6 +7,7 @@ import {
   Snapshot,
   WealthSummary,
   AssetClass,
+  AssetClassInfo,
   ViewType,
   Movement,
   Debt,
@@ -17,7 +18,19 @@ import {
 import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
 import { initialOf } from '@/lib/initial';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
-import { api, ApiError, DebtInput, DebtPatch, ExpectedReturnItem, HoldingInput, HoldingPatch, MovementInput } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  AssetClassInput,
+  AssetClassPatch,
+  DebtInput,
+  DebtPatch,
+  ExpectedReturnItem,
+  HoldingInput,
+  HoldingPatch,
+  MovementInput,
+  PlatformPatch,
+} from '@/lib/api';
 import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
 
@@ -28,6 +41,8 @@ interface ClassDistributionItem {
   color: string;
   tagClass: string;
   pctLabel: string;
+  /** Whether it counts as ready to spend. */
+  liquid: boolean;
 }
 
 interface PlatformCardItem {
@@ -37,10 +52,25 @@ interface PlatformCardItem {
   balanceFormatted: string;
   pctOfTotal: number;
   pctLabel: string;
+  /** Its color: the user's, or one picked from its name. */
   color: string;
   tagClass: string;
+  /** What its thumbnail shows: the user's text, or its initial. */
   initial: string;
   isActive: boolean;
+}
+
+/** How a class looks: its color (the user's or its default) and, with the user's, the tag that shows it. */
+export interface ClassLook {
+  color: string;
+  /** The user's color, if they set one. */
+  custom: string | null;
+}
+
+/** How a platform's thumbnail looks: the user's text and color, or its initial and a color from its name. */
+export interface PlatformLook {
+  text: string;
+  color: string;
 }
 
 interface WealthContextType {
@@ -79,7 +109,14 @@ interface WealthContextType {
   classDistribution: ClassDistributionItem[];
   platformDistribution: PlatformCardItem[];
   selectedPlatformHoldings: Holding[];
+  /** The user's classes, in the order they're offered. */
   availableAssetClasses: AssetClass[];
+  /** The same, each with how it's set up and what it holds. */
+  assetClassInfos: AssetClassInfo[];
+  /** How a class looks, as the user set it up. */
+  classLook: (name: string) => ClassLook;
+  /** How a platform's thumbnail looks, as the user set it up. */
+  platformLook: (name: string) => PlatformLook;
 
   // Actions
   setView: (view: ViewType) => void;
@@ -103,6 +140,13 @@ interface WealthContextType {
   recordMovement: (input: MovementInput) => Promise<Movement>;
   /** Undoes a movement: its effect on values is reverted and it's gone from the activity. */
   revertMovement: (id: string) => Promise<void>;
+  createAssetClass: (input: AssetClassInput) => Promise<AssetClassInfo>;
+  /** Changes a class; a new name renames it on all its holdings (merging, with mergeIfExists). */
+  updateAssetClass: (id: string, patch: AssetClassPatch) => Promise<AssetClassInfo>;
+  /** Removes a class; its holdings, if any, move to moveTo. */
+  deleteAssetClass: (id: string, moveTo?: string) => Promise<void>;
+  /** Changes how a platform looks, or its name on all its holdings (merging, with mergeIfExists). */
+  updatePlatform: (id: string, patch: PlatformPatch) => Promise<Platform>;
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
 }
@@ -152,6 +196,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [summary, setSummary] = useState<WealthSummary>(EMPTY_SUMMARY);
   const [assetClasses, setAssetClasses] = useState<string[]>([]);
+  const [assetClassInfos, setAssetClassInfos] = useState<AssetClassInfo[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -195,6 +240,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setHoldings(holdingsRes);
     setPlatforms(platformsRes);
     setAssetClasses(assetClassesRes.all);
+    setAssetClassInfos(assetClassesRes.classes ?? []);
     setSnapshots(snapshotsRes);
     setDebts(debtsRes);
     setSelectedPlatform((selected) => followPlatform(selected, before, holdingsRes));
@@ -278,15 +324,34 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const liquidityPct = summary.liquidity.liquidPct;
   const illiquidPct = summary.liquidity.illiquidPct;
 
+  // How classes and platforms look, as the user set them up (from the lists, which have them all).
+  const classColors = useMemo(() => new Map(assetClassInfos.map((c) => [c.name, c.color])), [assetClassInfos]);
+  const classLook = useCallback(
+    (name: string): ClassLook => {
+      const custom = classColors.get(name) ?? null;
+      return { color: custom ?? assetClassColor(name), custom };
+    },
+    [classColors],
+  );
+  const platformsByName = useMemo(() => new Map(platforms.map((p) => [p.name, p])), [platforms]);
+  const platformLook = useCallback(
+    (name: string): PlatformLook => {
+      const p = platformsByName.get(name);
+      return { text: p?.avatarText ?? initialOf(name), color: p?.color ?? platformColor(name) };
+    },
+    [platformsByName],
+  );
+
   const classDistribution = useMemo<ClassDistributionItem[]>(
     () =>
       summary.byAssetClass.map((item) => ({
         label: item.assetClass,
         value: item.valueUsd,
         pct: item.pct,
-        color: assetClassColor(item.assetClass),
+        color: item.color ?? assetClassColor(item.assetClass),
         tagClass: assetClassTag(item.assetClass),
         pctLabel: item.pct.toFixed(1) + '%',
+        liquid: item.liquid ?? false,
       })),
     [summary.byAssetClass],
   );
@@ -300,9 +365,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         balanceFormatted: formatCurrency(item.valueUsd),
         pctOfTotal: item.pct,
         pctLabel: item.pct.toFixed(1) + '%',
-        color: platformColor(item.name),
+        color: item.color ?? platformColor(item.name),
         tagClass: platformTag(item.type),
-        initial: initialOf(item.name),
+        initial: item.avatarText ?? initialOf(item.name),
         isActive: selectedPlatform === item.name,
       })),
     [summary.byPlatform, selectedPlatform],
@@ -442,6 +507,61 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [reloadAfterChange, reloadIfStale],
   );
 
+  // Classes and platforms: a change that's out of date (renamed or removed on another device) reloads.
+  const createAssetClass = useCallback(
+    async (input: AssetClassInput) => {
+      let created: AssetClassInfo;
+      try {
+        created = await api.createAssetClass(input);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+      return created;
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
+  const updateAssetClass = useCallback(
+    async (id: string, patch: AssetClassPatch) => {
+      let updated: AssetClassInfo;
+      try {
+        updated = await api.updateAssetClass(id, patch);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+      return updated;
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
+  const deleteAssetClass = useCallback(
+    async (id: string, moveTo?: string) => {
+      try {
+        await api.deleteAssetClass(id, moveTo);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
+  const updatePlatform = useCallback(
+    async (id: string, patch: PlatformPatch) => {
+      let updated: Platform;
+      try {
+        updated = await api.updatePlatform(id, patch);
+      } catch (e) {
+        throw reloadIfStale(e);
+      }
+      await reloadAfterChange();
+      return updated;
+    },
+    [reloadAfterChange, reloadIfStale],
+  );
+
   return (
     <WealthContext.Provider
       value={{
@@ -472,6 +592,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         platformDistribution,
         selectedPlatformHoldings,
         availableAssetClasses: assetClasses,
+        assetClassInfos,
+        classLook,
+        platformLook,
 
         setView: (v) => {
           setViewState(v);
@@ -495,6 +618,10 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteDebt,
         recordMovement,
         revertMovement,
+        createAssetClass,
+        updateAssetClass,
+        deleteAssetClass,
+        updatePlatform,
         refresh,
         retry: () => load(),
       }}

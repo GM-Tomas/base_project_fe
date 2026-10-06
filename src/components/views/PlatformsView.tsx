@@ -1,11 +1,14 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeftRight, Plus } from 'lucide-react';
+import { ArrowLeftRight, Paintbrush, Plus } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
+import { useUi } from '@/context/UiContext';
 import { formatCurrency } from '@/lib/calculations';
-import { assetClassTag } from '@/lib/constants';
 import { sumValues } from '@/lib/assetsTable';
+import { ClassTag } from '@/components/ui/ClassTag';
+import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
+import { PlatformCustomizeDialog } from '@/components/settings/PlatformCustomizeDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { IconButton } from '@/components/ui/IconButton';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
@@ -18,7 +21,13 @@ export const PlatformsView: React.FC = () => {
     selectedPlatform,
     setSelectedPlatform,
     selectedPlatformHoldings,
+    platforms,
   } = useWealth();
+  const { openDialog } = useUi();
+  const customize = (name: string) => {
+    const platform = platforms.find((p) => p.name === name);
+    if (platform) openDialog((close) => <PlatformCustomizeDialog platform={platform} onClose={close} />);
+  };
   const actions = useHoldingActions();
   const openHolding = useOpenHolding();
   const openFromRow = useOpenFromRow();
@@ -73,23 +82,7 @@ export const PlatformsView: React.FC = () => {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div
-                  style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '9px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    flex: 'none',
-                    background: `color-mix(in srgb, ${p.color} 25%, var(--color-surface))`,
-                    color: p.color,
-                  }}
-                >
-                  {p.initial}
-                </div>
+                <PlatformAvatar text={p.initial} color={p.color} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <button
                     type="button"
@@ -104,6 +97,9 @@ export const PlatformsView: React.FC = () => {
                     {p.type}
                   </span>
                 </div>
+                <IconButton label={`Customize ${p.name}`} onClick={() => customize(p.name)}>
+                  <Paintbrush size={15} aria-hidden />
+                </IconButton>
                 <IconButton label={`Transfer from ${p.name}`} onClick={() => actions.transfer({ platform: p.name })}>
                   <ArrowLeftRight size={15} aria-hidden />
                 </IconButton>
@@ -183,8 +179,6 @@ export const PlatformsView: React.FC = () => {
                 </thead>
                 <tbody>
                   {selectedPlatformHoldings.map((h) => {
-                    const tagClass = assetClassTag(h.assetClass);
-
                     return (
                       <tr key={h.id} className="row-clickable" onClick={(e) => openFromRow(e, h)}>
                         <td style={{ padding: '12px 10px', fontWeight: 500 }}>
@@ -193,7 +187,7 @@ export const PlatformsView: React.FC = () => {
                           </button>
                         </td>
                         <td style={{ padding: '12px 10px' }}>
-                          <span className={tagClass}>{h.assetClass}</span>
+                          <ClassTag name={h.assetClass} />
                         </td>
                         <td style={{ padding: '12px 10px' }} className="text-nowrap">
                           {formatCurrency(h.valueUsd)}

@@ -33,7 +33,7 @@ Estas specs cubren los dos repositorios:
 | F2 — Movimientos | Hecha | ✔ | ✔ |
 | F3 — Deudas | Hecha | ✔ | ✔ |
 | F4 — Retorno esperado y proyección | Hecha | ✔ | ✔ |
-| F5 — Personalización | Lista para implementar | ✔ | ✔ |
+| F5 — Personalización | Hecha | ✔ | ✔ |
 | F6 — Historial por períodos | Lista para implementar | ✔ | ✔ |
 | F7 — UX global | Lista para implementar | ✔ | ✔ |
 

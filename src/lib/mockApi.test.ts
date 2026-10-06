@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './apiError';
 import { createMockApi } from './mockApi';
+import { platformIdOf } from './customization';
 
 const at = (iso: string) => () => new Date(iso);
 const grown = (i: number) => Math.round(80_000 * 1.022 ** i * 100) / 100;
@@ -17,23 +18,23 @@ describe('mock API (the data previews run on)', () => {
     expect(summary.debts).toEqual({ usd: 9_650, count: 2, monthlyPaymentUsd: 650 });
     expect(summary.holdingsCount).toBe(7);
     expect(summary.byAssetClass).toEqual([
-      { assetClass: 'Index Fund', valueUsd: 42_350, pct: 39.4, count: 1 },
-      { assetClass: 'Crypto', valueUsd: 24_570, pct: 22.9, count: 2 },
-      { assetClass: 'Fixed Income', valueUsd: 15_000, pct: 14, count: 1 },
-      { assetClass: 'Equity', valueUsd: 12_800, pct: 11.9, count: 1 },
-      { assetClass: 'Cash', valueUsd: 12_700, pct: 11.8, count: 2 },
+      { assetClass: 'Index Fund', valueUsd: 42_350, pct: 39.4, count: 1, color: null, liquid: true },
+      { assetClass: 'Crypto', valueUsd: 24_570, pct: 22.9, count: 2, color: null, liquid: true },
+      { assetClass: 'Fixed Income', valueUsd: 15_000, pct: 14, count: 1, color: null, liquid: false },
+      { assetClass: 'Equity', valueUsd: 12_800, pct: 11.9, count: 1, color: null, liquid: true },
+      { assetClass: 'Cash', valueUsd: 12_700, pct: 11.8, count: 2, color: null, liquid: true },
     ]);
     expect(summary.byPlatform).toEqual([
-      { name: 'Interactive Brokers', type: 'Broker', valueUsd: 55_150, pct: 51.3, count: 2 },
-      { name: 'Binance', type: 'Exchange', valueUsd: 24_570, pct: 22.9, count: 2 },
-      { name: 'Balanz', type: 'Broker', valueUsd: 15_000, pct: 14, count: 1 },
-      { name: 'Santander', type: 'Bank', valueUsd: 9_500, pct: 8.8, count: 1 },
-      { name: 'Mercado Pago', type: 'Wallet', valueUsd: 3_200, pct: 3, count: 1 },
+      { name: 'Interactive Brokers', type: 'Broker', valueUsd: 55_150, pct: 51.3, count: 2, avatarText: null, color: null },
+      { name: 'Binance', type: 'Exchange', valueUsd: 24_570, pct: 22.9, count: 2, avatarText: null, color: null },
+      { name: 'Balanz', type: 'Broker', valueUsd: 15_000, pct: 14, count: 1, avatarText: null, color: null },
+      { name: 'Santander', type: 'Bank', valueUsd: 9_500, pct: 8.8, count: 1, avatarText: null, color: null },
+      { name: 'Mercado Pago', type: 'Wallet', valueUsd: 3_200, pct: 3, count: 1, avatarText: null, color: null },
     ]);
     expect(summary.liquidity).toEqual({
       liquidPct: 86,
       illiquidPct: 14,
-      liquidAssetClasses: ['Cash', 'Equity', 'Crypto', 'Index Fund'],
+      liquidAssetClasses: ['Cash', 'Index Fund', 'Equity', 'Crypto'],
     });
     // Nine monthly snapshots up to last month: January's is the year's first. Shares are of the assets.
     expect(summary.ytd).toEqual({
@@ -73,18 +74,26 @@ describe('mock API (the data previews run on)', () => {
   it('lists platforms and asset classes like the API', async () => {
     const api = createMockApi(at('2026-10-04T10:00:00Z'));
 
+    const platform = (name: string, type: string, created: string, holdingsCount: number, valueUsd: number) => ({
+      id: platformIdOf(name), name, type, avatarText: null, color: null, holdingsCount, valueUsd, createdAt: `2025-${created}-15T00:00:00.000Z`,
+    });
     expect(await api.getPlatforms()).toEqual([
-      { name: 'Balanz', type: 'Broker', createdAt: '2025-05-15T00:00:00.000Z' },
-      { name: 'Binance', type: 'Exchange', createdAt: '2025-03-15T00:00:00.000Z' },
-      { name: 'Interactive Brokers', type: 'Broker', createdAt: '2025-01-15T00:00:00.000Z' },
-      { name: 'Mercado Pago', type: 'Wallet', createdAt: '2025-07-15T00:00:00.000Z' },
-      { name: 'Santander', type: 'Bank', createdAt: '2025-06-15T00:00:00.000Z' },
+      platform('Balanz', 'Broker', '05', 1, 15_000),
+      platform('Binance', 'Exchange', '03', 2, 24_570),
+      platform('Interactive Brokers', 'Broker', '01', 2, 55_150),
+      platform('Mercado Pago', 'Wallet', '07', 1, 3_200),
+      platform('Santander', 'Bank', '06', 1, 9_500),
     ]);
-    expect(await api.getAssetClasses()).toEqual({
+    const classes = await api.getAssetClasses();
+    expect(classes).toMatchObject({
       defaults: ['Cash', 'Fixed Income', 'Index Fund', 'Equity', 'Crypto'],
       inUse: ['Cash', 'Crypto', 'Equity', 'Fixed Income', 'Index Fund'],
       all: ['Cash', 'Fixed Income', 'Index Fund', 'Equity', 'Crypto'],
     });
+    expect(classes.classes[4]).toEqual({
+      id: 'Q3J5cHRv', name: 'Crypto', color: null, liquid: true, expectedReturnPct: null, isDefault: true, holdingsCount: 2, valueUsd: 24_570,
+    });
+    expect(classes.classes[1]).toMatchObject({ name: 'Fixed Income', liquid: false, holdingsCount: 1 });
   });
 
   it('keeps what the user adds and removes in this tab', async () => {

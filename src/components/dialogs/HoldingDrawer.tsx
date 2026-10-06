@@ -6,7 +6,8 @@ import { useWealth } from '@/context/WealthContext';
 import { useUi } from '@/context/UiContext';
 import { Modal } from '@/components/ui/Modal';
 import { ActivityList } from '@/components/activity/ActivityList';
-import { assetClassTag } from '@/lib/constants';
+import { ClassTag } from '@/components/ui/ClassTag';
+import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
 import { formatUsd } from '@/lib/money';
 import { formatDay } from '@/lib/movements';
 import { formatReturn } from '@/lib/returns';
@@ -16,7 +17,7 @@ import { useHoldingActions } from './useHoldingActions';
 // One holding in a panel along the right edge: what it is and is worth, what can be done with it, and
 // what happened to it. It follows the holding through refreshes, and closes once it's gone.
 export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClose: () => void }) {
-  const { holdings, openPlatform } = useWealth();
+  const { holdings, openPlatform, platformLook } = useWealth();
   const actions = useHoldingActions();
   const holding = holdings.find((h) => h.id === holdingId);
 
@@ -30,16 +31,17 @@ export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClo
       <div className="drawer-meta">
         <button
           type="button"
-          className="link-btn"
+          className="link-btn with-avatar"
           title={`Open ${holding.platform}`}
           onClick={() => {
             onClose();
             openPlatform(holding.platform);
           }}
         >
+          <PlatformAvatar {...platformLook(holding.platform)} size={18} />
           {holding.platform}
         </button>
-        <span className={assetClassTag(holding.assetClass)}>{holding.assetClass}</span>
+        <ClassTag name={holding.assetClass} />
       </div>
       <div>
         <div className="drawer-value">{formatUsd(holding.valueUsd)}</div>
@@ -54,10 +56,13 @@ export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClo
                 Set one
               </button>
             </>
-          ) : holding.effectiveReturnPct < 0 ? (
-            `Expected to lose ${formatReturn(-holding.effectiveReturnPct, 2)} a year`
           ) : (
-            `Expected to grow ${formatReturn(holding.effectiveReturnPct, 2)} a year`
+            <>
+              {holding.effectiveReturnPct < 0
+                ? `Expected to lose ${formatReturn(-holding.effectiveReturnPct, 2)} a year`
+                : `Expected to grow ${formatReturn(holding.effectiveReturnPct, 2)} a year`}
+              {holding.expectedReturnPct === null && <span className="text-muted"> · from {holding.assetClass}</span>}
+            </>
           )}
         </div>
       </div>
