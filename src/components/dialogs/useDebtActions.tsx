@@ -1,14 +1,15 @@
 'use client';
 
 import React from 'react';
-import { HandCoins, Pencil, Trash2 } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { useUi } from '@/context/UiContext';
 import { formatCurrency } from '@/lib/calculations';
 import type { DebtMovementKind } from '@/lib/movements';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { IconButton } from '@/components/ui/IconButton';
+import { Menu } from '@/components/ui/Menu';
 import type { Debt } from '@/types/wealth';
+import { useT } from '@/lib/i18n';
 import { DebtFormDialog } from './DebtFormDialog';
 import { DebtPaymentDialog } from './DebtPaymentDialog';
 
@@ -16,6 +17,7 @@ import { DebtPaymentDialog } from './DebtPaymentDialog';
 export function useDebtActions() {
   const { deleteDebt } = useWealth();
   const { openDialog, toast } = useUi();
+  const t = useT();
 
   return {
     add: () => openDialog((close) => <DebtFormDialog onClose={close} />),
@@ -26,35 +28,39 @@ export function useDebtActions() {
     remove: (d: Debt) =>
       openDialog((close) => (
         <ConfirmDialog
-          title={`Remove ${d.name}?`}
-          message={`Its balance (${formatCurrency(d.balanceUsd)}) will stop counting against your net worth. What was recorded on it stays in your activity.`}
-          confirmLabel="Remove"
-          busyLabel="Removing…"
-          failureMessage="Could not remove this debt. Please try again."
+          title={`${t.common.removeNamed(d.name)}?`}
+          message={t.debts.removeMessage(formatCurrency(d.balanceUsd))}
+          confirmLabel={t.common.remove}
+          busyLabel={t.common.removing}
+          failureMessage={t.debts.removeFailed}
           onClose={close}
           onConfirm={async () => {
             await deleteDebt(d.id);
-            toast.success('Debt removed');
+            toast.success(t.debts.removed);
           }}
         />
       )),
   };
 }
 
-/** A debt row's buttons: pay, edit, remove. */
+/** A debt row's ⋯: pay, edit, remove (the row itself opens its panel). */
 export function DebtRowActions({ debt: d }: { debt: Debt }) {
   const actions = useDebtActions();
+  const t = useT();
   return (
-    <div className="row-actions">
-      <IconButton label={`Pay ${d.name}`} onClick={() => actions.record(d)}>
-        <HandCoins size={15} aria-hidden />
-      </IconButton>
-      <IconButton label={`Edit ${d.name}`} onClick={() => actions.edit(d)}>
-        <Pencil size={15} aria-hidden />
-      </IconButton>
-      <IconButton label={`Remove ${d.name}`} tone="danger" onClick={() => actions.remove(d)}>
-        <Trash2 size={15} aria-hidden />
-      </IconButton>
-    </div>
+    <Menu
+      label={t.common.actionsFor(d.name)}
+      iconOnly
+      buttonClassName="icon-btn"
+      groups={[
+        [
+          { label: t.debts.pay, run: () => actions.record(d) },
+          { label: t.common.edit, run: () => actions.edit(d) },
+        ],
+        [{ label: t.common.remove, tone: 'danger', run: () => actions.remove(d) }],
+      ]}
+    >
+      <MoreHorizontal size={16} aria-hidden />
+    </Menu>
   );
 }

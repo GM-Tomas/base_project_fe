@@ -1,3 +1,7 @@
+import { translateApiMessage } from '@/i18n/apiErrors';
+import { language } from './i18n';
+
+// What the API says is English: the error carries it in the app's language (the field errors too).
 export class ApiError extends Error {
   status: number;
   errors?: { field: string; message: string }[];
@@ -5,10 +9,10 @@ export class ApiError extends Error {
   code?: string;
 
   constructor(status: number, message: string, errors?: { field: string; message: string }[], code?: string) {
-    super(message);
+    super(translateApiMessage(message, language()));
     this.name = 'ApiError';
     this.status = status;
-    this.errors = errors;
+    this.errors = errors?.map((e) => ({ ...e, message: translateApiMessage(e.message, language()) }));
     this.code = code;
   }
 }

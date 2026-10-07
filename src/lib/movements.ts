@@ -1,5 +1,7 @@
 import type { Movement, MovementDebt, MovementHolding, MovementKind } from '@/types/wealth';
 import { formatUsd } from './money';
+import { intlLocale, messages } from './i18n';
+import type { Messages } from '@/i18n/en';
 
 // How the activity log reads: what each kind is called, what a movement did to a holding or a debt, how it's
 // described in a list, and the dates the dialogs send.
@@ -10,28 +12,19 @@ export type RecordableKind = 'GAIN' | 'LOSS' | 'DEPOSIT' | 'WITHDRAWAL';
 /** What happens to a debt that users record. */
 export type DebtMovementKind = 'DEBT_PAYMENT' | 'DEBT_CHARGE' | 'DEBT_INTEREST';
 
-export const KIND_LABEL: Record<MovementKind, string> = {
-  OPENING: 'Added',
-  CLOSING: 'Removed',
-  GAIN: 'Gain',
-  LOSS: 'Loss',
-  DEPOSIT: 'Deposit',
-  WITHDRAWAL: 'Withdrawal',
-  TRANSFER: 'Transfer',
-  ADJUSTMENT: 'Correction',
-  DEBT_PAYMENT: 'Payment',
-  DEBT_CHARGE: 'New charge',
-  DEBT_INTEREST: 'Interest',
-};
+/** What a kind of movement is called, in the app's language: "Gain", "New charge". */
+export const kindLabel = (kind: MovementKind) => messages().movements.kinds[kind];
 
-/** The Activity filter, in the order it offers them. */
-export const KIND_GROUPS: { label: string; kinds: MovementKind[] }[] = [
-  { label: 'Gains & losses', kinds: ['GAIN', 'LOSS'] },
-  { label: 'Deposits & withdrawals', kinds: ['DEPOSIT', 'WITHDRAWAL'] },
-  { label: 'Transfers', kinds: ['TRANSFER'] },
-  { label: 'Debts', kinds: ['DEBT_PAYMENT', 'DEBT_CHARGE', 'DEBT_INTEREST'] },
-  { label: 'Added & removed', kinds: ['OPENING', 'CLOSING'] },
-  { label: 'Corrections', kinds: ['ADJUSTMENT'] },
+export type KindGroup = keyof Messages['movements']['groups'];
+
+/** The Activity filter, in the order it offers them (its label is the group's, in the app's language). */
+export const KIND_GROUPS: { id: KindGroup; kinds: MovementKind[] }[] = [
+  { id: 'gainsLosses', kinds: ['GAIN', 'LOSS'] },
+  { id: 'depositsWithdrawals', kinds: ['DEPOSIT', 'WITHDRAWAL'] },
+  { id: 'transfers', kinds: ['TRANSFER'] },
+  { id: 'debts', kinds: ['DEBT_PAYMENT', 'DEBT_CHARGE', 'DEBT_INTEREST'] },
+  { id: 'addedRemoved', kinds: ['OPENING', 'CLOSING'] },
+  { id: 'corrections', kinds: ['ADJUSTMENT'] },
 ];
 
 /** Whose activity a list shows: one holding's, one debt's, or everything (neither). */
@@ -89,7 +82,7 @@ export function debtEffect(m: Movement): number | null {
 
 const signed = (delta: number) => `${delta < 0 ? '−' : '+'}${formatUsd(Math.abs(delta))}`;
 
-export const nameOf = (h: MovementHolding | MovementDebt) => (h.exists ? h.name : `${h.name} (deleted)`);
+export const nameOf = (h: MovementHolding | MovementDebt) => (h.exists ? h.name : messages().movements.deleted(h.name));
 
 export type AmountTone = 'positive' | 'negative' | 'neutral';
 
@@ -120,19 +113,21 @@ export function amountOf(m: Movement, scope: Scope = {}): { text: string; tone: 
 // A debt movement's line: the debt (unless the list is its own), and the holding the money came from or
 // went to.
 function describeDebtMovement(m: Movement, scope: Scope): { title: string; details: string[] } {
-  const label = KIND_LABEL[m.kind];
+  const t = messages().movements;
+  const label = kindLabel(m.kind);
   const debt = m.debt!;
   const details: string[] = [];
   const title = scope.debtId ? label : `${label} · ${nameOf(debt)}`;
   if (!scope.debtId && debt.lender) details.push(debt.lender);
-  if (m.kind === 'DEBT_PAYMENT' && m.holding && !scope.holdingId) details.push(`from ${nameOf(m.holding)}`);
-  if (m.kind === 'DEBT_CHARGE' && m.toHolding && !scope.holdingId) details.push(`into ${nameOf(m.toHolding)}`);
+  if (m.kind === 'DEBT_PAYMENT' && m.holding && !scope.holdingId) details.push(t.from(nameOf(m.holding)));
+  if (m.kind === 'DEBT_CHARGE' && m.toHolding && !scope.holdingId) details.push(t.into(nameOf(m.toHolding)));
   return { title, details };
 }
 
 /** A movement's line in a list: what happened (and to what, unless the list is its own), and the details. */
 export function describe(m: Movement, scope: Scope = {}): { title: string; details: string[] } {
-  const label = KIND_LABEL[m.kind];
+  const t = messages().movements;
+  const label = kindLabel(m.kind);
   let title: string;
   let details: string[] = [];
   if (m.debt) {
@@ -140,10 +135,10 @@ export function describe(m: Movement, scope: Scope = {}): { title: string; detai
   } else if (m.kind === 'TRANSFER') {
     const [from, to] = [m.holding!, m.toHolding!];
     if (scope.holdingId === from.id) {
-      title = `${label} to ${nameOf(to)}`;
+      title = t.transferTo(label, nameOf(to));
       details.push(to.platform);
     } else if (scope.holdingId === to.id) {
-      title = `${label} from ${nameOf(from)}`;
+      title = t.transferFrom(label, nameOf(from));
       details.push(from.platform);
     } else if (from.name === to.name) {
       // Same name on two platforms: the platforms tell them apart.
@@ -152,7 +147,7 @@ export function describe(m: Movement, scope: Scope = {}): { title: string; detai
       title = `${label} · ${nameOf(from)} → ${nameOf(to)}`;
       details.push(from.platform === to.platform ? from.platform : `${from.platform} → ${to.platform}`);
     }
-    if (m.feeUsd) details.push(`Fee ${formatUsd(m.feeUsd)}`);
+    if (m.feeUsd) details.push(t.fee(formatUsd(m.feeUsd)));
   } else {
     const holding = m.holding!;
     title = scope.holdingId ? label : `${label} · ${nameOf(holding)}`;
@@ -166,23 +161,18 @@ export function describe(m: Movement, scope: Scope = {}): { title: string; detai
 
 /** What undoing a movement would do, for its confirmation: "Undoing it takes $50.00 off Bitcoin." */
 export function undoSentence(m: Movement): string {
+  const t = messages().movements;
   const parts = effects(m)
     .filter(([, delta]) => delta !== 0)
-    .map(([h, delta]) => (delta > 0 ? `takes ${formatUsd(delta)} off ${h.name}` : `puts ${formatUsd(-delta)} back on ${h.name}`));
+    .map(([h, delta]) => (delta > 0 ? t.takesOff(formatUsd(delta), h.name) : t.putsBack(formatUsd(-delta), h.name)));
   const owed = debtEffect(m);
-  if (owed) {
-    parts.push(
-      owed > 0
-        ? `takes ${formatUsd(owed)} off what you owe on ${m.debt!.name}`
-        : `adds ${formatUsd(-owed)} back to what you owe on ${m.debt!.name}`,
-    );
-  }
-  return parts.length ? `Undoing it ${parts.join(' and ')}.` : 'Undoing it changes no value.';
+  if (owed) parts.push(owed > 0 ? t.takesOffOwed(formatUsd(owed), m.debt!.name) : t.addsBackOwed(formatUsd(-owed), m.debt!.name));
+  return parts.length ? t.undoing(parts) : t.undoingNothing;
 }
 
-/** "Sep 28, 2026", in the user's time zone. */
+/** "Sep 28, 2026" ("28 sept 2026" in Spanish), in the user's time zone. */
 export const formatDay = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  new Date(iso).toLocaleDateString(intlLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** Today in the user's time zone, as YYYY-MM-DD (what a date input holds). */
 export function today(now: Date = new Date()): string {
@@ -198,8 +188,9 @@ export const occurredAtFor = (date: string, now: Date = new Date()) => (date ===
 
 /** What's wrong with a picked date, if anything (a date input's max doesn't stop typing). */
 export function dateProblem(date: string, now: Date = new Date()): string | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'Please pick a date';
-  if (date > today(now)) return "The date can't be in the future";
-  if (date < '1970-01-01') return "The date can't be before 1970";
+  const t = messages().dates;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return t.pick;
+  if (date > today(now)) return t.future;
+  if (date < '1970-01-01') return t.before1970;
   return undefined;
 }

@@ -6,6 +6,12 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+// A row's ⋯, then one of its actions (the harness has the same, but importing it loads the app too early).
+const rowAction = (subject: string, action: string) => {
+  fireEvent.click(screen.getByRole('button', { name: `Actions for ${subject}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: action }));
+};
+
 // What a Vercel preview runs: the real app on mock data (no Supabase, no API), as next.config.mjs builds it.
 describe('on mock data', () => {
   it('runs on a demo account, keeps changes in the tab, and never calls the network', async () => {
@@ -24,7 +30,7 @@ describe('on mock data', () => {
     );
     // The net worth: what's owned, less what's owed.
     expect(await screen.findByText('$97,770')).toBeTruthy();
-    expect(screen.getByText('Assets $107,420 · Debts $9,650')).toBeTruthy();
+    expect(document.querySelector('.hero-split')!.textContent).toBe('Assets $107,420 · Debts $9,650 · $650 a month');
     expect(screen.getByText('Demo data')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy(); // the tag stays out of the title
 
@@ -51,11 +57,12 @@ describe('on mock data', () => {
 
     // Movements too: a gain changes the value and joins the demo's activity, and can be undone.
     fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Record a change to Bitcoin' }));
+    rowAction('Bitcoin', 'Record a change');
     fireEvent.change(screen.getByLabelText('Amount (USD)'), { target: { value: '580' } });
     fireEvent.click(screen.getByRole('button', { name: 'Record gain' }));
     expect(await screen.findByText('8 assets · $109,000')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
     // All of it, from when the demo's assets were added (over a year ago).
     fireEvent.click(screen.getByRole('radio', { name: 'All' }));
     await waitFor(() => expect(within(screen.getByRole('list', { name: 'Activity' })).getAllByRole('listitem')).toHaveLength(22));
@@ -66,10 +73,9 @@ describe('on mock data', () => {
     await waitFor(() => expect(within(screen.getByRole('list', { name: 'Activity' })).queryByText('+$580.00')).toBeNull());
 
     // Debts: paying one off raises the net worth.
-    // (History has a Debts filter too: the one in the navigation.)
     fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Debts' }));
     expect(screen.getByText('Feb 2029')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Pay Visa Gold' }));
+    rowAction('Visa Gold', 'Pay');
     expect((screen.getByLabelText('Amount (USD)') as HTMLInputElement).value).toBe('$300.00');
     fireEvent.click(screen.getByRole('button', { name: 'Record payment' }));
     expect(await screen.findByText('Payment recorded')).toBeTruthy();

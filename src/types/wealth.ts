@@ -26,6 +26,8 @@ export interface Platform {
   avatarText: string | null;
   /** #rrggbb; null: a color picked from its name. */
   color: string | null;
+  /** Its thumbnail's letters, #rrggbb (on a solid color); null: in its color, on a tint of it. */
+  textColor: string | null;
   holdingsCount: number;
   valueUsd: number;
   createdAt: string;
@@ -102,6 +104,7 @@ export interface PlatformBreakdown {
   /** Its thumbnail, as the user set it (null: the default). */
   avatarText: string | null;
   color: string | null;
+  textColor: string | null;
 }
 
 /** What the portfolio is expected to earn in a year: each holding's return weighted by its value. */
@@ -310,7 +313,8 @@ export interface Debt {
 /** What an edit of a debt's balance was. */
 export type BalanceChangeReason = 'PAYMENT' | 'CHARGE' | 'INTEREST' | 'CORRECTION';
 
-export type ViewType = 'dashboard' | 'platforms' | 'assets' | 'debts' | 'estimate' | 'history' | 'settings';
+export type ViewType = 'dashboard' | 'assets' | 'debts' | 'estimate' | 'history' | 'settings';
+export type SettingsTab = 'general' | 'classes' | 'platforms' | 'data';
 
 /** How Estimate picks the yearly growth: the portfolio's expected return, or the user's own. */
 export type YieldMode = 'PORTFOLIO' | 'CUSTOM';
@@ -339,6 +343,8 @@ export interface Preferences {
   /** The view the app opens on. */
   defaultView: ViewType;
   historyPeriod: HistoryPeriodPreset;
+  /** The app's language: auto is the browser's. */
+  language: 'auto' | 'en' | 'es';
 }
 
 /** GET /wealth/estimate: without yieldPct, the portfolio's expected return. */

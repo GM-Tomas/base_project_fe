@@ -7,7 +7,6 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { Login } from '@/components/auth/Login';
 import { DashboardView } from '@/components/views/DashboardView';
-import { PlatformsView } from '@/components/views/PlatformsView';
 import { AssetsView } from '@/components/views/AssetsView';
 import { DebtsView } from '@/components/views/DebtsView';
 import { EstimateView } from '@/components/views/EstimateView';
@@ -20,12 +19,18 @@ import { ViewBoundary } from '@/components/app/ViewBoundary';
 import { AppSkeleton } from '@/components/app/AppSkeleton';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { NARROW, useMediaQuery } from '@/lib/useMediaQuery';
+import { useLanguage, useT } from '@/lib/i18n';
 
 const canSkipLogin = process.env.NODE_ENV !== 'production';
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
   const [skipped, setSkipped] = useState(false);
+  const language = useLanguage();
+  // The page says what language it's in (screen readers read it so, the browser translates from it).
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   if (authLoading) return null;
   if (!user && !(canSkipLogin && skipped)) {
@@ -48,9 +53,10 @@ export default function HomePage() {
 function PreferencesSaveFailures() {
   const { preferencesSaveFailures } = useWealth();
   const { toast } = useUi();
+  const t = useT();
   useEffect(() => {
-    if (preferencesSaveFailures > 0) toast.error("Couldn't save your settings. They'll be saved with your next change.");
-  }, [preferencesSaveFailures, toast]);
+    if (preferencesSaveFailures > 0) toast.error(t.app.settingsNotSaved);
+  }, [preferencesSaveFailures, toast]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
 
@@ -58,6 +64,7 @@ function Dashboard() {
   const { view, loading: dataLoading, loadError, retry, refresh } = useWealth();
   const { user, signOut } = useAuth();
   const narrow = useMediaQuery(NARROW);
+  const t = useT();
 
   if (dataLoading) return <AppSkeleton />;
 
@@ -67,12 +74,12 @@ function Dashboard() {
         <div>{loadError}</div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button className="btn btn-primary" onClick={() => void retry()}>
-            Retry
+            {t.common.retry}
           </button>
           {/* Without the dashboard there's no profile menu: still let people switch accounts. */}
           {user && (
             <button className="btn btn-secondary" onClick={signOut}>
-              Sign out
+              {t.app.signOut}
             </button>
           )}
         </div>
@@ -95,7 +102,6 @@ function Dashboard() {
         <div className="app-content">
           <ViewBoundary key={view} onReload={() => void refresh().catch(() => {})}>
             {view === 'dashboard' && <DashboardView />}
-            {view === 'platforms' && <PlatformsView />}
             {view === 'assets' && <AssetsView />}
             {view === 'debts' && <DebtsView />}
             {view === 'estimate' && <EstimateView />}

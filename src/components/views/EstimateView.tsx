@@ -5,7 +5,7 @@ import { Pencil } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { useUi } from '@/context/UiContext';
 import { api, ApiError } from '@/lib/api';
-import { formatCurrency } from '@/lib/calculations';
+import { formatCurrency, formatNumber } from '@/lib/calculations';
 import { compactUsd } from '@/lib/chartScale';
 import { formatMonth } from '@/lib/debts';
 import { parseAmount } from '@/lib/money';
@@ -19,6 +19,7 @@ import { ProjectionChart } from '@/components/estimate/ProjectionChart';
 import { MilestonesDialog } from '@/components/dialogs/MilestonesDialog';
 import { useHoldingActions } from '@/components/dialogs/useHoldingActions';
 import type { EstimatePreferences, EstimateQuery, Milestone, Projection, YieldMode } from '@/types/wealth';
+import { messages, useT } from '@/lib/i18n';
 
 const DEBOUNCE_MS = 150;
 const CONTRIBUTION_SLIDER_MAX = 10_000;
@@ -47,8 +48,8 @@ const queryOf = (p: EstimatePreferences): EstimateQuery => ({
 export const milestoneAmount = (usd: number) => (usd % 1000 === 0 ? compactUsd(usd) : formatCurrency(usd));
 
 const milestoneWhen = (m: Milestone, years: number) => {
-  if (m.status === 'ACHIEVED') return 'already there';
-  if (m.status === 'OUT_OF_HORIZON') return `not within ${years}y at this pace`;
+  if (m.status === 'ACHIEVED') return messages().estimate.alreadyThere;
+  if (m.status === 'OUT_OF_HORIZON') return messages().estimate.notWithin(years);
   return m.targetMonth ? formatMonth(m.targetMonth) : '';
 };
 
@@ -58,6 +59,7 @@ export const EstimateView: React.FC = () => {
   const [projection, setProjection] = useState<Projection | null>(null);
   const [error, setError] = useState('');
   const [real, setReal] = useState(false);
+  const t = useT().estimate;
 
   // Fetched again when the parameters settle, and when the data does (a new asset changes where it starts).
   useEffect(() => {
@@ -71,7 +73,7 @@ export const EstimateView: React.FC = () => {
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof ApiError ? e.message : 'Could not calculate the projection');
+        if (!cancelled) setError(e instanceof ApiError ? e.message : messages().estimate.failed);
       });
     return () => {
       cancelled = true;
@@ -91,8 +93,8 @@ export const EstimateView: React.FC = () => {
       <div className="card elev-sm" style={{ padding: '22px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
           <div className="card-kicker">
-            Where you&apos;re headed, next {prefs.years} {prefs.years === 1 ? 'year' : 'years'}
-            {showReal && ", in today's dollars"}
+            {t.headed(prefs.years)}
+            {showReal && t.inTodaysDollars}
           </div>
           {error && <span style={{ fontSize: '12.5px', color: 'var(--color-negative)' }}>{error}</span>}
         </div>
@@ -100,11 +102,11 @@ export const EstimateView: React.FC = () => {
           <div className="chart-legend">
             <span className="legend-item">
               <span className="legend-swatch legend-portfolio" aria-hidden />
-              Your portfolio
+              {t.legendPortfolio}
             </span>
             <span className="legend-item">
               <span className="legend-swatch legend-net-worth" aria-hidden />
-              Net worth, after debts
+              {t.legendNetWorth}
             </span>
           </div>
         )}
@@ -120,20 +122,18 @@ export const EstimateView: React.FC = () => {
         <div className="milestones-row">
           {(projection?.milestones ?? []).map((m) => (
             <div key={m.amountUsd}>
-              <div className="card-kicker">Milestone</div>
+              <div className="card-kicker">{t.milestone}</div>
               <div className="milestone-amount">{milestoneAmount(m.amountUsd)}</div>
               <div className="milestone-when">{milestoneWhen(m, prefs.years)}</div>
             </div>
           ))}
           <div>
-            <div className="card-kicker">
-              In {prefs.years} {prefs.years === 1 ? 'year' : 'years'}
-            </div>
+            <div className="card-kicker">{t.inYears(prefs.years)}</div>
             <div className="milestone-amount" style={{ color: 'var(--color-accent)' }}>
               {finalValue !== undefined ? formatCurrency(finalValue) : '—'}
             </div>
             <div className="milestone-when">
-              {finalNet !== undefined && hasDebts ? `${formatCurrency(finalNet)} net of debts` : 'at this pace'}
+              {finalNet !== undefined && hasDebts ? t.netOfDebts(formatCurrency(finalNet)) : t.atThisPace}
             </div>
           </div>
         </div>
@@ -157,6 +157,8 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
   const { expectedReturn, holdings } = useWealth();
   const { openDialog } = useUi();
   const actions = useHoldingActions();
+  const tAll = useT();
+  const t = tAll.estimate;
   const ids = { yield: useId(), contribution: useId(), years: useId(), real: useId() };
   const portfolio = expectedReturn.weightedPct;
   const yieldShown = prefs.yieldMode === 'PORTFOLIO' ? (portfolio ?? 0) : prefs.customYieldPct;
@@ -173,33 +175,35 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
   };
   const contributionProblem =
     parseAmount(contributionText).value !== undefined && parseAmount(contributionText).value! > MAX_CONTRIBUTION_USD
-      ? `Up to ${formatCurrency(MAX_CONTRIBUTION_USD)} a month`
+      ? t.upToAMonth(formatCurrency(MAX_CONTRIBUTION_USD))
       : null;
 
   const setReturns = (
     <button type="button" className="link-btn link-accent" onClick={actions.setReturns}>
-      Set returns
+      {tAll.dashboard.setReturns}
     </button>
   );
   const growthHint =
     prefs.yieldMode === 'CUSTOM' ? (
       <>
-        Your own growth.{' '}
+        {t.ownGrowth}{' '}
         <button type="button" className="link-btn link-accent" onClick={() => update({ yieldMode: 'PORTFOLIO' })}>
-          Use my portfolio{portfolio !== null && ` (${formatReturn(portfolio)})`}
+          {t.useMyPortfolio(portfolio !== null ? formatReturn(portfolio) : null)}
         </button>
       </>
     ) : portfolio === null ? (
-      'Add assets to grow at what they earn.'
+      t.addAssetsToGrow
     ) : expectedReturn.coveragePct === 0 ? (
-      <>No expected returns set yet, so it grows at 0%. {setReturns}</>
+      <>
+        {t.noReturnsGrow} {setReturns}
+      </>
     ) : (
       <>
-        Your portfolio: {formatReturn(portfolio)} (weighted by value).
+        {t.portfolioWeighted(formatReturn(portfolio))}
         {expectedReturn.coveragePct < 100 && (
           <>
             {' '}
-            Based on {formatReturn(expectedReturn.coveragePct)} of it. {setReturns}
+            {t.basedOnIt(formatReturn(expectedReturn.coveragePct))} {setReturns}
           </>
         )}
       </>
@@ -207,18 +211,18 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
 
   return (
     <div className="card elev-sm" style={{ gap: '18px', padding: '22px 20px' }}>
-      <div className="card-kicker">If you keep this up</div>
+      <div className="card-kicker">{t.keepUp}</div>
 
       <div className="field">
         <div className="slider-head">
-          <label htmlFor={ids.yield}>Yearly growth</label>
+          <label htmlFor={ids.yield}>{t.yearlyGrowth}</label>
           <span className="slider-value">{formatReturn(yieldShown)}</span>
         </div>
         <SegmentedControl<YieldMode>
-          label="Grow at"
+          label={t.growAt}
           options={[
-            { value: 'PORTFOLIO', label: 'Your portfolio' },
-            { value: 'CUSTOM', label: 'Custom' },
+            { value: 'PORTFOLIO', label: t.yourPortfolio },
+            { value: 'CUSTOM', label: t.custom },
           ]}
           value={prefs.yieldMode}
           onChange={(yieldMode) => update({ yieldMode })}
@@ -230,7 +234,7 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
           max={YIELD_SLIDER.max}
           step="0.5"
           value={Math.min(YIELD_SLIDER.max, Math.max(YIELD_SLIDER.min, yieldShown))}
-          aria-valuetext={`${formatReturn(yieldShown)} a year`}
+          aria-valuetext={tAll.common.aYear(formatReturn(yieldShown))}
           onChange={(e) => update({ yieldMode: 'CUSTOM', customYieldPct: Number(e.target.value) })}
         />
         <div className="field-hint" style={{ marginTop: 0 }}>
@@ -240,7 +244,7 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
 
       <div className="field">
         <div className="slider-head">
-          <label htmlFor={ids.contribution}>Saving each month</label>
+          <label htmlFor={ids.contribution}>{t.savingEachMonth}</label>
           <span className="slider-value">{formatCurrency(prefs.contributionUsd)}</span>
         </div>
         <input
@@ -250,19 +254,17 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
           max={CONTRIBUTION_SLIDER_MAX}
           step="50"
           value={Math.min(prefs.contributionUsd, CONTRIBUTION_SLIDER_MAX)}
-          aria-valuetext={`${formatCurrency(prefs.contributionUsd)} a month`}
+          aria-valuetext={tAll.common.aMonth(formatCurrency(prefs.contributionUsd))}
           onChange={(e) => typeContribution(e.target.value)}
         />
-        <MoneyInput label="Or type the amount" value={contributionText} onChange={typeContribution} />
+        <MoneyInput label={t.orType} value={contributionText} onChange={typeContribution} />
         {contributionProblem && <div className="field-error">{contributionProblem}</div>}
       </div>
 
       <div className="field">
         <div className="slider-head">
-          <label htmlFor={ids.years}>Looking ahead</label>
-          <span className="slider-value">
-            {prefs.years} {prefs.years === 1 ? 'year' : 'years'}
-          </span>
+          <label htmlFor={ids.years}>{t.lookingAhead}</label>
+          <span className="slider-value">{tAll.common.years(prefs.years)}</span>
         </div>
         <input
           id={ids.years}
@@ -277,13 +279,13 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
 
       <div className="field">
         <div className="slider-head">
-          <span>Milestones</span>
+          <span>{t.milestones}</span>
           <button
             type="button"
             className="link-btn link-accent"
             onClick={() => openDialog((close) => <MilestonesDialog onClose={close} />)}
           >
-            <Pencil size={12} aria-hidden /> Edit milestones
+            <Pencil size={12} aria-hidden /> {t.editMilestones}
           </button>
         </div>
         <div className="chips">
@@ -294,34 +296,34 @@ function EstimateControls({ prefs, update, real, setReal }: ControlsProps) {
               </span>
             ))
           ) : (
-            <span className="text-muted">None</span>
+            <span className="text-muted">{t.none}</span>
           )}
         </div>
       </div>
 
       <details className="advanced" open={prefs.inflationPct > 0 || prefs.contributionGrowthPct > 0 || undefined}>
-        <summary>More options</summary>
+        <summary>{t.moreOptions}</summary>
         <AdjustmentInput
-          label="Raise contributions each year (%)"
+          label={t.raise}
           value={prefs.contributionGrowthPct}
           onChange={(contributionGrowthPct) => update({ contributionGrowthPct })}
-          hint="Your monthly saving grows this much every 12 months."
+          hint={t.raiseHint}
         />
         <AdjustmentInput
-          label="Inflation (% a year)"
+          label={t.inflation}
           value={prefs.inflationPct}
           onChange={(inflationPct) => update({ inflationPct })}
-          hint="To see the values in today's dollars."
+          hint={t.inflationHint}
         />
         <label className="check" htmlFor={ids.real}>
           <input id={ids.real} type="checkbox" checked={real && prefs.inflationPct > 0} disabled={prefs.inflationPct <= 0} onChange={(e) => setReal(e.target.checked)} />
-          Show in today&apos;s dollars
+          {t.showToday}
         </label>
       </details>
 
       {holdings.length === 0 && (
         <div className="field-hint" style={{ marginTop: 0 }}>
-          With no assets yet, this starts from $0.
+          {t.fromZero}
         </div>
       )}
     </div>
@@ -354,47 +356,46 @@ function ReturnBreakdown() {
   const actions = useHoldingActions();
   const { byClass, byAsset } = returnShares(holdings);
   const [showAll, setShowAll] = useState(false);
+  const t = useT().estimate;
   const assets = showAll ? byAsset : byAsset.slice(0, 6);
 
   return (
-    <div className="card elev-sm return-breakdown">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-        <div>
-          <div className="card-kicker">What your expected return is made of</div>
+    <details className="more return-breakdown">
+      <summary>
+        {expectedReturn.weightedPct === null ? t.madeOfAny : t.madeOf(formatReturn(expectedReturn.weightedPct))}
+      </summary>
+      <div className="card elev-sm" style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
           <div className="card-body">
-            {expectedReturn.weightedPct === null
-              ? 'Nothing to weigh yet.'
-              : `${formatReturn(expectedReturn.weightedPct)} a year: each asset's return, weighted by what it's worth. Assets without one count as 0%.`}
+            {expectedReturn.weightedPct === null ? t.nothingToWeigh : t.weighting}
           </div>
+          <button type="button" className="btn btn-secondary" onClick={actions.setReturns}>
+            {t.setExpected}
+          </button>
         </div>
-        <button type="button" className="btn btn-secondary" onClick={actions.setReturns}>
-          Set expected returns
-        </button>
+        {expectedReturn.coveragePct === 0 ? (
+          <EmptyState title={t.noReturns}>{t.noReturnsText}</EmptyState>
+        ) : (
+          <div className="breakdown-columns">
+            <ShareList title={t.byClass} shares={byClass} />
+            <div>
+              <ShareList title={t.byAsset} shares={assets} />
+              {byAsset.length > 6 && (
+                <button type="button" className="link-btn link-accent" onClick={() => setShowAll((v) => !v)}>
+                  {showAll ? t.showFewer : t.showAll(byAsset.length)}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
-      {expectedReturn.coveragePct === 0 ? (
-        <EmptyState title="No expected returns yet">
-          Say roughly how much each asset grows in a year (a term deposit 4%, an index fund 8%…) to project with
-          what your portfolio really earns.
-        </EmptyState>
-      ) : (
-        <div className="breakdown-columns">
-          <ShareList title="By class" shares={byClass} />
-          <div>
-            <ShareList title="By asset" shares={assets} />
-            {byAsset.length > 6 && (
-              <button type="button" className="link-btn link-accent" onClick={() => setShowAll((v) => !v)}>
-                {showAll ? 'Show fewer' : `Show all ${byAsset.length}`}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    </details>
   );
 }
 
 function ShareList({ title, shares }: { title: string; shares: ReturnShare[] }) {
   const largest = Math.max(...shares.map((s) => Math.abs(s.points)), 0.0001);
+  const tAll = useT();
   return (
     <div>
       <h3 className="section-title">{title}</h3>
@@ -403,10 +404,12 @@ function ShareList({ title, shares }: { title: string; shares: ReturnShare[] }) 
           <li key={s.name}>
             <div className="share-line">
               <span className="share-name">{s.name}</span>
-              <span className="text-muted">{s.returnPct === null ? 'no return set' : `${formatReturn(s.returnPct, 2)} a year`}</span>
+              <span className="text-muted">
+                {s.returnPct === null ? tAll.estimate.noReturnSet : tAll.common.aYear(formatReturn(s.returnPct, 2))}
+              </span>
               <span className={s.points < 0 ? 'share-points amount-negative' : 'share-points'}>
                 {s.points < 0 ? '−' : '+'}
-                {Math.abs(s.points).toFixed(2)} pts
+                {tAll.estimate.points(formatNumber(Math.abs(s.points), 2, true))}
               </span>
             </div>
             <div className="share-bar">

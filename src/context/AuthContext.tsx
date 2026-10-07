@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
+import { translateApiMessage } from '@/i18n/apiErrors';
+import { language } from '@/lib/i18n';
 
 interface AuthContextType {
   user: User | null;
@@ -39,7 +41,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loading,
         signInWithPassword: async (email, password) => {
           const { error } = await supabase.auth.signInWithPassword({ email, password });
-          return error?.message ?? null;
+          return error?.message ? translateApiMessage(error.message, language()) : null;
         },
         // This browser only: on a shared computer, switching accounts mustn't end the user's other devices.
         signOut: () => supabase.auth.signOut({ scope: 'local' }),

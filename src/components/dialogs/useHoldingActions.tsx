@@ -11,11 +11,13 @@ import { RecordChangeDialog } from './RecordChangeDialog';
 import { TransferDialog } from './TransferDialog';
 import { ExpectedReturnsDialog } from './ExpectedReturnsDialog';
 import type { Holding } from '@/types/wealth';
+import { useT } from '@/lib/i18n';
 
 /** What a holding's row offers wherever it's listed (Assets, a platform's holdings, its own panel). */
 export function useHoldingActions() {
   const { deleteHolding } = useWealth();
   const { openDialog, toast } = useUi();
+  const t = useT();
 
   return {
     add: (platform?: string) => openDialog((close) => <HoldingFormDialog platform={platform} onClose={close} />),
@@ -30,15 +32,15 @@ export function useHoldingActions() {
     remove: (h: Holding) =>
       openDialog((close) => (
         <ConfirmDialog
-          title="Remove asset?"
-          message={`${h.name} on ${h.platform} (${formatCurrency(h.valueUsd)}) will stop counting toward your net worth.`}
-          confirmLabel="Remove"
-          busyLabel="Removing…"
-          failureMessage="Could not remove this asset. Please try again."
+          title={t.holding.removeTitle}
+          message={t.holding.removeMessage(h.name, h.platform, formatCurrency(h.valueUsd))}
+          confirmLabel={t.common.remove}
+          busyLabel={t.common.removing}
+          failureMessage={t.holding.removeFailed}
           onClose={close}
           onConfirm={async () => {
             await deleteHolding(h.id);
-            toast.success('Asset removed');
+            toast.success(t.holding.removed);
           }}
         />
       )),

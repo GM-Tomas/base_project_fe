@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ESTIMATE, estimateProblems, normalizeEstimate } from './preferences';
+import { DEFAULT_ESTIMATE, DEFAULT_PREFERENCES, estimateProblems, normalizeEstimate, preferencesProblems, withDefaults } from './preferences';
 
 describe('preferences', () => {
   it('are fine by default', () => {
@@ -25,6 +25,15 @@ describe('preferences', () => {
       'estimate.milestonesUsd',
       'estimate.inflationPct',
       'estimate.contributionGrowthPct',
+    ]);
+  });
+
+  it('open Assets where they said Platforms, which the API still takes', () => {
+    const saved = { ...DEFAULT_PREFERENCES, defaultView: 'platforms' as never };
+    expect(withDefaults(saved).defaultView).toBe('assets');
+    expect(preferencesProblems(saved)).toEqual([]);
+    expect(preferencesProblems({ ...DEFAULT_PREFERENCES, defaultView: 'nope' as never })).toEqual([
+      { field: 'defaultView', message: 'defaultView must be one of dashboard, platforms, assets, debts, estimate, history, settings' },
     ]);
   });
 

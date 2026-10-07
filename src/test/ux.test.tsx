@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Debt, Preferences } from '@/types/wealth';
 import { DEFAULT_PREFERENCES } from '@/lib/preferences';
-import { HOLDINGS, installFakeBackend, json, nav, newItem, renderApp, requests, routes, snapshot, SNAPSHOTS } from './harness';
+import { HOLDINGS, installFakeBackend, json, nav, newItem, renderApp, requests, routes, settings, snapshot, SNAPSHOTS } from './harness';
 
 // F7: the privacy mode, New ▾ and the keyboard shortcuts, how the app opens (preferences, the monthly
 // checkpoint), exporting, the phone's layout, loading and a view that fails. The backend is faked
@@ -422,7 +422,7 @@ describe('your data', () => {
       const url = new URL(String(requests('GET', '/api/v1/movements').at(-1)![0]));
       return json(pages[url.searchParams.get('cursor') ?? '']);
     };
-    nav('Settings');
+    settings('Data');
 
     fireEvent.click(screen.getByRole('button', { name: 'Export everything (JSON)' }));
     expect(screen.getByRole('button', { name: 'Preparing…' })).toBeTruthy();
@@ -443,7 +443,7 @@ describe('your data', () => {
 
   it('exports a list as CSV, for a spreadsheet', async () => {
     await renderApp();
-    nav('Settings');
+    settings('Data');
     fireEvent.click(screen.getByRole('button', { name: 'Assets (CSV)' }));
     expect(await screen.findByText('Downloaded base-assets-2026-05-01.csv')).toBeTruthy();
     // UTF-8 with a BOM, for Excel.
@@ -478,7 +478,7 @@ describe('your data', () => {
   it("says why it couldn't export", async () => {
     await renderApp();
     routes['GET /api/v1/wealth/snapshots'] = () => Promise.reject(new TypeError('offline'));
-    nav('Settings');
+    settings('Data');
     fireEvent.click(screen.getByRole('button', { name: 'Checkpoints (CSV)' }));
     expect(await screen.findByText("Couldn't export your data. Please try again.")).toBeTruthy();
     expect(files).toHaveLength(0);
@@ -519,7 +519,7 @@ describe('on a phone', () => {
 
     fireEvent.click(within(bar).getByRole('button', { name: 'More' }));
     const more = dialog('More');
-    expect(within(more).getAllByRole('button').map((b) => b.textContent)).toEqual(['Platforms', 'Estimate', 'Settings', 'AAna PérezProfile and sign out']);
+    expect(within(more).getAllByRole('button').map((b) => b.textContent)).toEqual(['Estimate', 'Settings', 'AAna PérezProfile and sign out']);
     fireEvent.click(within(more).getByRole('button', { name: 'Settings' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();

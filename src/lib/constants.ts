@@ -6,27 +6,12 @@ const ASSET_CLASS_COLORS: Record<string, string> = {
   Crypto: 'var(--color-accent-2-500)',
 };
 
-const ASSET_CLASS_TAG_CLASSES: Record<string, string> = {
-  Cash: 'tag tag-outline',
-  'Fixed Income': 'tag tag-neutral',
-  'Index Fund': 'tag tag-neutral',
-  Equity: 'tag tag-accent',
-  Crypto: 'tag tag-accent-2',
-};
-
 const PLATFORM_COLORS: Record<string, string> = {
   Balanz: 'var(--color-accent-500)',
   'Mercado Pago': 'var(--color-neutral-300)',
   'Banco Galicia': 'var(--color-neutral-500)',
   Nexo: 'var(--color-accent-2-300)',
   Binance: 'var(--color-accent-2-500)',
-};
-
-const PLATFORM_TAG_CLASSES: Record<string, string> = {
-  Broker: 'tag tag-accent',
-  Wallet: 'tag tag-neutral',
-  Bank: 'tag tag-neutral',
-  Exchange: 'tag tag-accent-2',
 };
 
 const PLATFORM_PALETTE = [
@@ -45,10 +30,6 @@ const own = (map: Record<string, string>, key: string): string | undefined =>
   Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
 
 export const assetClassColor = (assetClass: string) => own(ASSET_CLASS_COLORS, assetClass) ?? 'var(--color-neutral-400)';
-
-export const assetClassTag = (assetClass: string) => own(ASSET_CLASS_TAG_CLASSES, assetClass) ?? 'tag tag-neutral';
-
-export const platformTag = (type: string) => own(PLATFORM_TAG_CLASSES, type) ?? 'tag tag-neutral';
 
 // Every account names its own platforms, so beyond the few above each name gets a stable palette color
 // (same name, same color, on every render and for every user) instead of all turning grey.

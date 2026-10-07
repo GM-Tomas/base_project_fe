@@ -1,4 +1,5 @@
 import { amountsHidden, HIDDEN_COMPACT } from './privacy';
+import { formatNumber } from './calculations';
 
 // What a chart's axes say: round values for the Y axis ($250k, $1.2M) and which years to label.
 
@@ -41,7 +42,7 @@ export function compactUsd(v: number): string {
   const [size, suffix] = unit;
   const scaled = abs / size;
   const digits = scaled >= 100 ? 0 : 1;
-  return `${sign}$${Number(scaled.toFixed(digits))}${suffix}`;
+  return `${sign}$${formatNumber(Number(scaled.toFixed(digits)), digits)}${suffix}`;
 }
 
 /** The years to label on an X axis from 0 to years: at most about six, always the last. */

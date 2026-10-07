@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ColorPicker } from './ColorPicker';
+import { Menu } from './Menu';
+import { MoneyInput } from './MoneyInput';
+import { Tabs } from './Tabs';
 import { PlatformAvatar } from './PlatformAvatar';
 import { TOAST_MS } from './Toaster';
 import { UiProvider, useUi } from '@/context/UiContext';
@@ -311,6 +314,123 @@ describe('ColorPicker', () => {
   });
 });
 
+describe('Menu', () => {
+  const ROW = { left: 900, right: 930, width: 30, height: 30, x: 900, y: 0, toJSON: () => ({}) };
+  const renderMenu = (run = vi.fn(), remove = vi.fn()) =>
+    render(
+      <Menu
+        label="Actions for SPY"
+        iconOnly
+        buttonClassName="icon-btn"
+        groups={[[{ label: 'Edit', run }, { label: 'Later', run, unavailable: 'Not yet' }], [{ label: 'Remove', tone: 'danger', run: remove }]]}
+      >
+        ⋯
+      </Menu>,
+    );
+
+  it('opens its actions under the button, moves through them, and gives the focus back', () => {
+    const edit = vi.fn();
+    renderMenu(edit);
+    const button = screen.getByRole('button', { name: 'Actions for SPY' });
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ ...ROW, top: 100, bottom: 130 } as DOMRect);
+    fireEvent.click(button);
+
+    const menu = screen.getByRole('menu', { name: 'Actions for SPY' });
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(menu.style.top).toBe('136px');
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Edit', 'Later', 'Remove']);
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'Edit' }));
+    // The unavailable one is skipped.
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement!.textContent).toBe('Remove');
+    expect(document.activeElement!.className).toContain('menu-item-danger');
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(button);
+
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    expect(edit).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it("opens above the button when there's no room under it, and closes on a scroll", () => {
+    renderMenu();
+    const button = screen.getByRole('button', { name: 'Actions for SPY' });
+    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ ...ROW, top: 740, bottom: 770 } as DOMRect);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(120);
+    fireEvent.click(button);
+    const menu = screen.getByRole('menu');
+    expect(menu.style.top).toBe('');
+    expect(menu.style.bottom).toBe(`${window.innerHeight - 740 + 6}px`);
+    fireEvent.scroll(menu);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
+describe('Tabs', () => {
+  function Example() {
+    const [tab, setTab] = useState<'a' | 'b' | 'c'>('a');
+    const tabs = [
+      { id: 'a' as const, label: 'Overview' },
+      { id: 'b' as const, label: 'Checkpoints' },
+      { id: 'c' as const, label: 'Activity' },
+    ];
+    return (
+      <Tabs label="History" tabs={tabs} value={tab} onChange={setTab}>
+        <p>Panel {tab}</p>
+      </Tabs>
+    );
+  }
+
+  it('shows the picked tab only, and moves between them with the arrow keys, Home and End', () => {
+    render(<Example />);
+    const list = screen.getByRole('tablist', { name: 'History' });
+    const selected = () => screen.getByRole('tab', { selected: true });
+    expect(selected().textContent).toBe('Overview');
+    expect(screen.getByRole('tabpanel', { name: 'Overview' }).textContent).toBe('Panel a');
+    // Only the picked one is in the tab order.
+    expect(screen.getAllByRole('tab').map((t) => t.tabIndex)).toEqual([0, -1, -1]);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
+    expect(screen.getByRole('tabpanel').textContent).toBe('Panel c');
+    fireEvent.keyDown(list, { key: 'ArrowRight' });
+    expect(selected().textContent).toBe('Overview');
+    expect(document.activeElement).toBe(selected());
+    fireEvent.keyDown(list, { key: 'ArrowLeft' });
+    expect(selected().textContent).toBe('Activity');
+    fireEvent.keyDown(list, { key: 'Home' });
+    expect(selected().textContent).toBe('Overview');
+    fireEvent.keyDown(list, { key: 'End' });
+    expect(selected().textContent).toBe('Activity');
+    fireEvent.keyDown(list, { key: 'x' });
+    expect(selected().textContent).toBe('Activity');
+  });
+});
+
+describe('MoneyInput', () => {
+  function Field() {
+    const [value, setValue] = useState('');
+    return <MoneyInput label="Amount" value={value} onChange={setValue} />;
+  }
+
+  it('says how an amount was read only when that is not plain to see', () => {
+    render(<Field />);
+    const type = (value: string) => fireEvent.change(screen.getByLabelText('Amount'), { target: { value } });
+    type('900');
+    expect(screen.queryByText(/^= /)).toBeNull();
+    type('1.500');
+    expect(screen.getByText('= $1,500.00')).toBeTruthy();
+    type('900.5');
+    expect(screen.getByText('= $900.50')).toBeTruthy();
+    type('abc');
+    expect(screen.getByLabelText('Amount').getAttribute('aria-invalid')).toBe('true');
+  });
+});
+
 describe('PlatformAvatar', () => {
   it('fits two characters a little smaller than one', () => {
     const { container } = render(
@@ -323,5 +443,19 @@ describe('PlatformAvatar', () => {
     expect(one.style.fontSize).toBe('14px');
     expect(two.style.fontSize).toBe('8px'); // never under 8px
     expect(one.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('shows its letters in its color on a tint of it, or in theirs on its color', () => {
+    const { container } = render(
+      <>
+        <PlatformAvatar text="B" color="#ff0000" />
+        <PlatformAvatar text="B" color="#ff0000" textColor="#ffffff" />
+      </>,
+    );
+    const [tint, solid] = container.querySelectorAll<HTMLElement>('.platform-avatar');
+    expect(tint.style.color).toBe('rgb(255, 0, 0)');
+    expect(tint.style.background).toContain('color-mix');
+    expect(solid.style.color).toBe('rgb(255, 255, 255)');
+    expect(solid.style.background).toBe('rgb(255, 0, 0)');
   });
 });

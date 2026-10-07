@@ -7,21 +7,22 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
 - **Dashboard Overview**: Live Net Worth tracking (what you own minus what you owe, with both underneath; in red
   when below zero), YTD performance indicator, liquidity breakdown, asset class distribution, and what you owe
   each month.
-- **Platforms Grid**: Detailed tracking across all connected financial platforms (brokers, banks, wallets, exchanges) with drilldown inspection.
 - **Assets Explorer**: search (accents and case ignored), class and platform filters, sortable columns, each
-  asset's share of the total, its expected yearly return and a running total; edit or remove any asset from its
-  row (removing asks first).
+  asset's share of the total, its expected yearly return and a running total; each row's **⋯** records a
+  change, transfers, edits or removes it (removing asks first).
+- **Platforms**: the dashboard shows where your money lives; a platform opens Assets showing its own, with what
+  can be done there (add an asset, transfer from it, customize it).
 - **Expected returns**: say roughly how much each asset grows a year (when adding or editing it, or all at once,
   grouped by class with "Apply to class"). The dashboard shows the portfolio's return, weighted by value (assets
   without one count as 0%), what it would earn in a year and how much of the portfolio it's based on.
-- **History**: pick a **period** (1M, 3M, 6M, YTD, 1Y, 3Y, All, or your own dates) and the chart (on a time
-  axis, with the start value dashed and today's value at the end), the table, the figures and the activity all
-  follow it. The figures: the change in $ and %, annualized (with 90 days or more), the high and low, the
-  biggest drop from a high and the best and worst stretch. **Why it changed** splits the change into
+- **History**: pick a **period** (1M, 3M, 6M, YTD, 1Y, 3Y, All, or your own dates); its tabs (**Overview**,
+  **Checkpoints**, **Activity**) all follow it. Overview: the chart (on a time axis, with the start value dashed
+  and today's value at the end) and the figures: the change in $ and %, annualized (with 90 days or more) and
+  the biggest drop from a high; folded under *More figures*, the high and low and the best and worst stretch. **Why it changed** splits the change into
   investments, saving, assets and debts added or removed, corrections, and what wasn't recorded. **Add a past
   checkpoint** from before BASE (the net worth, or what you owned and owed), marked as added by hand; delete
   any checkpoint (with confirmation), and the next one's change is recomputed by the API. After a month without
-  one, History and the dashboard suggest saving a snapshot (dismissable for the day). Its **Activity** lists
+  one, the dashboard suggests saving a snapshot (dismissable for the day). Its **Activity** lists
   every recorded change in the period, newest first, filtered by kind (gains & losses, deposits &
   withdrawals, transfers, debts, added & removed, corrections) and by asset or debt. Each checkpoint shows the
   assets and debts behind its net worth.
@@ -29,8 +30,7 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
   platforms (to an existing asset or a new one, with an optional fee), with a preview of the values after it.
   Editing a value asks what it was (a market move, money in or out, or a correction). Anything recorded can
   be undone, from its toast or from the activity.
-- **Asset panel**: click an asset (in Assets or in a platform's holdings) to see it with its actions and its
-  activity.
+- **Asset panel**: click an asset to see it with its actions and its activity.
 - **Debts**: cards, loans, a mortgage or money a friend lent you, with what's left to pay, the rate, the
   monthly payment and the due day. Each one says when it's paid off at its payment (or that it never is), and
   the tab sums it all up: what you owe, the monthly payments, the average rate (weighted by balance) and when
@@ -43,11 +43,14 @@ A modern, high-performance personal wealth and portfolio tracker built with Next
   labeled axes and each year's figures on hover or with the arrow keys; below it, what the expected return is
   made of, by class and by asset. With debts, a second line shows the net worth as they're paid off, and the
   milestones are about it. How you leave it is saved for every device.
-- **Settings**: your **asset classes** (create one before it has assets, rename it on all its assets, merge it
+- **Settings** (tabs: General, Classes, Platforms, Data): your **asset classes** (create one before it has assets, rename it on all its assets, merge it
   into another, remove it moving its assets, and set its color, whether it counts as ready to spend and the
   return its assets without one of their own count with) and your **platforms** (a thumbnail of 1–2 letters or
-  an emoji, a color, a type, and a rename or merge on all their assets). Colors and thumbnails show everywhere:
-  the dashboard, Platforms, Assets, the asset panel and the platform pickers.
+    an emoji, its background and text colors, a type, and a rename or merge on all their assets). Colors and
+  thumbnails show everywhere: the dashboard, Assets, the asset panel and the platform pickers.
+- **Language**: Spanish or English, in Settings (for every device) or on the sign-in screen (for that device);
+  automatic follows the browser. Numbers and dates are written as in that language, and what the API refuses is
+  said in it.
 - **Privacy mode**: the eye in the header (or **H**) hides every amount as `$•••••`, percentages stay; it's
   remembered on the device, not the account.
 - **New ▾ and keyboard shortcuts**: add an asset (**N**), record a gain or loss (**G**), transfer (**T**), add

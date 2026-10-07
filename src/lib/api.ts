@@ -180,7 +180,7 @@ export interface AssetClassPatch {
 }
 
 /**
- * PATCH /platforms/{id}, a merge patch: null sets type, avatarText and color back to their defaults. A new
+ * PATCH /platforms/{id}, a merge patch: null sets type, avatarText, color and textColor back to their defaults. A new
  * name renames it on all its holdings; another of the user's platforms (case aside) merges into it, only with
  * mergeIfExists.
  */
@@ -189,6 +189,7 @@ export interface PlatformPatch {
   type?: string | null;
   avatarText?: string | null;
   color?: string | null;
+  textColor?: string | null;
   mergeIfExists?: boolean;
 }
 

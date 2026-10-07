@@ -13,6 +13,7 @@ import { exactUsd, parseAmount, parseSignedAmount } from '@/lib/money';
 import { dateProblem, formatDay } from '@/lib/movements';
 import { localDay } from '@/lib/periods';
 import { round2 } from '@/lib/returns';
+import { useT } from '@/lib/i18n';
 
 const MAX_NOTE = 200;
 
@@ -29,6 +30,8 @@ export function PastCheckpointDialog({ onClose }: { onClose: () => void }) {
   const { takeSnapshot } = useWealth();
   const { toast } = useUi();
   const noteId = useId();
+  const tAll = useT();
+  const t = tAll.pastCheckpoint;
   const [date, setDate] = useState('');
   const [net, setNet] = useState('');
   const [split, setSplit] = useState(false);
@@ -46,16 +49,16 @@ export function PastCheckpointDialog({ onClose }: { onClose: () => void }) {
 
   const problem = () =>
     !date
-      ? 'Please pick the date'
+      ? t.pickDate
       : (dateProblem(date) ??
         (split
           ? !parsedAssets || !parsedDebts
-            ? 'Please enter what you owned and what you owed'
+            ? t.enterBoth
             : (parsedAssets.error ?? parsedDebts.error)
           : !parsedNet
-            ? 'Please enter your net worth then'
+            ? t.enterNet
             : parsedNet.error) ??
-        ([...note.trim()].length > MAX_NOTE ? `Keep the note under ${MAX_NOTE} characters` : undefined));
+        ([...note.trim()].length > MAX_NOTE ? tAll.dates.noteTooLong(MAX_NOTE) : undefined));
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,54 +76,55 @@ export function PastCheckpointDialog({ onClose }: { onClose: () => void }) {
     try {
       await takeSnapshot(input);
     } catch (err) {
-      setError(errorMessage(err, 'Could not save this checkpoint. Please try again.'));
+      setError(errorMessage(err, t.failed));
       setSaving(false);
       return;
     }
-    toast.success(`Checkpoint of ${formatDay(input.capturedAt)} added`);
+    toast.success(t.added(formatDay(input.capturedAt)));
     onClose();
   };
 
   return (
-    <Modal title="Add a past checkpoint" onClose={onClose} busy={saving}>
-      <div className="dialog-text">Your net worth on a day before you started with BASE, so your history begins earlier.</div>
+    <Modal title={t.title} onClose={onClose} busy={saving}>
+      <div className="dialog-text">{t.intro}</div>
       {error && <FormError>{error}</FormError>}
       <form onSubmit={save} noValidate className="dialog-form">
-        <DateInput label="Date" value={date} onChange={setDate} />
+        <DateInput label={tAll.common.date} value={date} onChange={setDate} />
         <label className="check" style={{ marginTop: 0 }}>
-          <input type="checkbox" checked={split} onChange={(e) => setSplit(e.target.checked)} />I know what I owned and owed
+          <input type="checkbox" checked={split} onChange={(e) => setSplit(e.target.checked)} />
+          {t.split}
         </label>
         {split ? (
           <>
             <div className="form-grid-2">
-              <MoneyInput label="What you owned (USD)" value={assets} onChange={setAssets} />
-              <MoneyInput label="What you owed (USD)" value={debts} onChange={setDebts} />
+              <MoneyInput label={t.owned} value={assets} onChange={setAssets} />
+              <MoneyInput label={t.owed} value={debts} onChange={setDebts} />
             </div>
             <div className="preview" aria-live="polite">
-              Net worth: {worked === null ? '—' : exactUsd(worked)}
+              {t.netWorth(worked === null ? '—' : exactUsd(worked))}
             </div>
           </>
         ) : (
-          <MoneyInput label="Net worth then (USD)" value={net} onChange={setNet} signed placeholder="e.g. 81,000 or -2,500" />
+          <MoneyInput label={t.netThen} value={net} onChange={setNet} signed placeholder={t.netPlaceholder} />
         )}
         <div className="field">
-          <label htmlFor={noteId}>Note (optional)</label>
+          <label htmlFor={noteId}>{tAll.common.noteOptional}</label>
           <input
             id={noteId}
             className="input"
             type="text"
             maxLength={MAX_NOTE}
-            placeholder="e.g. From my spreadsheet"
+            placeholder={t.notePlaceholder}
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
         </div>
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {tAll.common.cancel}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : 'Add checkpoint'}
+            {saving ? tAll.common.saving : t.add}
           </button>
         </div>
       </form>

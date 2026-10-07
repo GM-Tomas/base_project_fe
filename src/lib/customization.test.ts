@@ -4,6 +4,7 @@ import {
   base64url,
   byName,
   classIdOf,
+  contrastRatio,
   fromBase64url,
   graphemeCount,
   isHexColor,
@@ -12,6 +13,26 @@ import {
   platformIdOf,
   validAvatar,
 } from './customization';
+
+describe('contrastRatio', () => {
+  it("measures WCAG 2's contrast, of hex colors and of the design tokens", () => {
+    expect(contrastRatio('#000000', '#FFFFFF')).toBeCloseTo(21, 5);
+    expect(contrastRatio('#ffffff', '#000000')).toBeCloseTo(21, 5);
+    expect(contrastRatio('#777777', '#777777')).toBe(1);
+    expect(contrastRatio('#ffffff', '#767676')).toBeCloseTo(4.54, 2);
+    // oklch(1 0 0) is white, oklch(0 0 0) black; percentages and hues work too.
+    expect(contrastRatio('oklch(1 0 0)', '#000000')).toBeCloseTo(21, 3);
+    expect(contrastRatio('oklch(0% 0 0)', '#ffffff')).toBeCloseTo(21, 3);
+    expect(contrastRatio('oklch(0.70 0.15 195)', '#ffffff')!).toBeLessThan(3); // the accent, under white letters
+    expect(contrastRatio('oklch(0.70 0.15 195)', '#000000')!).toBeGreaterThan(7);
+    // lab(), as the build ships the tokens: L 100 is white, 0 black.
+    expect(contrastRatio('lab(100% 0 0)', '#000000')).toBeCloseTo(21, 3);
+    expect(contrastRatio('lab(5 0 0)', '#000000')).toBeCloseTo(1.11, 2);
+    expect(contrastRatio('lab(60.5306% 46.7177 -29.0512)', '#00c0c2')!).toBeLessThan(3);
+    expect(contrastRatio('var(--x)', '#000000')).toBeNull();
+    expect(contrastRatio('#000000', '')).toBeNull();
+  });
+});
 
 describe('customization rules (as the API has them)', () => {
   afterEach(() => vi.unstubAllGlobals());

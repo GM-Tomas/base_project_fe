@@ -5,6 +5,7 @@ import { Paintbrush, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
 import { useUi } from '@/context/UiContext';
 import { IconButton } from '@/components/ui/IconButton';
+import { Tabs } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
 import { ClassFormDialog } from '@/components/settings/ClassFormDialog';
@@ -14,157 +15,168 @@ import { PreferencesSection } from '@/components/settings/PreferencesSection';
 import { DataSection } from '@/components/settings/DataSection';
 import { formatCurrency } from '@/lib/calculations';
 import { formatReturn } from '@/lib/returns';
-import type { AssetClassInfo, Platform } from '@/types/wealth';
+import type { AssetClassInfo, Platform, SettingsTab } from '@/types/wealth';
+import { useT } from '@/lib/i18n';
+
+const TABS: SettingsTab[] = ['general', 'classes', 'platforms', 'data'];
 
 // Where the user sets up how the app opens, what they group their assets by (their classes) and how their
-// platforms look, and takes their data with them.
+// platforms look, and takes their data with them: one tab each.
 export const SettingsView: React.FC = () => {
-  const { assetClassInfos, platforms, classLook, platformLook } = useWealth();
-  const { openDialog } = useUi();
+  const { settingsTab: tab, setSettingsTab } = useWealth();
+  const t = useT().settings.tabs;
+  return (
+    <div className="settings">
+      <Tabs label={t.label} tabs={TABS.map((id) => ({ id, label: t[id] }))} value={tab} onChange={setSettingsTab}>
+        {tab === 'general' && <PreferencesSection />}
+        {tab === 'classes' && <ClassesSection />}
+        {tab === 'platforms' && <PlatformsSection />}
+        {tab === 'data' && <DataSection />}
+      </Tabs>
+    </div>
+  );
+};
 
+function ClassesSection() {
+  const { assetClassInfos, classLook } = useWealth();
+  const { openDialog } = useUi();
+  const tAll = useT();
+  const t = tAll.settings;
   const newClass = () => openDialog((close) => <ClassFormDialog onClose={close} />);
   const editClass = (c: AssetClassInfo) => openDialog((close) => <ClassFormDialog assetClass={c} onClose={close} />);
   const removeClass = (c: AssetClassInfo) => openDialog((close) => <DeleteClassDialog assetClass={c} onClose={close} />);
+
+  return (
+    <section className="card elev-sm" aria-labelledby="settings-classes">
+      <div className="settings-head">
+        <div>
+          <h2 id="settings-classes" className="sr-only">
+            {t.classesHeading}
+          </h2>
+          <p className="text-muted settings-sub">{t.classesSub}</p>
+        </div>
+        <button type="button" className="btn btn-secondary" onClick={newClass}>
+          <Plus size={14} aria-hidden />
+          {t.newClass}
+        </button>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t.classColumns.name}</th>
+              <th className="col-optional">{t.classColumns.liquidity}</th>
+              <th>{t.classColumns.defaultReturn}</th>
+              <th className="col-optional">{t.classColumns.assets}</th>
+              <th className="col-optional">{t.classColumns.value}</th>
+              <th style={{ width: '88px' }}>
+                <span className="sr-only">{tAll.common.actions}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {assetClassInfos.map((c) => (
+              <tr key={c.id}>
+                <td style={{ padding: '10px' }}>
+                  <span className="class-name">
+                    <span className="class-dot" style={{ background: classLook(c.name).color }} aria-hidden />
+                    {c.name}
+                    {c.isDefault && <span className="tag tag-neutral">{t.defaultTag}</span>}
+                  </span>
+                </td>
+                <td style={{ padding: '10px' }} className="col-optional">
+                  {c.liquid ? t.ready : <span className="text-muted">{t.locked}</span>}
+                </td>
+                <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }}>
+                  {c.expectedReturnPct === null ? <span className="text-muted">—</span> : tAll.common.aYear(formatReturn(c.expectedReturnPct, 2))}
+                </td>
+                <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }} className="col-optional">
+                  {c.holdingsCount}
+                </td>
+                <td style={{ padding: '10px' }} className="text-nowrap col-optional">
+                  {formatCurrency(c.valueUsd)}
+                </td>
+                <td style={{ padding: '6px', textAlign: 'right' }}>
+                  <div className="row-actions">
+                    <IconButton label={tAll.common.edited(c.name)} onClick={() => editClass(c)}>
+                      <Pencil size={15} aria-hidden />
+                    </IconButton>
+                    <IconButton label={tAll.common.removeNamed(c.name)} tone="danger" onClick={() => removeClass(c)}>
+                      <Trash2 size={15} aria-hidden />
+                    </IconButton>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function PlatformsSection() {
+  const { platforms, platformLook } = useWealth();
+  const { openDialog } = useUi();
+  const tAll = useT();
+  const t = tAll.settings;
   const customize = (p: Platform) => openDialog((close) => <PlatformCustomizeDialog platform={p} onClose={close} />);
 
   return (
-    <div className="settings">
-      <PreferencesSection />
-
-      <section className="card elev-sm" aria-labelledby="settings-classes">
-        <div className="settings-head">
-          <div>
-            <h2 id="settings-classes" className="settings-title">
-              Asset classes
-            </h2>
-            <p className="text-muted settings-sub">
-              What you group your assets by. Those ready to spend count in the dashboard&apos;s &quot;Ready to spend&quot;; a
-              default return applies to assets without one of their own.
-            </p>
-          </div>
-          <button type="button" className="btn btn-secondary" onClick={newClass}>
-            <Plus size={14} aria-hidden />
-            New class
-          </button>
+    <section className="card elev-sm" aria-labelledby="settings-platforms">
+      <div className="settings-head">
+        <div>
+          <h2 id="settings-platforms" className="sr-only">
+            {t.platformsHeading}
+          </h2>
+          <p className="text-muted settings-sub">{t.platformsSub}</p>
         </div>
+      </div>
+      {platforms.length === 0 ? (
+        <EmptyState title={t.platformsEmpty}>{t.platformsEmptyText}</EmptyState>
+      ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead>
               <tr>
-                <th>Class</th>
-                <th className="col-optional">Liquidity</th>
-                <th>Default return</th>
-                <th className="col-optional">Assets</th>
-                <th className="col-optional">Value</th>
-                <th style={{ width: '88px' }}>
-                  <span className="sr-only">Actions</span>
+                <th>{t.platformColumns.name}</th>
+                <th className="col-optional">{t.platformColumns.type}</th>
+                <th className="col-optional">{t.platformColumns.assets}</th>
+                <th>{t.platformColumns.value}</th>
+                <th style={{ width: '56px' }}>
+                  <span className="sr-only">{tAll.common.actions}</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {assetClassInfos.map((c) => (
-                <tr key={c.id}>
-                  <td style={{ padding: '10px' }}>
+              {platforms.map((p) => (
+                <tr key={p.id}>
+                  <td style={{ padding: '8px 10px' }}>
                     <span className="class-name">
-                      <span className="class-dot" style={{ background: classLook(c.name).color }} aria-hidden />
-                      {c.name}
-                      {c.isDefault && <span className="tag tag-neutral">Default</span>}
+                      <PlatformAvatar {...platformLook(p.name)} size={26} />
+                      {p.name}
                     </span>
                   </td>
                   <td style={{ padding: '10px' }} className="col-optional">
-                    {c.liquid ? 'Ready to spend' : <span className="text-muted">Locked in</span>}
-                  </td>
-                  <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }}>
-                    {c.expectedReturnPct === null ? <span className="text-muted">—</span> : `${formatReturn(c.expectedReturnPct, 2)} a year`}
+                    {p.type === 'Other' ? tAll.platformForm.noType : p.type}
                   </td>
                   <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }} className="col-optional">
-                    {c.holdingsCount}
+                    {p.holdingsCount}
                   </td>
-                  <td style={{ padding: '10px' }} className="text-nowrap col-optional">
-                    {formatCurrency(c.valueUsd)}
+                  <td style={{ padding: '10px' }} className="text-nowrap">
+                    {formatCurrency(p.valueUsd)}
                   </td>
                   <td style={{ padding: '6px', textAlign: 'right' }}>
-                    <div className="row-actions">
-                      <IconButton label={`Edit ${c.name}`} onClick={() => editClass(c)}>
-                        <Pencil size={15} aria-hidden />
-                      </IconButton>
-                      <IconButton label={`Remove ${c.name}`} tone="danger" onClick={() => removeClass(c)}>
-                        <Trash2 size={15} aria-hidden />
-                      </IconButton>
-                    </div>
+                    <IconButton label={tAll.common.customize(p.name)} onClick={() => customize(p)}>
+                      <Paintbrush size={15} aria-hidden />
+                    </IconButton>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="card elev-sm" aria-labelledby="settings-platforms">
-        <div className="settings-head">
-          <div>
-            <h2 id="settings-platforms" className="settings-title">
-              Platforms
-            </h2>
-            <p className="text-muted settings-sub">
-              Where your assets live. Give each one letters or an emoji and a color you recognize at a glance; renaming
-              one renames it on all its assets.
-            </p>
-          </div>
-        </div>
-        {platforms.length === 0 ? (
-          <EmptyState title="Platforms appear as you add assets">
-            Each bank, broker, exchange or wallet you name when adding an asset shows up here to customize.
-          </EmptyState>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Platform</th>
-                  <th className="col-optional">Type</th>
-                  <th className="col-optional">Assets</th>
-                  <th>Value</th>
-                  <th style={{ width: '56px' }}>
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {platforms.map((p) => {
-                  const look = platformLook(p.name);
-                  return (
-                    <tr key={p.id}>
-                      <td style={{ padding: '8px 10px' }}>
-                        <span className="class-name">
-                          <PlatformAvatar text={look.text} color={look.color} size={26} />
-                          {p.name}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px' }} className="col-optional">
-                        {p.type}
-                      </td>
-                      <td style={{ padding: '10px', fontVariantNumeric: 'tabular-nums' }} className="col-optional">
-                        {p.holdingsCount}
-                      </td>
-                      <td style={{ padding: '10px' }} className="text-nowrap">
-                        {formatCurrency(p.valueUsd)}
-                      </td>
-                      <td style={{ padding: '6px', textAlign: 'right' }}>
-                        <IconButton label={`Customize ${p.name}`} onClick={() => customize(p)}>
-                          <Paintbrush size={15} aria-hidden />
-                        </IconButton>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <DataSection />
-    </div>
+      )}
+    </section>
   );
-};
+}

@@ -6,15 +6,15 @@ import { useUi } from '@/context/UiContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { errorMessage } from '@/lib/apiError';
 import { formatUsd } from '@/lib/money';
-import { formatDay, KIND_LABEL, undoSentence } from '@/lib/movements';
+import { formatDay, kindLabel, undoSentence } from '@/lib/movements';
+import { messages, useT } from '@/lib/i18n';
 import type { Movement } from '@/types/wealth';
-
-const UNDO_FAILED = "Couldn't undo this change. Please try again.";
 
 // What a movement's title says it was, for its confirmation: "Gain of $50.00 on Bitcoin (Oct 3, 2026)".
 function summary(m: Movement) {
-  const what = `${KIND_LABEL[m.kind]} of ${formatUsd(m.amountUsd)}`;
-  const where = m.kind === 'TRANSFER' ? `from ${m.holding!.name} to ${m.toHolding!.name}` : `on ${(m.debt ?? m.holding)!.name}`;
+  const t = messages().movements;
+  const what = t.what(kindLabel(m.kind), formatUsd(m.amountUsd));
+  const where = m.kind === 'TRANSFER' ? t.fromTo(m.holding!.name, m.toHolding!.name) : t.on((m.debt ?? m.holding)!.name);
   return `${what} ${where} (${formatDay(m.occurredAt)}).`;
 }
 
@@ -22,33 +22,35 @@ function summary(m: Movement) {
 export function useMovementFeedback() {
   const { revertMovement } = useWealth();
   const { openDialog, toast } = useUi();
+  const tAll = useT();
+  const t = tAll.movements;
 
   const undoNow = async (m: Movement) => {
     try {
       await revertMovement(m.id);
     } catch (e) {
-      toast.error(errorMessage(e, UNDO_FAILED));
+      toast.error(errorMessage(e, t.undoFailed));
       return;
     }
-    toast.success('Change undone');
+    toast.success(t.undone);
   };
 
   return {
     recorded: (m: Movement) =>
-      toast.success(`${KIND_LABEL[m.kind]} recorded`, { action: { label: 'Undo', onClick: () => undoNow(m) } }),
+      toast.success(t.recorded(kindLabel(m.kind)), { action: { label: tAll.common.undo, onClick: () => undoNow(m) } }),
     confirmUndo: (m: Movement) =>
       openDialog((close) => (
         <ConfirmDialog
-          title="Undo this change?"
+          title={t.undoTitle}
           message={`${summary(m)} ${undoSentence(m)}`}
-          confirmLabel="Undo"
-          busyLabel="Undoing…"
+          confirmLabel={tAll.common.undo}
+          busyLabel={tAll.common.undoing}
           tone="primary"
-          failureMessage={UNDO_FAILED}
+          failureMessage={t.undoFailed}
           onClose={close}
           onConfirm={async () => {
             await revertMovement(m.id);
-            toast.success('Change undone');
+            toast.success(t.undone);
           }}
         />
       )),

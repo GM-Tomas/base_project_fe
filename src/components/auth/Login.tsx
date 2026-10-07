@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { usesMockData } from '@/lib/dataSource';
+import { LANGUAGE_SETTINGS, languageSetting, setLanguageSetting, useLanguage, useT, type LanguageSetting } from '@/lib/i18n';
 
 export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
   const { signInWithPassword } = useAuth();
@@ -10,6 +11,11 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const tAll = useT();
+  const t = tAll.login;
+  // Before there's an account, the language is this device's.
+  useLanguage();
+  const ids = { email: useId(), password: useId(), language: useId() };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,9 +52,7 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
             marginBottom: '26px',
           }}
         >
-          {usesMockData
-            ? 'A preview with demo data: any email and password sign in.'
-            : 'Sign in to see your full financial picture.'}
+          {usesMockData ? t.demoIntro : t.intro}
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
@@ -67,8 +71,9 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
           )}
 
           <div className="field">
-            <label>Email</label>
+            <label htmlFor={ids.email}>{t.email}</label>
             <input
+              id={ids.email}
               className="input"
               type="email"
               autoComplete="username"
@@ -80,8 +85,9 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
           </div>
 
           <div className="field">
-            <label>Password</label>
+            <label htmlFor={ids.password}>{t.password}</label>
             <input
+              id={ids.password}
               className="input"
               type="password"
               autoComplete="current-password"
@@ -97,7 +103,7 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
             disabled={isSigningIn}
             style={{ width: '100%', justifyContent: 'center', marginTop: '4px' }}
           >
-            {isSigningIn ? 'Signing in…' : 'Sign in'}
+            {isSigningIn ? t.signingIn : t.signIn}
           </button>
         </form>
 
@@ -107,9 +113,25 @@ export const Login: React.FC<{ onSkip?: () => void }> = ({ onSkip }) => {
             className="btn"
             style={{ width: '100%', justifyContent: 'center', marginTop: '10px' }}
           >
-            Skip login (dev)
+            {t.skip}
           </button>
         )}
+
+        <div className="login-language">
+          <label htmlFor={ids.language}>{t.language}</label>
+          <select
+            id={ids.language}
+            className="input"
+            value={languageSetting()}
+            onChange={(e) => setLanguageSetting(e.target.value as LanguageSetting)}
+          >
+            {LANGUAGE_SETTINGS.map((l) => (
+              <option key={l} value={l}>
+                {tAll.settings.languages[l]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { useUi } from '@/context/UiContext';
 import { errorMessage } from '@/lib/apiError';
 import { today } from '@/lib/movements';
 import { snapshotReminder } from '@/lib/periods';
+import { useT } from '@/lib/i18n';
 
 const DISMISSED_KEY = 'base.snapshotReminder.dismissedOn';
 
@@ -20,10 +21,12 @@ function dismissedToday(): boolean {
 }
 
 // A nudge to save a checkpoint when the last one is over a month old (or there's none yet): one click saves
-// it (unless the page has its own button for that); Dismiss hides it until tomorrow.
-export function SnapshotReminder({ withSave = true }: { withSave?: boolean }) {
+// it; Dismiss hides it until tomorrow.
+export function SnapshotReminder() {
   const { snapshots, holdings, takeSnapshot } = useWealth();
   const { toast } = useUi();
+  const tAll = useT();
+  const t = tAll.snapshot;
   const [dismissed, setDismissed] = useState(dismissedToday);
   const [saving, setSaving] = useState(false);
   const reminder = snapshotReminder(snapshots, holdings.length, new Date());
@@ -33,9 +36,9 @@ export function SnapshotReminder({ withSave = true }: { withSave?: boolean }) {
     setSaving(true);
     try {
       await takeSnapshot();
-      toast.success('Snapshot saved');
+      toast.success(t.saved);
     } catch (e) {
-      toast.error(errorMessage(e, 'Could not save a snapshot right now'));
+      toast.error(errorMessage(e, t.failed));
     } finally {
       setSaving(false);
     }
@@ -51,19 +54,15 @@ export function SnapshotReminder({ withSave = true }: { withSave?: boolean }) {
 
   return (
     <div className="reminder" role="status">
-      <Camera size={16} aria-hidden />
-      <span className="reminder-text">
-        {reminder.days === null
-          ? 'Save your first checkpoint to start your history.'
-          : `It's been ${reminder.days} days since your last checkpoint.`}
+      <Camera size={15} aria-hidden />
+      <span>
+        {reminder.days === null ? t.first : t.daysSince(reminder.days)}
       </span>
-      {withSave && (
-        <button type="button" className="btn btn-secondary" onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save a snapshot'}
-        </button>
-      )}
-      <button type="button" className="btn btn-ghost" title="Hide it until tomorrow" onClick={dismiss}>
-        Dismiss
+      <button type="button" className="link-btn link-accent" onClick={save} disabled={saving}>
+        {saving ? tAll.common.saving : t.save}
+      </button>
+      <button type="button" className="link-btn" title={t.dismissTitle} onClick={dismiss}>
+        {tAll.common.dismiss}
       </button>
     </div>
   );

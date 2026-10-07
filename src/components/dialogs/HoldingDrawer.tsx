@@ -11,6 +11,7 @@ import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
 import { formatUsd } from '@/lib/money';
 import { formatDay } from '@/lib/movements';
 import { formatReturn } from '@/lib/returns';
+import { useT } from '@/lib/i18n';
 import type { Holding } from '@/types/wealth';
 import { useHoldingActions } from './useHoldingActions';
 
@@ -19,6 +20,7 @@ import { useHoldingActions } from './useHoldingActions';
 export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClose: () => void }) {
   const { holdings, openPlatform, platformLook } = useWealth();
   const actions = useHoldingActions();
+  const t = useT();
   const holding = holdings.find((h) => h.id === holdingId);
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClo
         <button
           type="button"
           className="link-btn with-avatar"
-          title={`Open ${holding.platform}`}
+          title={t.common.open(holding.platform)}
           onClick={() => {
             onClose();
             openPlatform(holding.platform);
@@ -46,22 +48,22 @@ export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClo
       <div>
         <div className="drawer-value">{formatUsd(holding.valueUsd)}</div>
         <div className="text-muted drawer-dates">
-          Added {formatDay(holding.createdAt)} · Updated {formatDay(holding.updatedAt)}
+          {t.holding.added(formatDay(holding.createdAt), formatDay(holding.updatedAt))}
         </div>
         <div className="drawer-return">
           {holding.effectiveReturnPct === null ? (
             <>
-              No expected return yet (counts as 0%).{' '}
+              {t.holding.noReturn}{' '}
               <button type="button" className="link-btn link-accent" onClick={() => actions.edit(holding)}>
-                Set one
+                {t.holding.setOne}
               </button>
             </>
           ) : (
             <>
               {holding.effectiveReturnPct < 0
-                ? `Expected to lose ${formatReturn(-holding.effectiveReturnPct, 2)} a year`
-                : `Expected to grow ${formatReturn(holding.effectiveReturnPct, 2)} a year`}
-              {holding.expectedReturnPct === null && <span className="text-muted"> · from {holding.assetClass}</span>}
+                ? t.holding.lose(formatReturn(-holding.effectiveReturnPct, 2))
+                : t.holding.grow(formatReturn(holding.effectiveReturnPct, 2))}
+              {holding.expectedReturnPct === null && <span className="text-muted">{t.holding.fromClass(holding.assetClass)}</span>}
             </>
           )}
         </div>
@@ -69,23 +71,23 @@ export function HoldingDrawer({ holdingId, onClose }: { holdingId: string; onClo
       <div className="drawer-actions">
         <button type="button" className="btn btn-primary" onClick={() => actions.record(holding)}>
           <Diff size={14} aria-hidden />
-          Record a change
+          {t.assets.recordChange}
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => actions.transfer({ holding })}>
           <ArrowLeftRight size={14} aria-hidden />
-          Transfer
+          {t.assets.transfer}
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => actions.edit(holding)}>
           <Pencil size={14} aria-hidden />
-          Edit
+          {t.common.edit}
         </button>
         <button type="button" className="btn btn-danger" onClick={() => actions.remove(holding)}>
           <Trash2 size={14} aria-hidden />
-          Remove
+          {t.common.remove}
         </button>
       </div>
-      <h3 className="section-title">Activity</h3>
-      <ActivityList holdingId={holding.id} empty="Nothing recorded for this asset yet" />
+      <h3 className="section-title">{t.holding.activity}</h3>
+      <ActivityList holdingId={holding.id} empty={t.holding.nothingYet} />
     </Modal>
   );
 }

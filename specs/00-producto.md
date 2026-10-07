@@ -29,7 +29,7 @@ los cambios de valor quedan registrados; las acciones están a mano y se explica
 | P7 | **Coherencia visual** | La miniatura y el color de una plataforma o clase son los mismos en todas las vistas. |
 | P8 | **Números honestos** | Cada número derivado dice de dónde sale ("based on 90% of your portfolio", "since your first snapshot"). |
 
-La interfaz sigue en **inglés**, como hoy (D10). Las specs están en castellano.
+La interfaz está en **español o inglés**, a elección (D10, desde F10). Las specs están en castellano.
 
 ## Glosario
 
@@ -79,7 +79,7 @@ Usuario (sub del JWT de Supabase)
 | D7 | **Cuotas por usuario** (todas las cuentas comparten la base): holdings 1000 y snapshots 5000 (existentes); movimientos 20 000; deudas 200; clases creadas/personalizadas 100; plataformas personalizadas 1000. Al superarlas: `409 limit-exceeded`, como hoy. | Una cuenta no puede crecer sin límite y degradar a las demás. |
 | D8 | **Las reglas de negocio viven en el dominio del backend** y el mock API del frontend las replica (mismos límites y mensajes). | Los previews de Vercel corren solo sobre el mock. |
 | D9 | **Fechas**: los movimientos tienen `occurredAt` elegido por el usuario (por defecto, ahora). Se acepta `YYYY-MM-DD` (se guarda a las 12:00 UTC de ese día, para que ningún huso horario lo corra de día) o un instante RFC 3339. No puede ser posterior a ahora + 24 h ni anterior a 1970. Todo se guarda en UTC. | Registrar hoy algo que pasó la semana pasada es el caso común. |
-| D10 | **UI en inglés** (como hoy). | Cambiar el idioma no fue pedido; i18n queda en el backlog. |
+| D10 | **UI en español o inglés**, elegible (F10; antes: solo inglés). Los datos del usuario y los archivos exportados no se traducen. | Diccionarios tipados sin librería (una sola página, sin rutas por idioma); ver [F10-idioma.md](F10-idioma.md). |
 | D11 | **El frontend recarga todo tras cada cambio** (como hoy, `refresh()`), sin actualizaciones optimistas. | App personal de poco tráfico: siempre mostrar lo que el servidor guardó es más simple y confiable. |
 
 ## Convenciones de API (para todas las fases)

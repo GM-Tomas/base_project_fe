@@ -3,6 +3,7 @@
 import React, { useId, useState } from 'react';
 import { Check } from 'lucide-react';
 import { isHexColor, PALETTE } from '@/lib/customization';
+import { useT } from '@/lib/i18n';
 
 export interface ColorPickerProps {
   label: string;
@@ -18,9 +19,10 @@ export interface ColorPickerProps {
 export function ColorPicker({ label, value, onChange, defaultColor }: ColorPickerProps) {
   const name = useId();
   const hexId = useId();
+  const t = useT().colors;
   const own = value !== null && !PALETTE.some((c) => c.hex === value.toLowerCase());
   const [hex, setHex] = useState(own ? value! : '');
-  const hexError = hex.trim() && !isHexColor(normalizeHex(hex)) ? 'Use a hex color like #1a2b3c' : '';
+  const hexError = hex.trim() && !isHexColor(normalizeHex(hex)) ? t.hexProblem : '';
 
   const swatch = (key: string, title: string, color: string, checked: boolean, pick: () => void) => (
     <label key={key} className={checked ? 'swatch swatch-checked' : 'swatch'} title={title} style={{ '--swatch': color } as React.CSSProperties}>
@@ -32,22 +34,22 @@ export function ColorPicker({ label, value, onChange, defaultColor }: ColorPicke
   return (
     <fieldset className="color-picker">
       <legend className="segmented-legend">
-        {label} <span className="color-picked">· {pickedName(value)}</span>
+        {label} <span className="color-picked">· {pickedName(value, t)}</span>
       </legend>
       <div className="swatches">
-        {swatch('default', 'Default', defaultColor, value === null, () => {
+        {swatch('default', t.default, defaultColor, value === null, () => {
           setHex('');
           onChange(null);
         })}
         {PALETTE.map((c) =>
-          swatch(c.hex, c.name, c.hex, value?.toLowerCase() === c.hex, () => {
+          swatch(c.hex, t.names[c.name], c.hex, value?.toLowerCase() === c.hex, () => {
             setHex('');
             onChange(c.hex);
           }),
         )}
       </div>
       <div className="color-own">
-        <label htmlFor={hexId}>Or your own</label>
+        <label htmlFor={hexId}>{t.own}</label>
         <input
           id={hexId}
           className="input"
@@ -67,7 +69,7 @@ export function ColorPicker({ label, value, onChange, defaultColor }: ColorPicke
         <input
           type="color"
           className="color-native"
-          aria-label="Pick a color"
+          aria-label={t.pick}
           value={value ?? '#00c0c2'}
           onChange={(e) => {
             setHex(e.target.value);
@@ -81,8 +83,11 @@ export function ColorPicker({ label, value, onChange, defaultColor }: ColorPicke
 }
 
 // What's picked, in words: Default, a palette color's name, or the hex.
-const pickedName = (value: string | null) =>
-  value === null ? 'Default' : (PALETTE.find((c) => c.hex === value.toLowerCase())?.name ?? value.toLowerCase());
+const pickedName = (value: string | null, t: ReturnType<typeof useT>['colors']) => {
+  if (value === null) return t.default;
+  const named = PALETTE.find((c) => c.hex === value.toLowerCase());
+  return named ? t.names[named.name] : value.toLowerCase();
+};
 
 // "1a2b3c" and " #1A2B3C " are a color too.
 const normalizeHex = (text: string) => {

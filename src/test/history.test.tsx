@@ -12,6 +12,7 @@ import {
   routes,
   snapshot,
   SNAPSHOTS,
+  tab,
 } from './harness';
 
 // F6: History by periods of analysis: the period picked, its chart, figures and why it changed, checkpoints
@@ -32,12 +33,15 @@ afterEach(() => {
 });
 
 const radio = (name: string) => screen.getByRole('radio', { name }) as HTMLInputElement;
-// The checkpoints in the table, by their day.
-const rows = () =>
-  screen.queryAllByRole('button', { name: /^Delete checkpoint of / }).map((b) => b.getAttribute('aria-label')!.replace('Delete checkpoint of ', ''));
+// The checkpoints in the table (its tab), by their day.
+const rows = () => {
+  tab('Checkpoints');
+  return screen.queryAllByRole('button', { name: /^Delete checkpoint of / }).map((b) => b.getAttribute('aria-label')!.replace('Delete checkpoint of ', ''));
+};
 const lastQuery = (path: string) => new URL(requests('GET', path).at(-1)![0]).searchParams;
-// A figure's value and the line under it.
+// A figure's value and the line under it (in Overview).
 const stat = (label: string) => {
+  tab('Overview');
   const tile = within(screen.getByRole('group', { name: 'This period in figures' })).getByText(label).parentElement!;
   return [tile.querySelector('.stat-value')!.textContent, tile.querySelector('.stat-sub')!.textContent];
 };
@@ -55,15 +59,17 @@ describe('periods', () => {
     expect(rows()).toEqual(['Jan 15, 2026', 'Feb 15, 2026', 'Mar 15, 2026', 'Apr 15, 2026']);
     expect(stat('Change')).toEqual(['+$2,346 (+23.5%)', 'From $10,000 on Jan 15, 2026 to $12,346 today']);
     expect(screen.getByText('Start: $10,000 on Jan 15, 2026')).toBeTruthy();
+    tab('Activity');
     await waitFor(() => expect(new Date(lastQuery('/api/v1/movements').get('from')!)).toEqual(new Date(2025, 4, 1)));
     expect(lastQuery('/api/v1/movements').get('to')).toBeNull();
 
     // The last month: measured from the last checkpoint before it began.
     fireEvent.click(radio('1M'));
     expect(rows()).toEqual(['Apr 15, 2026']);
-    expect(screen.getByText('Start: $11,000 on Mar 15, 2026')).toBeTruthy();
     expect(stat('Change')).toEqual(['+$1,346 (+12.2%)', 'From $11,000 on Mar 15, 2026 to $12,346 today']);
+    expect(screen.getByText('Start: $11,000 on Mar 15, 2026')).toBeTruthy();
     expect(stat('Annualized change')).toEqual(['—', 'Needs 90 days or more, from above zero']);
+    tab('Activity');
     await waitFor(() => expect(new Date(lastQuery('/api/v1/movements').get('from')!)).toEqual(new Date(2026, 3, 1)));
     await waitFor(() => expect(lastQuery('/api/v1/movements/summary').get('from')).toBe('2026-03-15T12:00:00.000Z'));
     expect(new Date(lastQuery('/api/v1/movements/summary').get('to')!)).toEqual(new Date('2026-05-01T15:00:00'));
@@ -76,10 +82,12 @@ describe('periods', () => {
     fireEvent.click(radio('YTD'));
     expect(rows()).toHaveLength(4);
     expect(stat('Change')[1]).toBe('From $10,000 on Jan 15, 2026 to $12,346 today');
+    tab('Activity');
     await waitFor(() => expect(new Date(lastQuery('/api/v1/movements').get('from')!)).toEqual(new Date(2026, 0, 1)));
 
     fireEvent.click(radio('All'));
     expect(rows()).toHaveLength(4);
+    tab('Activity');
     await waitFor(() => expect(lastQuery('/api/v1/movements').get('from')).toBeNull());
   });
 
@@ -99,6 +107,7 @@ describe('periods', () => {
     expect(rows()).toEqual(['Jan 15, 2026', 'Feb 15, 2026', 'Mar 15, 2026']);
     expect(screen.queryByLabelText("Include today's value")).toBeNull();
     expect(stat('Change')).toEqual(['+$1,000 (+10.0%)', 'From $10,000 on Jan 15, 2026 to $11,000 on Mar 15, 2026']);
+    tab('Activity');
     await waitFor(() => expect(new Date(lastQuery('/api/v1/movements').get('to')!)).toEqual(new Date(2026, 2, 31, 23, 59, 59, 999)));
 
     // Dates that make no period show all time, saying why.
@@ -206,6 +215,7 @@ describe("a period's figures", () => {
     expect(plot().querySelectorAll('.chart-dot-manual')).toHaveLength(1);
     expect(plot().querySelectorAll('.chart-dot-today')).toHaveLength(1);
 
+    tab('Checkpoints');
     const row = screen.getByRole('button', { name: 'Delete checkpoint of Feb 15, 2026' }).closest('tr')!;
     expect(within(row).getByRole('img', { name: 'Added by hand' })).toBeTruthy();
     expect(within(row).getByText('From my spreadsheet')).toBeTruthy();
@@ -394,10 +404,10 @@ describe('reminder to save a checkpoint', () => {
     expect(screen.getByText(REMINDER)).toBeTruthy();
   });
 
-  it('shows on History too, where the button to save one is right below it', async () => {
+  it("is the dashboard's only: History has its own button to save one", async () => {
     await renderApp();
     nav('History');
-    expect(screen.getByText(REMINDER)).toBeTruthy();
+    expect(screen.queryByText(REMINDER)).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Save a snapshot' })).toHaveLength(1);
   });
 

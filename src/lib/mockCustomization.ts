@@ -3,6 +3,7 @@ import type { AssetClassInput, AssetClassPatch, PlatformPatch } from './api';
 import { ApiError } from './apiError';
 import {
   AVATAR_MESSAGE,
+  TEXT_COLOR_MESSAGE,
   byName,
   classIdOf,
   COLOR_MESSAGE,
@@ -36,6 +37,7 @@ interface PlatformLook {
   type: string | null;
   avatarText: string | null;
   color: string | null;
+  textColor: string | null;
 }
 
 type FieldError = { field: string; message: string };
@@ -236,7 +238,12 @@ export function createMockCustomization({
   /** A platform as the user set it up: its type (theirs, else an earlier version's, else Other) and thumbnail. */
   const look = (name: string) => {
     const l = looks.get(platformKey(name));
-    return { type: l?.type ?? legacyType(name) ?? 'Other', avatarText: l?.avatarText ?? null, color: l?.color ?? null };
+    return {
+      type: l?.type ?? legacyType(name) ?? 'Other',
+      avatarText: l?.avatarText ?? null,
+      color: l?.color ?? null,
+      textColor: l?.textColor ?? null,
+    };
   };
 
   const getPlatforms = (): Platform[] => {
@@ -275,20 +282,22 @@ export function createMockCustomization({
     }
     if (typeof patch.avatarText === 'string' && !validAvatar(patch.avatarText)) errors.push({ field: 'avatarText', message: AVATAR_MESSAGE });
     if (typeof patch.color === 'string' && !isHexColor(patch.color)) errors.push({ field: 'color', message: COLOR_MESSAGE });
+    if (typeof patch.textColor === 'string' && !isHexColor(patch.textColor)) errors.push({ field: 'textColor', message: TEXT_COLOR_MESSAGE });
     reject(errors);
 
     const platforms = getPlatforms();
     const current = platforms.find((p) => p.id === id);
     if (!current) throw new ApiError(404, 'Platform not found');
     const key = platformKey(current.name);
-    const stored = looks.get(key) ?? { type: null, avatarText: null, color: null };
+    const stored = looks.get(key) ?? { type: null, avatarText: null, color: null, textColor: null };
     const updated: PlatformLook = {
       ...stored,
       ...(patch.type !== undefined && { type: patch.type?.trim() ? label(patch.type) : null }),
       ...(patch.avatarText !== undefined && { avatarText: patch.avatarText === null ? null : normalizeAvatar(patch.avatarText) }),
       ...(patch.color !== undefined && { color: patch.color?.toLowerCase() ?? null }),
+      ...(patch.textColor !== undefined && { textColor: patch.textColor?.toLowerCase() ?? null }),
     };
-    const kept = (l: PlatformLook) => (l.type !== null || l.avatarText !== null || l.color !== null ? l : null);
+    const kept = (l: PlatformLook) => (Object.values(l).some((v) => v !== null) ? l : null);
     const writeLooks = (changes: [key: string, after: PlatformLook | null][]) => {
       const added = changes.reduce((n, [k, after]) => n + (after ? 1 : 0) - (looks.has(k) ? 1 : 0), 0);
       if (added > 0 && looks.size + added > limits.platforms) {

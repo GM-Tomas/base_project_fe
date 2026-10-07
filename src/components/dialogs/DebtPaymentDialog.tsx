@@ -14,24 +14,9 @@ import { dateProblem, occurredAtFor, today, type DebtMovementKind } from '@/lib/
 import type { Debt, Holding } from '@/types/wealth';
 import { MAX_NOTE, noteFor, noteProblem } from './RecordChangeDialog';
 import { useMovementFeedback } from './useMovementFeedback';
+import { useT } from '@/lib/i18n';
 
-const KINDS: { value: DebtMovementKind; label: string; hint: string; title: string; action: string }[] = [
-  { value: 'DEBT_PAYMENT', label: 'Pay', hint: 'A payment: what you paid toward it.', title: 'Record a payment', action: 'Record payment' },
-  {
-    value: 'DEBT_CHARGE',
-    label: 'New charge',
-    hint: 'A new charge: purchases with the card, or more money borrowed.',
-    title: 'Record a new charge',
-    action: 'Record charge',
-  },
-  {
-    value: 'DEBT_INTEREST',
-    label: 'Interest',
-    hint: 'Interest or fees the lender added.',
-    title: 'Record interest',
-    action: 'Record interest',
-  },
-];
+const KINDS: DebtMovementKind[] = ['DEBT_PAYMENT', 'DEBT_CHARGE', 'DEBT_INTEREST'];
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 
@@ -50,6 +35,8 @@ export interface DebtPaymentDialogProps {
 export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYMENT', onClose }: DebtPaymentDialogProps) {
   const { debts, holdings, recordMovement } = useWealth();
   const { recorded } = useMovementFeedback();
+  const tAll = useT();
+  const t = tAll.debtPayment;
   const ids = { holding: useId(), note: useId() };
   const amountRef = useRef<HTMLInputElement>(null);
   // As it is now: a refresh while the dialog is open may have changed its balance.
@@ -65,7 +52,7 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const option = KINDS.find((k) => k.value === kind)!;
+  const option = t.kinds[kind];
   const paying = kind === 'DEBT_PAYMENT';
   const holding = kind === 'DEBT_INTEREST' ? undefined : holdings.find((h) => h.id === holdingId);
   const parsed = amount.trim() ? parseAmount(amount) : null;
@@ -93,11 +80,11 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const problem = !amount.trim()
-      ? 'Please enter an amount'
+      ? tAll.amounts.enter
       : (parsed!.error ??
-        (value === 0 ? 'The amount must be more than 0' : undefined) ??
-        (overpaid ? `That's more than what's left to pay (${formatUsd(debt.balanceUsd)})` : undefined) ??
-        (overdrawn ? `That's more than ${holding!.name} is worth (${formatUsd(holding!.valueUsd)})` : undefined) ??
+        (value === 0 ? tAll.amounts.moreThanZero : undefined) ??
+        (overpaid ? t.moreThanLeft(formatUsd(debt.balanceUsd)) : undefined) ??
+        (overdrawn ? t.moreThanWorth(holding!.name, formatUsd(holding!.valueUsd)) : undefined) ??
         dateProblem(date) ??
         noteProblem(note));
     if (problem) {
@@ -117,7 +104,7 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
     try {
       movement = await recordMovement(input);
     } catch (err) {
-      setError(errorMessage(err, "Couldn't record this. Please try again."));
+      setError(errorMessage(err, t.failed));
       setSaving(false);
       return;
     }
@@ -128,24 +115,30 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
   return (
     <Modal title={option.title} onClose={onClose} busy={saving} initialFocusRef={amountRef}>
       <div className="dialog-subtitle">
-        {[debt.name, debt.lender, `${formatUsd(debt.balanceUsd)} left to pay`].filter(Boolean).join(' · ')}
+        {[debt.name, debt.lender, t.leftToPay(formatUsd(debt.balanceUsd))].filter(Boolean).join(' · ')}
       </div>
       {error && <FormError>{error}</FormError>}
 
       <form onSubmit={handleSubmit} noValidate className="dialog-form">
-        <SegmentedControl label="What happened?" options={KINDS} value={kind} onChange={pickKind} hint={option.hint} />
+        <SegmentedControl
+          label={t.whatHappened}
+          options={KINDS.map((k) => ({ value: k, label: t.kinds[k].label }))}
+          value={kind}
+          onChange={pickKind}
+          hint={option.hint}
+        />
 
         <div>
-          <MoneyInput label="Amount (USD)" value={amount} onChange={setAmount} inputRef={amountRef} />
+          <MoneyInput label={tAll.common.amountUsd} value={amount} onChange={setAmount} inputRef={amountRef} />
           {paying && debt.balanceUsd > 0 && (
             <div className="field-hint quick-amounts">
               {suggested !== null && suggested < debt.balanceUsd && (
                 <button type="button" className="link-btn link-accent" onClick={() => setAmount(exactUsd(suggested))}>
-                  Monthly payment
+                  {t.monthlyPayment}
                 </button>
               )}
               <button type="button" className="link-btn link-accent" onClick={() => setAmount(exactUsd(debt.balanceUsd))}>
-                Full balance
+                {t.fullBalance}
               </button>
             </div>
           )}
@@ -153,9 +146,9 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
 
         {kind !== 'DEBT_INTEREST' && holdings.length > 0 && (
           <div className="field">
-            <label htmlFor={ids.holding}>{paying ? 'Paid from (optional)' : 'Money went to (optional)'}</label>
+            <label htmlFor={ids.holding}>{paying ? t.paidFrom : t.wentTo}</label>
             <select id={ids.holding} className="input" value={holding?.id ?? ''} onChange={(e) => setHoldingId(e.target.value)}>
-              <option value="">{paying ? 'Not from an asset I track' : 'Not into an asset I track'}</option>
+              <option value="">{paying ? t.notFrom : t.notInto}</option>
               {[...byPlatform].map(([platform, list]) => (
                 <optgroup key={platform} label={platform}>
                   {list.map((h) => (
@@ -167,7 +160,7 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
               ))}
             </select>
             <div className="field-hint">
-              {paying ? 'Its value goes down by the same amount.' : 'A loan paid into an account, say: its value goes up by the same amount.'}
+              {paying ? t.fromHint : t.intoHint}
             </div>
           </div>
         )}
@@ -175,12 +168,12 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
         <div className="form-grid-2">
           <DateInput value={date} onChange={setDate} />
           <div className="field">
-            <label htmlFor={ids.note}>Note (optional)</label>
+            <label htmlFor={ids.note}>{tAll.common.noteOptional}</label>
             <input
               id={ids.note}
               className="input"
               type="text"
-              placeholder={paying ? 'e.g. October installment' : 'e.g. Groceries'}
+              placeholder={paying ? t.notePayment : t.noteCharge}
               maxLength={MAX_NOTE}
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -191,14 +184,14 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
         {debtAfter !== null && (
           <div className={overpaid || overdrawn ? 'preview preview-error' : 'preview'} aria-live="polite">
             {overpaid ? (
-              `That's more than what's left to pay on ${debt.name} (${formatUsd(debt.balanceUsd)}).`
+              t.moreThanLeftOn(debt.name, formatUsd(debt.balanceUsd))
             ) : overdrawn ? (
-              `That's more than ${holding!.name} is worth (${formatUsd(holding!.valueUsd)}).`
+              `${t.moreThanWorth(holding!.name, formatUsd(holding!.valueUsd))}.`
             ) : (
               <>
                 <div>
-                  {debt.name}: {formatUsd(debt.balanceUsd)} → {formatUsd(debtAfter)} left to pay
-                  {debtAfter === 0 && ' · paid off'}
+                  {t.preview(debt.name, formatUsd(debt.balanceUsd), formatUsd(debtAfter))}
+                  {debtAfter === 0 && t.paidOffSuffix}
                 </div>
                 {holding && (
                   <div>
@@ -212,10 +205,10 @@ export function DebtPaymentDialog({ debt: opened, kind: initialKind = 'DEBT_PAYM
 
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {tAll.common.cancel}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving || overpaid || overdrawn}>
-            {saving ? 'Recording…' : option.action}
+            {saving ? tAll.common.recording : option.action}
           </button>
         </div>
       </form>

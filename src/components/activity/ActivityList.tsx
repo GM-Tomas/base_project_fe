@@ -20,7 +20,8 @@ import { useWealth } from '@/context/WealthContext';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/apiError';
 import { formatUsd } from '@/lib/money';
-import { amountOf, describe, formatDay, KIND_LABEL, type Scope } from '@/lib/movements';
+import { amountOf, describe, formatDay, kindLabel, type Scope } from '@/lib/movements';
+import { useT } from '@/lib/i18n';
 import { IconButton } from '@/components/ui/IconButton';
 import { useMovementFeedback } from '@/components/dialogs/useMovementFeedback';
 import type { Movement, MovementKind } from '@/types/wealth';
@@ -58,8 +59,9 @@ type Loaded = { items: Movement[]; next: string | null };
 
 // The activity log, newest first, a page at a time. It reloads whenever the app's data does (after any
 // change, here or in a dialog), so it never disagrees with the values on screen.
-export function ActivityList({ holdingId, debtId, kinds, from, to, empty = 'No activity yet' }: ActivityListProps) {
+export function ActivityList({ holdingId, debtId, kinds, from, to, empty }: ActivityListProps) {
   const { dataVersion } = useWealth();
+  const t = useT();
   const { confirmUndo } = useMovementFeedback();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState('');
@@ -79,7 +81,7 @@ export function ActivityList({ holdingId, debtId, kinds, from, to, empty = 'No a
         if (current === generation.current) setLoaded({ items: page.items, next: page.nextCursor });
       })
       .catch((e) => {
-        if (current === generation.current) setError(errorMessage(e, "Couldn't load the activity. Please try again."));
+        if (current === generation.current) setError(errorMessage(e, t.activity.loadFailed));
       });
   }, [holdingId, debtId, kindsKey, from, to, dataVersion, attempt]);
 
@@ -91,7 +93,7 @@ export function ActivityList({ holdingId, debtId, kinds, from, to, empty = 'No a
       if (current !== generation.current) return;
       setLoaded((list) => ({ items: [...list!.items, ...page.items], next: page.nextCursor }));
     } catch (e) {
-      if (current === generation.current) setError(errorMessage(e, "Couldn't load more. Please try again."));
+      if (current === generation.current) setError(errorMessage(e, t.activity.loadMoreFailed));
     } finally {
       if (current === generation.current) setLoadingMore(false);
     }
@@ -102,17 +104,17 @@ export function ActivityList({ holdingId, debtId, kinds, from, to, empty = 'No a
       <div className="activity-message" role="alert">
         {error}{' '}
         <button type="button" className="link-btn link-accent" onClick={() => setAttempt((n) => n + 1)}>
-          Retry
+          {t.common.retry}
         </button>
       </div>
     );
   }
-  if (!loaded) return <div className="activity-message">Loading activity…</div>;
-  if (loaded.items.length === 0) return <div className="activity-message">{empty}</div>;
+  if (!loaded) return <div className="activity-message">{t.activity.loading}</div>;
+  if (loaded.items.length === 0) return <div className="activity-message">{empty ?? t.activity.none}</div>;
 
   return (
     <div>
-      <ul className="activity-list" aria-label="Activity">
+      <ul className="activity-list" aria-label={t.activity.list}>
         {loaded.items.map((m) => (
           <ActivityRow key={m.id} movement={m} scope={{ holdingId, debtId }} onUndo={() => confirmUndo(m)} />
         ))}
@@ -125,7 +127,7 @@ export function ActivityList({ holdingId, debtId, kinds, from, to, empty = 'No a
       {loaded.next && (
         <div className="activity-more">
           <button type="button" className="btn btn-secondary" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? 'Loading…' : 'Load more'}
+            {loadingMore ? t.activity.loadingMore : t.activity.loadMore}
           </button>
         </div>
       )}
@@ -137,11 +139,11 @@ function ActivityRow({ movement: m, scope, onUndo }: { movement: Movement; scope
   const Icon = ICONS[m.kind];
   const { title, details } = describe(m, scope);
   const amount = amountOf(m, scope);
-  const label = KIND_LABEL[m.kind].toLowerCase();
+  const t = useT().movements;
   const undoLabel =
     m.kind === 'TRANSFER'
-      ? `Undo transfer of ${formatUsd(m.amountUsd)} from ${m.holding!.name} to ${m.toHolding!.name}`
-      : `Undo ${label} of ${formatUsd(m.amountUsd)} on ${(m.debt ?? m.holding)!.name}`;
+      ? t.undoTransfer(formatUsd(m.amountUsd), m.holding!.name, m.toHolding!.name)
+      : t.undoOther(kindLabel(m.kind), formatUsd(m.amountUsd), (m.debt ?? m.holding)!.name);
   return (
     <li className="activity-row">
       <span className={`activity-icon kind-${m.kind.toLowerCase()}`} aria-hidden>

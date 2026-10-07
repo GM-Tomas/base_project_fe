@@ -2,6 +2,7 @@
 
 import React, { useId } from 'react';
 import { formatReturn, parsePercent } from '@/lib/returns';
+import { useT } from '@/lib/i18n';
 
 export interface PercentInputProps {
   label: string;
@@ -19,11 +20,12 @@ export interface PercentInputProps {
 
 // A text field for a percentage typed either way ("7,5" or "7.5"), showing how it was read ("= 7.5% a
 // year") or why it can't be. The form parses the same text again when it saves.
-export function PercentInput({ label, value, onChange, placeholder = 'e.g. 7.5', hint, min, max, hideLabel, className }: PercentInputProps) {
+export function PercentInput({ label, value, onChange, placeholder, hint, min, max, hideLabel, className }: PercentInputProps) {
   const id = useId();
+  const t = useT();
   const hintId = `${id}-hint`;
   const parsed = parsePercent(value, { min, max });
-  const message = parsed.error ?? (parsed.value !== null && !hideLabel ? `= ${formatReturn(parsed.value, 2)} a year` : hint);
+  const message = parsed.error ?? (parsed.value !== null && !hideLabel ? t.percent.read(formatReturn(parsed.value, 2)) : hint);
 
   return (
     <div className={className ? `field ${className}` : 'field'}>
@@ -37,7 +39,7 @@ export function PercentInput({ label, value, onChange, placeholder = 'e.g. 7.5',
           type="text"
           inputMode="decimal"
           autoComplete="off"
-          placeholder={placeholder}
+          placeholder={placeholder ?? t.common.percentPlaceholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           aria-invalid={parsed.error ? true : undefined}

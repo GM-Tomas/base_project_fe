@@ -1,9 +1,13 @@
 'use client';
 
 import React from 'react';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Percent, Search } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, ChevronUp, ChevronsUpDown, Paintbrush, Percent, Plus, Search } from 'lucide-react';
 import { useWealth } from '@/context/WealthContext';
-import { formatCurrency } from '@/lib/calculations';
+import { useUi } from '@/context/UiContext';
+import { IconButton } from '@/components/ui/IconButton';
+import { PlatformCustomizeDialog } from '@/components/settings/PlatformCustomizeDialog';
+import { formatCurrency, formatNumber } from '@/lib/calculations';
+import { useT } from '@/lib/i18n';
 import { ClassTag } from '@/components/ui/ClassTag';
 import { PlatformAvatar } from '@/components/ui/PlatformAvatar';
 import { PlatformSelectFrame } from '@/components/ui/PlatformSelectFrame';
@@ -15,22 +19,58 @@ import { useOpenFromRow, useOpenHolding } from '@/components/dialogs/HoldingDraw
 import { formatReturn } from '@/lib/returns';
 
 // On a phone, the optional ones are left out (they're in each asset's panel).
-const COLUMNS: { key: AssetSortKey; label: string; optional?: boolean }[] = [
-  { key: 'name', label: 'Name' },
-  { key: 'assetClass', label: 'Class', optional: true },
-  { key: 'platform', label: 'Platform', optional: true },
-  { key: 'valueUsd', label: 'Value' },
-  { key: 'effectiveReturnPct', label: 'Return/yr', optional: true },
+const COLUMNS: { key: AssetSortKey; optional?: boolean }[] = [
+  { key: 'name' },
+  { key: 'assetClass', optional: true },
+  { key: 'platform', optional: true },
+  { key: 'valueUsd' },
+  { key: 'effectiveReturnPct', optional: true },
 ];
 const OPTIONAL = 'col-optional';
 
-const pctOf = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : '—');
+const pctOf = (part: number, whole: number) => (whole > 0 ? `${formatNumber((part / whole) * 100, 1, true)}%` : '—');
+
+// The platform the table is filtered by, and what can be done there (its total and share are the table's).
+function PlatformBar({ name }: { name: string }) {
+  const { platforms, platformLook } = useWealth();
+  const { openDialog } = useUi();
+  const actions = useHoldingActions();
+  const t = useT();
+  const platform = platforms.find((p) => p.name === name);
+  if (!platform) return null;
+  return (
+    <section className="card elev-sm platform-bar" aria-label={name}>
+      <PlatformAvatar {...platformLook(name)} />
+      <div className="platform-bar-text">
+        <h2 className="platform-bar-name">{name}</h2>
+        <div className="text-muted">{platform.type === 'Other' ? t.platformForm.noType : platform.type}</div>
+      </div>
+      <div className="platform-bar-actions">
+        <button type="button" className="btn btn-secondary" onClick={() => actions.add(name)}>
+          <Plus size={14} aria-hidden />
+          {t.assets.addHere}
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={() => actions.transfer({ platform: name })}>
+          <ArrowLeftRight size={14} aria-hidden />
+          {t.assets.transferHere}
+        </button>
+        <IconButton
+          label={t.common.customize(name)}
+          onClick={() => openDialog((close) => <PlatformCustomizeDialog platform={platform} onClose={close} />)}
+        >
+          <Paintbrush size={15} aria-hidden />
+        </IconButton>
+      </div>
+    </section>
+  );
+}
 
 export const AssetsView: React.FC = () => {
   const { holdings, platforms, availableAssetClasses, assetsTable, setAssetsTable, openPlatform, platformLook, classLook } = useWealth();
   const actions = useHoldingActions();
   const openHolding = useOpenHolding();
   const openFromRow = useOpenFromRow();
+  const t = useT();
 
   const update = (patch: Partial<typeof assetsTable>) => setAssetsTable((table) => ({ ...table, ...patch }));
   // A filter on a class or platform that's gone since (its last asset was removed) shows everything.
@@ -49,15 +89,14 @@ export const AssetsView: React.FC = () => {
     return (
       <div className="card elev-sm">
         <EmptyState
-          title="Start by adding what you own"
+          title={t.dashboard.emptyTitle}
           action={
             <button className="btn btn-primary" onClick={() => actions.add()}>
-              Add your first asset
+              {t.dashboard.emptyButton}
             </button>
           }
         >
-          Add each account, fund or coin with what it&apos;s worth in dollars: BASE adds them up and shows where your
-          money lives.
+          {t.assets.emptyText}
         </EmptyState>
       </div>
     );
@@ -73,8 +112,8 @@ export const AssetsView: React.FC = () => {
             className="input"
             id={ASSETS_SEARCH_ID}
             type="search"
-            aria-label="Search assets"
-            placeholder="Search by name, platform or class"
+            aria-label={t.assets.search}
+            placeholder={t.assets.searchPlaceholder}
             value={table.query}
             onChange={(e) => update({ query: e.target.value })}
           />
@@ -82,12 +121,12 @@ export const AssetsView: React.FC = () => {
         <PlatformSelectFrame platform={table.platform === ALL ? null : table.platform}>
           <select
             className="input"
-            aria-label="Filter by platform"
+            aria-label={t.assets.filterByPlatform}
             style={{ width: 'auto', minWidth: '180px' }}
             value={table.platform}
             onChange={(e) => update({ platform: e.target.value })}
           >
-            <option value={ALL}>All platforms</option>
+            <option value={ALL}>{t.assets.allPlatforms}</option>
             {platformNames.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -97,46 +136,30 @@ export const AssetsView: React.FC = () => {
         </PlatformSelectFrame>
         <button type="button" className="btn btn-secondary toolbar-end" onClick={actions.setReturns}>
           <Percent size={14} aria-hidden />
-          Set expected returns
+          {t.assets.setExpectedReturns}
         </button>
       </div>
 
       {/* Class chips */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {[ALL, ...availableAssetClasses].map((opt) => {
-          const isActive = table.assetClass === opt;
-          return (
-            <button
-              key={opt}
-              onClick={() => update({ assetClass: opt })}
-              aria-pressed={isActive}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '999px',
-                fontSize: '12.5px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                border: isActive ? '1px solid var(--color-accent)' : '1px solid var(--color-divider)',
-                color: isActive ? 'var(--color-accent)' : 'var(--color-text)',
-                background: isActive ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {opt !== ALL && <span className="class-dot" style={{ background: classLook(opt).color }} aria-hidden />}
-              {opt}
-            </button>
-          );
-        })}
+      <div className="chips">
+        {[ALL, ...availableAssetClasses].map((opt) => (
+          <button key={opt} type="button" className="chip" onClick={() => update({ assetClass: opt })} aria-pressed={table.assetClass === opt}>
+            {opt !== ALL && <span className="class-dot" style={{ background: classLook(opt).color }} aria-hidden />}
+            {opt === ALL ? t.common.all : opt}
+          </button>
+        ))}
       </div>
+
+      {table.platform !== ALL && <PlatformBar name={table.platform} />}
 
       {/* Holdings table */}
       <div className="card elev-sm" style={{ padding: '6px 16px 12px', overflowX: 'auto' }}>
         {rows.length === 0 ? (
           <EmptyState
-            title="No assets match this filter"
+            title={t.assets.noMatch}
             action={
               <button className="btn btn-secondary" onClick={() => setAssetsTable({ ...INITIAL_ASSETS_TABLE, sort: table.sort })}>
-                Show all
+                {t.assets.showAll}
               </button>
             }
           />
@@ -144,7 +167,7 @@ export const AssetsView: React.FC = () => {
           <table className="table">
             <thead>
               <tr>
-                {COLUMNS.map(({ key, label, optional }) => {
+                {COLUMNS.map(({ key, optional }) => {
                   const active = table.sort.key === key;
                   const SortIcon = active ? (table.sort.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
                   return (
@@ -154,16 +177,16 @@ export const AssetsView: React.FC = () => {
                       aria-sort={active ? (table.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                     >
                       <button type="button" className="th-sort" onClick={() => update({ sort: toggleSort(table.sort, key) })}>
-                        {label}
+                        {t.assets.columns[key]}
                         <SortIcon size={13} aria-hidden style={{ opacity: active ? 1 : 0.4 }} />
                       </button>
                     </th>
                   );
                 })}
                 {/* The share of all assets: sorts like Value, so it has no sort of its own. */}
-                <th className={OPTIONAL}>Share</th>
-                <th className="col-actions" style={{ width: '132px' }}>
-                  <span className="sr-only">Actions</span>
+                <th className={OPTIONAL}>{t.assets.columns.share}</th>
+                <th className="col-actions" style={{ width: '48px' }}>
+                  <span className="sr-only">{t.common.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -179,7 +202,12 @@ export const AssetsView: React.FC = () => {
                     <ClassTag name={h.assetClass} />
                   </td>
                   <td style={{ padding: '12px 10px' }} className={OPTIONAL}>
-                    <button type="button" className="link-btn text-muted with-avatar" title={`Open ${h.platform}`} onClick={() => openPlatform(h.platform)}>
+                    <button
+                      type="button"
+                      className="link-btn text-muted with-avatar"
+                      title={t.assets.showOnly(h.platform)}
+                      onClick={() => openPlatform(h.platform)}
+                    >
                       <PlatformAvatar {...platformLook(h.platform)} size={18} />
                       {h.platform}
                     </button>
@@ -193,7 +221,7 @@ export const AssetsView: React.FC = () => {
                   <td style={{ padding: '12px 10px', fontVariantNumeric: 'tabular-nums' }} className={`text-muted ${OPTIONAL}`}>
                     {pctOf(h.valueUsd, totalAssets)}
                   </td>
-                  <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                  <td style={{ padding: '6px', textAlign: 'right' }}>
                     <HoldingRowActions holding={h} />
                   </td>
                 </tr>
@@ -202,8 +230,8 @@ export const AssetsView: React.FC = () => {
             <tfoot>
               <tr>
                 <td colSpan={COLUMNS.length + 2} className="table-total">
-                  {rows.length} {rows.length === 1 ? 'asset' : 'assets'} · {formatCurrency(shownTotal)}
-                  {filtered && ` · ${pctOf(shownTotal, totalAssets)} of your assets`}
+                  {t.assets.total(rows.length, formatCurrency(shownTotal))}
+                  {filtered && t.assets.ofYourAssets(pctOf(shownTotal, totalAssets))}
                 </td>
               </tr>
             </tfoot>

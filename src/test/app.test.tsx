@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { useWealth, WealthProvider } from '@/context/WealthContext';
 import { supabase } from '@/lib/supabaseClient';
 import type { Holding, WealthSummary } from '@/types/wealth';
+import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 import {
   authListener,
   fetchMock,
@@ -16,15 +17,19 @@ import {
   json,
   nav,
   newItem,
+  platform,
   PLATFORMS,
   projection,
   renderApp,
   requests,
   routes,
+  rowAction,
   SESSION,
+  showPlatform,
   snapshot,
   SNAPSHOTS,
   summary,
+  tab,
 } from './harness';
 
 installFakeBackend();
@@ -187,8 +192,8 @@ describe('dashboard', () => {
     expect(screen.getByText('+12.3% since January')).toBeTruthy();
     expect(screen.getByText('70%')).toBeTruthy();
     const liquidity = screen.getByText('Ready to spend').parentElement!;
-    expect(liquidity.querySelector('.card-body')!.textContent).toBe('Equity you can move quickly · 30% locked in · Change');
-    expect(screen.getByText('Across 3 accounts')).toBeTruthy();
+    expect(liquidity.querySelector('.card-body')!.textContent).toBe('Equity · 30% locked in · Change');
+    expect(screen.getByText('3 platforms · 3 assets')).toBeTruthy();
     expect(screen.getByText('64.8%')).toBeTruthy();
     expect(screen.getByText('$8,000 · 64.8%')).toBeTruthy();
     // Exposure bars are sorted by balance, largest first.
@@ -225,50 +230,41 @@ describe('dashboard', () => {
   });
 });
 
-describe('platforms', () => {
-  it('drills into a platform and closes again', async () => {
+describe('a platform', () => {
+  it("opens from the dashboard as Assets showing its own, with what can be done there, until all are picked", async () => {
     await renderApp();
-    nav('Platforms');
-    expect(screen.getByRole('heading', { name: 'Platforms' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Platforms' })).toBeNull(); // not a view of its own anymore
+    fireEvent.click(screen.getByRole('button', { name: 'Vault' }));
+    expect(screen.getByRole('heading', { name: 'Assets' })).toBeTruthy();
+    const bar = screen.getByRole('region', { name: 'Vault' });
+    expect(within(bar).getByText('Other')).toBeTruthy();
+    expect(within(bar).getByRole('button', { name: 'Add asset here' })).toBeTruthy();
+    expect(within(bar).getByRole('button', { name: 'Transfer from here' })).toBeTruthy();
+    expect(screen.getByText('2 assets · $4,346 · 35.2% of your assets')).toBeTruthy();
+    expect(screen.queryByText('SPY')).toBeNull();
 
-    fireEvent.click(screen.getByText('Vault'));
-    expect(screen.getByText("Vault · what's there")).toBeTruthy();
-    expect(screen.getByText('Gold bar')).toBeTruthy();
-    expect(screen.getByText('Coins')).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Customize Vault' }));
+    expect(screen.getByRole('dialog', { name: 'Customize Vault' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    fireEvent.click(screen.getByText('Vault'));
-    expect(screen.queryByText("Vault · what's there")).toBeNull();
+    fireEvent.change(screen.getByLabelText('Filter by platform'), { target: { value: 'All' } });
+    expect(screen.queryByRole('region', { name: 'Vault' })).toBeNull();
+    expect(screen.getByText('SPY')).toBeTruthy();
+  });
 
-    fireEvent.click(screen.getByText('Empty'));
-    expect(screen.getByText('No individual holdings recorded for this platform yet.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.queryByText("Empty · what's there")).toBeNull();
-
-    // Changing view resets the selection.
-    fireEvent.click(screen.getByText('Balanz'));
-    nav('Dashboard');
-    nav('Platforms');
-    expect(screen.queryByText("Balanz · what's there")).toBeNull();
+  it('opens Assets when it was the view to start on', async () => {
+    routes['GET /api/v1/preferences'] = () => json({ ...DEFAULT_PREFERENCES, defaultView: 'platforms' });
+    await renderApp(undefined, '$8,000');
+    expect(screen.getByRole('heading', { name: 'Assets' })).toBeTruthy();
   });
 });
 
-describe('platforms without assets', () => {
-  it('says where platforms come from and how to start', async () => {
-    routes['GET /api/v1/wealth/summary'] = () => json(summary({ byPlatform: [] }));
-    await renderApp();
-    nav('Platforms');
-    expect(screen.getByText('Platforms appear as you add assets')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Add your first asset' }));
-    expect(screen.getByRole('dialog', { name: 'Add an asset' })).toBeTruthy();
-  });
-});
-
-describe('platform drill-down across refreshes', () => {
-  // A refresh while the drill-down is open: adding an asset from the header.
+describe('a platform across refreshes', () => {
+  // A refresh while Assets shows a platform's: adding an asset from the header.
   const addAsset = async () => {
     newItem('Asset');
     fireEvent.change(screen.getByPlaceholderText('e.g. Vanguard S&P 500 ETF'), { target: { value: 'VOO' } });
-    const [platform, assetClass] = screen.getAllByRole('combobox');
+    const [platform, assetClass] = within(screen.getByRole('dialog')).getAllByRole('combobox');
     fireEvent.change(platform, { target: { value: 'Balanz' } });
     fireEvent.change(assetClass, { target: { value: 'Equity' } });
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1' } });
@@ -279,34 +275,33 @@ describe('platform drill-down across refreshes', () => {
     routes['GET /api/v1/holdings'] = () => json(holdings);
     routes['GET /api/v1/wealth/summary'] = () => json(summary({ byPlatform }));
   };
-  const BALANZ = { name: 'Balanz', type: 'Broker', valueUsd: 8001, pct: 64.8, count: 2, avatarText: null, color: null };
+  const BALANZ = { name: 'Balanz', type: 'Broker', valueUsd: 8001, pct: 64.8, count: 2, avatarText: null, color: null, textColor: null };
   const VOO = holding('h4', 'VOO', 'Equity', 'Balanz', 1);
 
   beforeEach(() => {
     routes['POST /api/v1/holdings'] = () => json({}, 201);
   });
 
-  it('follows the selected platform when the API respells it', async () => {
+  it('follows the platform shown when the API respells it', async () => {
     await renderApp();
-    nav('Platforms');
-    fireEvent.click(screen.getByText('Vault'));
+    showPlatform('Vault');
 
-    serve([...HOLDINGS, VOO], [{ name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null }, BALANZ]);
+    serve([...HOLDINGS, VOO], [{ name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null, textColor: null }, BALANZ]);
     await addAsset();
-    expect(screen.getByText("Vault · what's there")).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Vault' })).toBeTruthy();
 
     // "Gold bar", the earliest Vault holding, was deleted elsewhere; "Coins" was stored as "vault".
-    serve([HOLDINGS[0], { ...HOLDINGS[2], platform: 'vault' }, VOO], [{ name: 'vault', type: 'Safe', valueUsd: 345.6, pct: 4, count: 1, avatarText: null, color: null }, BALANZ]);
+    routes['GET /api/v1/platforms'] = () => json([PLATFORMS[0], platform('vault', { holdingsCount: 1, valueUsd: 345.6 })]);
+    serve([HOLDINGS[0], { ...HOLDINGS[2], platform: 'vault' }, VOO], [{ name: 'vault', type: 'Safe', valueUsd: 345.6, pct: 4, count: 1, avatarText: null, color: null, textColor: null }, BALANZ]);
     await addAsset();
-    expect(await screen.findByText("vault · what's there")).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'vault' })).toBeTruthy();
     expect(screen.getByText('Coins')).toBeTruthy();
     expect(screen.queryByText('Gold bar')).toBeNull();
   });
 
-  it('Retry after a failed reload keeps the view and the selected platform', async () => {
+  it('Retry after a failed reload keeps the view and the platform shown', async () => {
     await renderApp();
-    nav('Platforms');
-    fireEvent.click(screen.getByText('Vault'));
+    showPlatform('Vault');
 
     routes['POST /api/v1/holdings'] = () => {
       routes['GET /api/v1/wealth/snapshots'] = () => json({ detail: 'Service Unavailable' }, 503);
@@ -317,19 +312,19 @@ describe('platform drill-down across refreshes', () => {
 
     routes['GET /api/v1/wealth/snapshots'] = () => json(SNAPSHOTS);
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByText("Vault · what's there")).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Platforms' })).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Vault' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Assets' })).toBeTruthy();
     expect(screen.getByText('Gold bar')).toBeTruthy();
   });
 
-  it('closes the drill-down when its platform is gone', async () => {
+  it('shows them all once its platform is gone', async () => {
     await renderApp();
-    nav('Platforms');
-    fireEvent.click(screen.getByText('Vault'));
+    showPlatform('Vault');
 
     serve([HOLDINGS[0], VOO], [BALANZ]);
     await addAsset();
-    await waitFor(() => expect(screen.queryByText("Vault · what's there")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Vault' })).toBeNull());
+    expect((screen.getByLabelText('Filter by platform') as HTMLSelectElement).value).toBe('All');
   });
 });
 
@@ -341,7 +336,7 @@ describe('overlapping refreshes', () => {
       wealth = useWealth();
       return (
         <p>
-          {wealth.holdings.map((h) => h.name).join(', ')} / {wealth.selectedPlatform ?? 'none'}
+          {wealth.holdings.map((h) => h.name).join(', ')} / {wealth.assetsTable.platform}
         </p>
       );
     };
@@ -350,7 +345,7 @@ describe('overlapping refreshes', () => {
         <Probe />
       </WealthProvider>,
     );
-    await screen.findByText('SPY, Gold bar, Coins / none');
+    await screen.findByText('SPY, Gold bar, Coins / All');
 
     // A refresh goes out and its answer is slow…
     let answerOld!: (res: Response) => void;
@@ -364,7 +359,7 @@ describe('overlapping refreshes', () => {
     // …a newer one lands first (a platform added since), and the user opens it…
     routes['GET /api/v1/holdings'] = () => json([...HOLDINGS, holding('h9', 'BTC', 'Crypto', 'Binance', 10)]);
     await act(() => wealth.refresh());
-    act(() => wealth.setSelectedPlatform('Binance'));
+    act(() => wealth.openPlatform('Binance'));
     expect(screen.getByText('SPY, Gold bar, Coins, BTC / Binance')).toBeTruthy();
 
     // …then the older answer arrives: dropped, the screen and the selection stay.
@@ -507,9 +502,9 @@ describe('assets', () => {
     await renderApp();
     nav('Assets');
 
-    const remove = screen.getByRole('button', { name: 'Remove SPY' });
-    remove.focus();
-    fireEvent.click(remove);
+    const actions = screen.getByRole('button', { name: 'Actions for SPY' });
+    actions.focus();
+    rowAction('SPY', 'Remove');
     const dialog = screen.getByRole('dialog', { name: 'Remove asset?' });
     expect(within(dialog).getByText('SPY on Balanz ($8,000) will stop counting toward your net worth.')).toBeTruthy();
     // Cancel has the focus: Enter doesn't remove anything by accident.
@@ -517,10 +512,10 @@ describe('assets', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(remove);
+    expect(document.activeElement).toBe(actions);
     expect(requests('DELETE', '/api/v1/holdings/h1')).toHaveLength(0);
 
-    fireEvent.click(remove);
+    rowAction('SPY', 'Remove');
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     expect(screen.getByRole('button', { name: 'Removing…' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Cancel' }).hasAttribute('disabled')).toBe(true);
@@ -537,7 +532,7 @@ describe('assets', () => {
     };
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove SPY' }));
+    rowAction('SPY', 'Remove');
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
     expect(
@@ -555,7 +550,7 @@ describe('assets', () => {
     routes['DELETE /api/v1/holdings/h1'] = route;
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove SPY' }));
+    rowAction('SPY', 'Remove');
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Remove asset?' });
@@ -583,7 +578,7 @@ describe('edit asset', () => {
     routes['PATCH /api/v1/holdings/h2'] = () => json(holding('h2', 'Gold bar', 'Gold', 'Vault', 20000.5));
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Gold bar' }));
+    rowAction('Gold bar', 'Edit');
     const fill = (label: string, value: string) =>
       fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(label), { target: { value } });
 
@@ -611,7 +606,7 @@ describe('edit asset', () => {
     routes['PATCH /api/v1/holdings/h1'] = () => json(holding('h1', 'SPY', 'Index Fund', 'Vault', 8000));
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit SPY' }));
+    rowAction('SPY', 'Edit');
     const dialog = screen.getByRole('dialog', { name: 'Edit asset' });
     fireEvent.change(within(dialog).getByLabelText('Platform'), { target: { value: 'vault' } });
     expect(within(dialog).getByText('Matches Vault')).toBeTruthy();
@@ -626,7 +621,7 @@ describe('edit asset', () => {
     routes['PATCH /api/v1/holdings/h1'] = () => json({ detail: 'Holding h1 not found' }, 404);
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit SPY' }));
+    rowAction('SPY', 'Edit');
     const fill = (label: string, value: string) =>
       fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(label), { target: { value } });
 
@@ -651,16 +646,15 @@ describe('edit asset', () => {
     routes['PATCH /api/v1/holdings/h3'] = () => json(holding('h3', 'Coins', 'Gold', 'Vault', 400));
     routes['POST /api/v1/holdings'] = () => json({}, 201);
     await renderApp();
-    nav('Platforms');
-    fireEvent.click(screen.getByText('Vault'));
-    expect(screen.getByText('2 assets · $4,346')).toBeTruthy();
+    showPlatform('Vault');
+    expect(screen.getByText('2 assets · $4,346 · 35.2% of your assets')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Coins' }));
+    rowAction('Coins', 'Edit');
     fireEvent.change(screen.getByLabelText('Value (USD)'), { target: { value: '400' } });
     fireEvent.submit(save().closest('form')!);
     await waitFor(() => expect(requests('PATCH', '/api/v1/holdings/h3')).toHaveLength(1));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Gold bar' }));
+    rowAction('Gold bar', 'Remove');
     expect(screen.getByRole('dialog', { name: 'Remove asset?' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
@@ -766,12 +760,14 @@ describe('assets table', () => {
     expect(rowNames()).toEqual(['SPY']);
   });
 
-  it("opens an asset's platform from its row", async () => {
+  it("shows only an asset's platform from its row", async () => {
     await renderApp();
     nav('Assets');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search assets' }), { target: { value: 'coins' } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Vault' })[0]);
-    expect(screen.getByRole('heading', { name: 'Platforms' })).toBeTruthy();
-    expect(screen.getByText("Vault · what's there")).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Vault' })).toBeTruthy();
+    // The other filters start over: all of Vault's assets.
+    expect(screen.getByText('Gold bar')).toBeTruthy();
   });
 });
 
@@ -783,6 +779,7 @@ describe('delete checkpoint', () => {
     };
     await renderApp();
     nav('History');
+    tab('Checkpoints');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete checkpoint of Feb 15, 2026' }));
     const dialog = screen.getByRole('dialog', { name: 'Delete checkpoint?' });
@@ -798,6 +795,7 @@ describe('delete checkpoint', () => {
     routes['DELETE /api/v1/wealth/snapshots/s1'] = () => Promise.reject(new TypeError('offline'));
     await renderApp();
     nav('History');
+    tab('Checkpoints');
     fireEvent.click(screen.getByRole('button', { name: 'Delete checkpoint of Jan 15, 2026' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(await screen.findByText('Could not delete this checkpoint. Please try again.')).toBeTruthy();
@@ -809,6 +807,7 @@ describe('history', () => {
   it('lists checkpoints with their change', async () => {
     await renderApp();
     nav('History');
+    tab('Checkpoints');
     expect(screen.getByText('Jan 15, 2026')).toBeTruthy();
     expect(screen.getByText('—')).toBeTruthy();
     expect(screen.getByText('▲ +10.0%')).toBeTruthy();
@@ -870,6 +869,7 @@ describe('history', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save a snapshot' }));
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeTruthy();
+    tab('Checkpoints');
     expect(await screen.findByRole('button', { name: 'Delete checkpoint of May 1, 2026' })).toBeTruthy();
     expect(screen.getByText('Snapshot saved')).toBeTruthy();
   });
@@ -1120,7 +1120,7 @@ describe('profile', () => {
 
   it('takes whole characters as initials, emoji included', async () => {
     routes['GET /api/v1/wealth/summary'] = () =>
-      json(summary({ byPlatform: [{ name: '\u{1F3E6} Bank', type: 'Bank', valueUsd: 12345.6, pct: 100, count: 3, avatarText: null, color: null }] }));
+      json(summary({ byPlatform: [{ name: '\u{1F3E6} Bank', type: 'Bank', valueUsd: 12345.6, pct: 100, count: 3, avatarText: null, color: null, textColor: null }] }));
     await renderApp({
       ...SESSION,
       user: { id: 'u3', email: 'e@example.com', user_metadata: { full_name: '\u{1F600} Tomás' } },
@@ -1128,8 +1128,8 @@ describe('profile', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Tomás/ }));
     expect(screen.getAllByText('\u{1F600}')).toHaveLength(2);
-    nav('Platforms');
-    expect(screen.getByText('\u{1F3E6}')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getByText('\u{1F3E6}')).toBeTruthy(); // on the dashboard's platforms
   });
 });
 
@@ -1143,7 +1143,7 @@ describe('multiple accounts', () => {
     netWorth: { usd: 777 },
     holdingsCount: 1,
     byAssetClass: [{ assetClass: 'Fixed Income', valueUsd: 777, pct: 100, count: 1, color: null, liquid: false }],
-    byPlatform: [{ name: 'Bob Bank', type: 'Bank', valueUsd: 777, pct: 100, count: 1, avatarText: null, color: null }],
+    byPlatform: [{ name: 'Bob Bank', type: 'Bank', valueUsd: 777, pct: 100, count: 1, avatarText: null, color: null, textColor: null }],
   });
 
   // Like the real backend: what comes back depends only on whose token the request carries.

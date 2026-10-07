@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { generateLinePath, formatCurrency } from '@/lib/calculations';
 import { compactUsd, niceTicks, yearTicks } from '@/lib/chartScale';
 import type { ProjectionPoint } from '@/types/wealth';
+import { messages, useT } from '@/lib/i18n';
 
 // The SVG is stretched to its box (preserveAspectRatio="none"), so lines are drawn in its coordinates and
 // everything with text or round shapes (axis labels, the year's dots and its tooltip) is laid over it in %.
@@ -27,6 +28,7 @@ export interface ProjectionChartProps {
  */
 export function ProjectionChart({ series, showNetWorth, real, startYear }: ProjectionChartProps) {
   const [active, setActive] = useState<number | null>(null);
+  const t = useT();
   const portfolio = useMemo(() => series.map((p) => (real ? p.realFutureValueUsd : p.futureValueUsd)), [series, real]);
   const netWorth = useMemo(
     () => (showNetWorth ? series.map((p) => (real ? p.realNetWorthUsd : p.netWorthUsd)) : []),
@@ -68,9 +70,9 @@ export function ProjectionChart({ series, showNetWorth, real, startYear }: Proje
 
   // What it shows, in a sentence: its name for screen readers.
   const drawn = showNetWorth ? netWorth : portfolio;
-  const label = `${showNetWorth ? 'Net worth' : 'Portfolio'} from ${formatCurrency(drawn[0])} now to ${formatCurrency(drawn[years])} in ${years} ${
-    years === 1 ? 'year' : 'years'
-  }${real ? ", in today's dollars" : ''}`;
+  const label = `${t.projectionChart.label(showNetWorth, formatCurrency(drawn[0]), formatCurrency(drawn[years]), years)}${
+    real ? t.estimate.inTodaysDollars : ''
+  }`;
 
   const point = active !== null ? series[active] : null;
   const summary = point && describe(point, startYear, showNetWorth, real);
@@ -88,7 +90,7 @@ export function ProjectionChart({ series, showNetWorth, real, startYear }: Proje
         className="chart-plot"
         tabIndex={0}
         role="group"
-        aria-label={`${label}. Use the arrow keys to read each year.`}
+        aria-label={t.projectionChart.keys(label)}
         onMouseMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
         onMouseLeave={() => setActive(null)}
         onFocus={() => setActive((i) => i ?? years)}
@@ -174,7 +176,7 @@ export function ProjectionChart({ series, showNetWorth, real, startYear }: Proje
       <div className="chart-x" aria-hidden>
         {yearTicks(years).map((year) => (
           <span key={year} style={{ left: `${(x(year) / W) * 100}%` }}>
-            {year === 0 ? 'Now' : `${year}y`}
+            {year === 0 ? t.projectionChart.now : t.projectionChart.yearsShort(year)}
           </span>
         ))}
       </div>
@@ -187,18 +189,19 @@ export function ProjectionChart({ series, showNetWorth, real, startYear }: Proje
 
 // A year's figures, as the tooltip lists them.
 function describe(p: ProjectionPoint, startYear: number, showNetWorth: boolean, real: boolean) {
-  const title = p.year === 0 ? `Now · ${startYear}` : `In ${p.year} ${p.year === 1 ? 'year' : 'years'} · ${startYear + p.year}`;
+  const t = messages().projectionChart;
+  const title = p.year === 0 ? t.nowYear(startYear) : t.inYears(p.year, startYear + p.year);
   const lines: [string, string][] = real
     ? [
-        ["Portfolio, in today's dollars", formatCurrency(p.realFutureValueUsd)],
-        ...(showNetWorth ? [["Net worth, in today's dollars", formatCurrency(p.realNetWorthUsd)] as [string, string]] : []),
-        ["In that year's dollars", formatCurrency(p.futureValueUsd)],
+        [t.portfolioToday, formatCurrency(p.realFutureValueUsd)],
+        ...(showNetWorth ? [[t.netWorthToday, formatCurrency(p.realNetWorthUsd)] as [string, string]] : []),
+        [t.thatYear, formatCurrency(p.futureValueUsd)],
       ]
     : [
-        ['Portfolio', formatCurrency(p.futureValueUsd)],
-        ['Put in', formatCurrency(p.totalContributedUsd)],
-        [p.interestEarnedUsd < 0 ? 'Lost' : 'Growth', formatCurrency(Math.abs(p.interestEarnedUsd))],
-        ...(showNetWorth ? [['Net worth, after debts', formatCurrency(p.netWorthUsd)] as [string, string]] : []),
+        [t.portfolio, formatCurrency(p.futureValueUsd)],
+        [t.putIn, formatCurrency(p.totalContributedUsd)],
+        [p.interestEarnedUsd < 0 ? t.lost : t.growth, formatCurrency(Math.abs(p.interestEarnedUsd))],
+        ...(showNetWorth ? [[t.netWorthAfterDebts, formatCurrency(p.netWorthUsd)] as [string, string]] : []),
       ];
   return { title, lines };
 }

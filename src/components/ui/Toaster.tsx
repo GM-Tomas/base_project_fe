@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { useT } from '@/lib/i18n';
 
 export const TOAST_MS = 5000;
 
@@ -38,6 +39,7 @@ export function Toaster({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss:
 // the timer): it waits, then gets the full time again.
 function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number) => void }) {
   const [paused, setPaused] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     if (paused) return;
@@ -66,7 +68,7 @@ function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number)
           {toast.action.label}
         </button>
       )}
-      <button type="button" className="icon-btn" aria-label="Dismiss" title="Dismiss" onClick={() => onDismiss(toast.id)}>
+      <button type="button" className="icon-btn" aria-label={t.common.dismiss} title={t.common.dismiss} onClick={() => onDismiss(toast.id)}>
         <X size={14} aria-hidden />
       </button>
     </div>

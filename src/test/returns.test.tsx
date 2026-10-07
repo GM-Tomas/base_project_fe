@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HOLDINGS, holding, installFakeBackend, json, nav, newItem, point, projection, renderApp, requests, routes, summary } from './harness';
+import { holding, HOLDINGS, installFakeBackend, json, nav, newItem, point, projection, renderApp, requests, routes, rowAction, summary } from './harness';
 import { DEFAULT_PREFERENCES } from '@/lib/preferences';
 
 // F4: each asset's expected yearly return (its field, column and panel line, and setting them all at once),
@@ -29,7 +29,7 @@ describe('the portfolio’s expected return on the dashboard', () => {
 
     const card = screen.getByText('Expected return').closest('.card') as HTMLElement;
     expect(within(card).getByText('5.2% / yr')).toBeTruthy();
-    expect(card.textContent).toContain('≈ $640 a year · Based on 64.8% of your portfolio.');
+    expect(card.textContent).toContain('≈ $640 a year · 64.8% of your portfolio · Set returns');
     fireEvent.click(within(card).getByRole('button', { name: 'Set returns' }));
     expect(dialog('Set expected returns')).toBeTruthy();
   });
@@ -85,7 +85,7 @@ describe('an asset’s expected return', () => {
     routes['PATCH /api/v1/holdings/h1'] = () => json(holding('h1', 'SPY', 'Equity', 'Balanz', 8000));
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit SPY' }));
+    rowAction('SPY', 'Edit');
     const d = dialog('Edit asset');
 
     const save = within(d).getByRole('button', { name: 'Save changes' }) as HTMLButtonElement;
@@ -408,7 +408,11 @@ describe('Estimate', () => {
     nav('Estimate');
     await screen.findByText('$25,000');
 
-    const card = screen.getByText('What your expected return is made of').closest('.card') as HTMLElement;
+    // Folded away: its summary says the figure it explains.
+    const more = screen.getByText('What the 5.2% a year is made of').closest('details') as HTMLDetailsElement;
+    expect(more.open).toBe(false);
+    fireEvent.click(screen.getByText('What the 5.2% a year is made of'));
+    const card = more.querySelector('.card') as HTMLElement;
     const byClass = within(card).getByText('By class').parentElement as HTMLElement;
     // 8,000 × 8% / 12,345.60
     expect(byClass.textContent).toContain('Equity8% a year+5.18 pts');

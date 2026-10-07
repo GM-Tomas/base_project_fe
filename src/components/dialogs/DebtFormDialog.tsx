@@ -11,7 +11,8 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { errorMessage } from '@/lib/apiError';
 import type { DebtInput, DebtPatch } from '@/lib/api';
 import { debtPayoff } from '@/lib/amortization';
-import { DEBT_KIND_LABEL, DEBT_KINDS, payoffDetail, payoffText } from '@/lib/debts';
+import { DEBT_KINDS, debtKindLabel, payoffDetail, payoffText } from '@/lib/debts';
+import { messages, useT } from '@/lib/i18n';
 import { normalizeLabel } from '@/lib/labels';
 import { formatUsd, parseAmount } from '@/lib/money';
 import { dateProblem, occurredAtFor, today } from '@/lib/movements';
@@ -22,22 +23,20 @@ const MAX_NAME = 120;
 const MAX_RATE = 200;
 
 type Reason = { value: BalanceChangeReason; label: string };
-const PAYMENT: Reason = { value: 'PAYMENT', label: 'Payment' };
-const CHARGE: Reason = { value: 'CHARGE', label: 'New charges' };
-const INTEREST: Reason = { value: 'INTEREST', label: 'Interest' };
-const CORRECTION: Reason = { value: 'CORRECTION', label: 'Correction' };
+const reason = (value: BalanceChangeReason): Reason => ({ value, label: messages().debtForm.reasons[value] });
 
 /** The reasons that fit a new balance: a payment lowers it, charges and interest raise it. */
 export const reasonsFor = (previous: number, next: number): Reason[] =>
-  next < previous ? [PAYMENT, CORRECTION] : [CHARGE, INTEREST, CORRECTION];
+  (next < previous ? (['PAYMENT', 'CORRECTION'] as const) : (['CHARGE', 'INTEREST', 'CORRECTION'] as const)).map(reason);
 
 /** What a new balance will be recorded as, for this reason. */
 export function balanceReasonHint(reason: BalanceChangeReason, previous: number, next: number): string {
+  const t = messages().debtForm;
   const by = formatUsd(Math.abs(next - previous));
-  if (reason === 'PAYMENT') return `Recorded as a payment of ${by}.`;
-  if (reason === 'CHARGE') return `Recorded as new charges of ${by}.`;
-  if (reason === 'INTEREST') return `Recorded as interest of ${by}.`;
-  return `Recorded as a correction of ${by}: the balance was off, nothing was paid or charged.`;
+  if (reason === 'PAYMENT') return t.asPayment(by);
+  if (reason === 'CHARGE') return t.asCharges(by);
+  if (reason === 'INTEREST') return t.asInterest(by);
+  return t.asCorrection(by);
 }
 
 // An optional number field: what it holds, nothing when it's empty, or what's wrong with it.
@@ -51,15 +50,15 @@ function parseOptionalAmount(text: string): Parsed {
 
 export function parseRate(text: string): Parsed {
   const parsed = parseOptionalAmount(text.replace('%', ''));
-  if (parsed.error) return { value: null, error: 'Enter the rate as a number, like 12.5' };
-  if (parsed.value !== null && parsed.value > MAX_RATE) return { value: null, error: `The rate can't be over ${MAX_RATE}%` };
+  if (parsed.error) return { value: null, error: messages().debtForm.rateHint };
+  if (parsed.value !== null && parsed.value > MAX_RATE) return { value: null, error: messages().debtForm.rateMax(MAX_RATE) };
   return parsed;
 }
 
 export function parseDueDay(text: string): Parsed {
   if (!text.trim()) return { value: null };
   const day = Number(text.trim());
-  return Number.isInteger(day) && day >= 1 && day <= 31 ? { value: day } : { value: null, error: 'Pick a day between 1 and 31' };
+  return Number.isInteger(day) && day >= 1 && day <= 31 ? { value: day } : { value: null, error: messages().debtForm.dueDayHint };
 }
 
 const sameText = (typed: string, stored: string | null) => (typed.trim() || null) === (stored ?? null);
@@ -76,6 +75,8 @@ export interface DebtFormDialogProps {
 export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
   const { addDebt, updateDebt } = useWealth();
   const { toast } = useUi();
+  const tAll = useT();
+  const t = tAll.debtForm;
   const ids = { name: useId(), lender: useId(), kind: useId(), rate: useId(), dueDay: useId(), notes: useId() };
 
   const [name, setName] = useState(debt?.name ?? '');
@@ -86,7 +87,7 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
   const [payment, setPayment] = useState(debt?.monthlyPaymentUsd != null ? String(debt.monthlyPaymentUsd) : '');
   const [dueDay, setDueDay] = useState(debt?.dueDay != null ? String(debt.dueDay) : '');
   const [notes, setNotes] = useState(debt?.notes ?? '');
-  const [reason, setReason] = useState<BalanceChangeReason>('CORRECTION');
+  const [chosen, setReason] = useState<BalanceChangeReason>('CORRECTION');
   const [date, setDate] = useState(today);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -99,7 +100,7 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
   const balanceChanged = !!debt && balanceValue !== undefined && balanceValue !== debt.balanceUsd;
   const reasons = balanceChanged ? reasonsFor(debt.balanceUsd, balanceValue) : [];
   // A reason that no longer fits the new balance (it went the other way) falls back to a correction.
-  const chosenReason = reasons.some((r) => r.value === reason) ? reason : 'CORRECTION';
+  const chosenReason = reasons.some((r) => r.value === chosen) ? chosen : 'CORRECTION';
 
   // When it'd be paid off with what's typed, as the API works it out.
   const payoff =
@@ -132,18 +133,18 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
 
   const problem = () =>
     !normalizeLabel(name)
-      ? 'Please enter a name'
+      ? t.enterName
       : [...normalizeLabel(name)].length > MAX_NAME
-        ? `Keep the name under ${MAX_NAME} characters`
+        ? t.nameTooLong(MAX_NAME)
         : [...normalizeLabel(lender)].length > MAX_NAME
-          ? `Keep the lender under ${MAX_NAME} characters`
+          ? t.lenderTooLong(MAX_NAME)
           : !balance.trim()
-            ? "Please enter what's left to pay"
+            ? t.enterBalance
             : (parsedBalance!.error ??
-              (parsedRate.error ? `Interest rate: ${parsedRate.error}` : undefined) ??
-              (parsedPayment.error ? `Monthly payment: ${parsedPayment.error}` : undefined) ??
-              (parsedDueDay.error ? `Due day: ${parsedDueDay.error}` : undefined) ??
-              ([...notes.trim()].length > MAX_DEBT_NOTES ? `Keep the notes under ${MAX_DEBT_NOTES} characters` : undefined) ??
+              (parsedRate.error ? t.rateProblem(parsedRate.error) : undefined) ??
+              (parsedPayment.error ? t.paymentProblem(parsedPayment.error) : undefined) ??
+              (parsedDueDay.error ? t.dueDayProblem(parsedDueDay.error) : undefined) ??
+              ([...notes.trim()].length > MAX_DEBT_NOTES ? t.notesTooLong(MAX_DEBT_NOTES) : undefined) ??
               (balanceChanged ? dateProblem(date) : undefined));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -168,11 +169,11 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
         await addDebt(input);
       }
     } catch (err) {
-      setError(errorMessage(err, 'Could not save this debt. Please try again.'));
+      setError(errorMessage(err, t.saveFailed));
       setSaving(false);
       return;
     }
-    toast.success(debt ? 'Changes saved' : 'Debt added');
+    toast.success(debt ? tAll.common.changesSaved : t.added);
     onClose();
   };
 
@@ -180,29 +181,29 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
   const detail = payoff && payoffDetail(payoff);
 
   return (
-    <Modal title={debt ? 'Edit debt' : 'Add a debt'} onClose={onClose} busy={saving} className="dialog-wide">
+    <Modal title={debt ? t.titleEdit : t.titleAdd} onClose={onClose} busy={saving} className="dialog-wide">
       {error && <FormError>{error}</FormError>}
 
       <form onSubmit={handleSubmit} noValidate className="dialog-form">
         <div className="form-grid-2">
           <div className="field">
-            <label htmlFor={ids.name}>Name</label>
+            <label htmlFor={ids.name}>{tAll.common.name}</label>
             <input
               id={ids.name}
               className="input"
               type="text"
-              placeholder="e.g. Visa Gold"
+              placeholder={t.namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
           <div className="field">
-            <label htmlFor={ids.lender}>Lender (optional)</label>
+            <label htmlFor={ids.lender}>{t.lender}</label>
             <input
               id={ids.lender}
               className="input"
               type="text"
-              placeholder="e.g. Santander"
+              placeholder={t.lenderPlaceholder}
               value={lender}
               onChange={(e) => setLender(e.target.value)}
             />
@@ -211,22 +212,22 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
 
         <div className="form-grid-2">
           <div className="field">
-            <label htmlFor={ids.kind}>Kind</label>
+            <label htmlFor={ids.kind}>{t.kind}</label>
             <select id={ids.kind} className="input" value={kind} onChange={(e) => setKind(e.target.value as DebtKind)}>
               {DEBT_KINDS.map((k) => (
                 <option key={k} value={k}>
-                  {DEBT_KIND_LABEL[k]}
+                  {debtKindLabel(k)}
                 </option>
               ))}
             </select>
           </div>
-          <MoneyInput label="Left to pay (USD)" value={balance} onChange={setBalance} />
+          <MoneyInput label={t.leftToPay} value={balance} onChange={setBalance} />
         </div>
 
         {balanceChanged && (
           <div className="form-reason">
             <SegmentedControl
-              label="What changed the balance?"
+              label={t.whatChanged}
               showLabel
               options={reasons}
               value={chosenReason}
@@ -234,30 +235,30 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
               hint={balanceReasonHint(chosenReason, debt.balanceUsd, balanceValue)}
             />
             <div className="form-grid-2">
-              <DateInput label="When" value={date} onChange={setDate} />
+              <DateInput label={tAll.common.when} value={date} onChange={setDate} />
             </div>
           </div>
         )}
 
         <div className="form-grid-3">
           <div className="field">
-            <label htmlFor={ids.rate}>Interest (% a year, optional)</label>
+            <label htmlFor={ids.rate}>{t.rate}</label>
             <input
               id={ids.rate}
               className="input"
               type="text"
               inputMode="decimal"
               autoComplete="off"
-              placeholder="e.g. 12.5"
+              placeholder={t.ratePlaceholder}
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               aria-invalid={parsedRate.error ? true : undefined}
             />
             {parsedRate.error && <div className="field-error">{parsedRate.error}</div>}
           </div>
-          <MoneyInput label="Monthly payment (optional)" value={payment} onChange={setPayment} />
+          <MoneyInput label={t.payment} value={payment} onChange={setPayment} />
           <div className="field">
-            <label htmlFor={ids.dueDay}>Due day (optional)</label>
+            <label htmlFor={ids.dueDay}>{t.dueDay}</label>
             <input
               id={ids.dueDay}
               className="input"
@@ -266,7 +267,7 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
               min={1}
               max={31}
               step={1}
-              placeholder="1–31"
+              placeholder={t.dueDayPlaceholder}
               value={dueDay}
               onChange={(e) => setDueDay(e.target.value)}
               aria-invalid={parsedDueDay.error ? true : undefined}
@@ -276,13 +277,13 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
         </div>
 
         <div className="field">
-          <label htmlFor={ids.notes}>Notes (optional)</label>
+          <label htmlFor={ids.notes}>{t.notes}</label>
           <textarea
             id={ids.notes}
             className="input"
             rows={2}
             maxLength={MAX_DEBT_NOTES}
-            placeholder="e.g. Fixed rate, 36 payments"
+            placeholder={t.notesPlaceholder}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
@@ -297,10 +298,10 @@ export function DebtFormDialog({ onClose, debt }: DebtFormDialogProps) {
 
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {tAll.common.cancel}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving || unchanged}>
-            {saving ? 'Saving…' : debt ? 'Save changes' : 'Save debt'}
+            {saving ? tAll.common.saving : debt ? tAll.common.saveChanges : t.saveDebt}
           </button>
         </div>
       </form>

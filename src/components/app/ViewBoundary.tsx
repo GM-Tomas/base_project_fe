@@ -2,6 +2,7 @@
 
 import React, { type ReactNode } from 'react';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { messages } from '@/lib/i18n';
 
 interface Props {
   children: ReactNode;
@@ -24,10 +25,11 @@ export class ViewBoundary extends React.Component<Props, { failed: boolean }> {
 
   render() {
     if (!this.state.failed) return this.props.children;
+    const t = messages();
     return (
       <div className="card elev-sm" role="alert">
         <EmptyState
-          title="Something went wrong in this view"
+          title={t.app.viewFailed}
           action={
             <button
               type="button"
@@ -37,11 +39,11 @@ export class ViewBoundary extends React.Component<Props, { failed: boolean }> {
                 this.props.onReload();
               }}
             >
-              Reload
+              {t.common.reload}
             </button>
           }
         >
-          The rest of BASE still works. Reload this view to try again.
+          {t.app.viewFailedText}
         </EmptyState>
       </div>
     );

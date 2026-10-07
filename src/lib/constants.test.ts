@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assetClassColor, assetClassTag, platformColor, platformTag } from './constants';
+import { assetClassColor, platformColor } from './constants';
 
 describe('label colors and tags', () => {
   it('keeps the named colors and gives every other platform a stable palette color', () => {
@@ -14,20 +14,14 @@ describe('label colors and tags', () => {
     expect(colors.size).toBeGreaterThan(3);
   });
 
-  it('styles known asset classes and platform types, and falls back for the rest', () => {
+  it('colors known asset classes, and falls back for the rest', () => {
     expect(assetClassColor('Equity')).toBe('var(--color-accent-500)');
-    expect(assetClassTag('Equity')).toBe('tag tag-accent');
-    expect(platformTag('Broker')).toBe('tag tag-accent');
     expect(assetClassColor('Art')).toBe('var(--color-neutral-400)');
-    expect(assetClassTag('Art')).toBe('tag tag-neutral');
-    expect(platformTag('Other')).toBe('tag tag-neutral');
   });
 
   it('treats user-typed labels as plain text, never as object keys like "constructor"', () => {
     for (const label of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
       expect(assetClassColor(label)).toBe('var(--color-neutral-400)');
-      expect(assetClassTag(label)).toBe('tag tag-neutral');
-      expect(platformTag(label)).toBe('tag tag-neutral');
       expect(platformColor(label)).toMatch(/^var\(--color-/);
     }
   });

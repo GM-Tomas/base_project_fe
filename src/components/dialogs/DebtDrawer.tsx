@@ -6,7 +6,8 @@ import { useWealth } from '@/context/WealthContext';
 import { useUi } from '@/context/UiContext';
 import { Modal } from '@/components/ui/Modal';
 import { ActivityList } from '@/components/activity/ActivityList';
-import { DEBT_KIND_LABEL, formatRate, ordinal, payoffDetail, payoffText } from '@/lib/debts';
+import { debtKindLabel, formatRate, payoffDetail, payoffText } from '@/lib/debts';
+import { useT } from '@/lib/i18n';
 import { formatUsd } from '@/lib/money';
 import { formatDay } from '@/lib/movements';
 import type { Debt } from '@/types/wealth';
@@ -18,6 +19,7 @@ import { useDebtActions } from './useDebtActions';
 export function DebtDrawer({ debtId, onClose }: { debtId: string; onClose: () => void }) {
   const { debts } = useWealth();
   const actions = useDebtActions();
+  const t = useT();
   const debt = debts.find((d) => d.id === debtId);
 
   useEffect(() => {
@@ -28,21 +30,21 @@ export function DebtDrawer({ debtId, onClose }: { debtId: string; onClose: () =>
   const payoff = payoffText(debt.payoff);
   const detail = payoffDetail(debt.payoff);
   const terms = [
-    { label: 'Interest', value: debt.interestRatePct !== null ? `${formatRate(debt.interestRatePct)} a year` : 'Not set' },
-    { label: 'Monthly payment', value: debt.monthlyPaymentUsd !== null ? formatUsd(debt.monthlyPaymentUsd) : 'Not set' },
-    { label: 'Due', value: debt.dueDay ? `On the ${ordinal(debt.dueDay)}` : 'Not set' },
+    { label: t.debts.interest, value: debt.interestRatePct !== null ? t.common.aYear(formatRate(debt.interestRatePct)) : t.common.notSet },
+    { label: t.debts.monthlyPayment, value: debt.monthlyPaymentUsd !== null ? formatUsd(debt.monthlyPaymentUsd) : t.common.notSet },
+    { label: t.debts.due, value: debt.dueDay ? t.debts.onThe(debt.dueDay) : t.common.notSet },
   ];
 
   return (
     <Modal title={debt.name} onClose={onClose} variant="drawer">
       <div className="drawer-meta">
         {debt.lender && <span>{debt.lender}</span>}
-        <span className="tag tag-neutral">{DEBT_KIND_LABEL[debt.kind]}</span>
+        <span className="tag tag-neutral">{debtKindLabel(debt.kind)}</span>
       </div>
       <div>
         <div className="drawer-value">{formatUsd(debt.balanceUsd)}</div>
         <div className="text-muted drawer-dates">
-          Left to pay · Added {formatDay(debt.createdAt)} · Updated {formatDay(debt.updatedAt)}
+          {t.debts.leftToPayAdded(formatDay(debt.createdAt), formatDay(debt.updatedAt))}
         </div>
       </div>
       <dl className="debt-terms">
@@ -61,27 +63,27 @@ export function DebtDrawer({ debtId, onClose }: { debtId: string; onClose: () =>
       <div className="drawer-actions">
         <button type="button" className="btn btn-primary" onClick={() => actions.record(debt, 'DEBT_PAYMENT')}>
           <HandCoins size={14} aria-hidden />
-          Pay
+          {t.debts.pay}
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => actions.record(debt, 'DEBT_CHARGE')}>
           <CreditCard size={14} aria-hidden />
-          New charge
+          {t.debts.newCharge}
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => actions.record(debt, 'DEBT_INTEREST')}>
           <Percent size={14} aria-hidden />
-          Interest
+          {t.debts.interest}
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => actions.edit(debt)}>
           <Pencil size={14} aria-hidden />
-          Edit
+          {t.common.edit}
         </button>
         <button type="button" className="btn btn-danger" onClick={() => actions.remove(debt)}>
           <Trash2 size={14} aria-hidden />
-          Remove
+          {t.common.remove}
         </button>
       </div>
-      <h3 className="section-title">Activity</h3>
-      <ActivityList debtId={debt.id} empty="Nothing recorded for this debt yet" />
+      <h3 className="section-title">{t.debts.activity}</h3>
+      <ActivityList debtId={debt.id} empty={t.debts.nothingYet} />
     </Modal>
   );
 }

@@ -23,6 +23,10 @@ Estas specs cubren los dos repositorios:
 | [F5-personalizacion.md](F5-personalizacion.md) | Clases de activo (crear, renombrar, borrar, color, liquidez, retorno por defecto) y miniaturas de plataformas (letras, color, tipo, renombrar). Vista Settings. |
 | [F6-historial-por-periodos.md](F6-historial-por-periodos.md) | Períodos de análisis en History, estadísticas, desglose del cambio, checkpoints pasados. |
 | [F7-ux-global.md](F7-ux-global.md) | Responsive/móvil, modo privacidad, acciones rápidas y atajos, exportar datos, snapshot automático. |
+| [F8-color-de-letra.md](F8-color-de-letra.md) | Color de letra de las miniaturas de plataformas, aparte del fondo. |
+| [F9-simplificacion-visual.md](F9-simplificacion-visual.md) | Menos ruido, menos tarjetas, menú ⋯ por fila, pestañas en History y Settings, Platforms dentro de Assets. |
+| [F10-idioma.md](F10-idioma.md) | Español e inglés: preferencia de la cuenta y del dispositivo, formatos, errores de la API traducidos. |
+| [F8-F10-plan.md](F8-F10-plan.md) | Análisis y plan: color de letra en miniaturas (F8), simplificación visual (F9), idioma español/inglés (F10). |
 
 ## Estado
 
@@ -36,6 +40,9 @@ Estas specs cubren los dos repositorios:
 | F5 — Personalización | Hecha | ✔ | ✔ |
 | F6 — Historial por períodos | Hecha | ✔ | ✔ |
 | F7 — UX global | Hecha | ✔ | ✔ |
+| F8 — Color de letra en miniaturas | Hecha | ✔ | ✔ |
+| F9 — Simplificación visual | Hecha | — | ✔ |
+| F10 — Idioma | Hecha | ✔ | ✔ |
 
 Estados posibles: *Borrador* → *Lista para implementar* → *En curso* → *Hecha*.
 

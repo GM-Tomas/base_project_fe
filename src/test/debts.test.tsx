@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Debt, Movement, MovementDebt } from '@/types/wealth';
-import { installFakeBackend, json, nav, newItem, point, projection, renderApp, requests, routes, snapshot, summary } from './harness';
+import { installFakeBackend, json, nav, newItem, point, projection, renderApp, requests, routes, rowAction, snapshot, summary, tab } from './harness';
 
 // F3: debts. The Debts view, adding, editing and removing one, paying it (from an asset or not), new charges
 // and interest, its panel, and what debts do to the dashboard, Estimate and History. The backend is faked
@@ -94,7 +94,6 @@ describe('Debts view', () => {
     nav('Debts');
 
     expect(screen.getByRole('heading', { name: 'Debts' })).toBeTruthy();
-    expect(screen.getByText("What you owe, what it costs and when it's paid off.")).toBeTruthy();
     expect(screen.getByText('Nothing owed')).toBeTruthy();
     expect(screen.getByText('If you have a card balance, a loan or a mortgage, add it to see your real net worth.')).toBeTruthy();
     // New ▾ in the header adds a debt, as the empty state's button does.
@@ -110,7 +109,7 @@ describe('Debts view', () => {
     nav('Debts');
 
     const overview = document.querySelector('.debt-overview') as HTMLElement;
-    const card = (kicker: string) => within(overview).getByText(kicker).closest('.card') as HTMLElement;
+    const card = (kicker: string) => within(overview).getByText(kicker).closest('.figure') as HTMLElement;
     expect(within(card('You owe')).getByText('$10,150')).toBeTruthy();
     expect(within(card('You owe')).getByText('3 debts')).toBeTruthy();
     expect(within(card('Monthly payments')).getByText('$400')).toBeTruthy();
@@ -237,7 +236,7 @@ describe('add, edit and remove a debt', () => {
     routes['PATCH /api/v1/debts/d1'] = () => json({ ...VISA, balanceUsd: 1_000, interestRatePct: null });
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Visa' }));
+    rowAction('Visa', 'Edit');
     const d = dialog('Edit debt');
 
     // Nothing changed yet: nothing to save.
@@ -284,7 +283,7 @@ describe('add, edit and remove a debt', () => {
     routes['PATCH /api/v1/debts/d1'] = () => json({ status: 404, detail: 'Debt d1 not found' }, 404);
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Visa' }));
+    rowAction('Visa', 'Edit');
     const d = dialog('Edit debt');
 
     fill(d, 'Lender (optional)', '');
@@ -322,7 +321,7 @@ describe('add, edit and remove a debt', () => {
     };
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Visa' }));
+    rowAction('Visa', 'Remove');
     const confirm = dialog('Remove Visa?');
 
     expect(
@@ -345,7 +344,7 @@ describe('payments, new charges and interest', () => {
     routes['DELETE /api/v1/movements/m1'] = () => new Response(null, { status: 204 });
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getByRole('button', { name: 'Pay Visa' }));
+    rowAction('Visa', 'Pay');
     const d = dialog('Record a payment');
 
     expect(within(d).getByText('Visa · Santander · $1,250.40 left to pay')).toBeTruthy();
@@ -390,7 +389,7 @@ describe('payments, new charges and interest', () => {
     routes['POST /api/v1/movements'] = () => json(movement('m2', 'DEBT_CHARGE'), 201);
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getByRole('button', { name: 'Pay Visa' }));
+    rowAction('Visa', 'Pay');
     let d = dialog('Record a payment');
 
     // The amount was untouched: switching drops it, and coming back fills it in again.
@@ -435,7 +434,7 @@ describe('payments, new charges and interest', () => {
     routes['POST /api/v1/movements'] = () => json({ status: 409, detail: 'Visa only has $1,000.00 left to pay.' }, 409);
     await renderApp();
     nav('Debts');
-    fireEvent.click(screen.getByRole('button', { name: 'Pay Mom' }));
+    rowAction('Mom', 'Pay');
     const d = dialog('Record a payment');
 
     // No monthly payment: nothing to start from.
@@ -534,34 +533,28 @@ describe("a debt's panel", () => {
 });
 
 describe('net worth with debts', () => {
-  it('shows the net worth with the assets and debts behind it, and what is owed', async () => {
+  it('shows the net worth with the assets and debts behind it, and what is owed a month', async () => {
     withDebts();
     await renderApp();
 
-    expect(screen.getByText('Your net worth, right now')).toBeTruthy();
-    expect(screen.getByText('Assets $22,496 · Debts $10,150')).toBeTruthy();
-    const owe = screen.getByText('You owe').closest('button') as HTMLElement;
-    expect(within(owe).getByText('$10,150')).toBeTruthy();
-    expect(within(owe).getByText('3 debts · $400 a month')).toBeTruthy();
-    fireEvent.click(owe);
+    const hero = screen.getByRole('region', { name: 'Net worth' });
+    expect(hero.querySelector('.hero-split')!.textContent).toBe('Assets $22,496 · Debts $10,150 · $400 a month');
+    fireEvent.click(within(hero).getByRole('button', { name: 'Debts $10,150' }));
     expect(screen.getByRole('heading', { name: 'Debts' })).toBeTruthy();
   });
 
-  it('shows a net worth below zero in red, and nothing owed without debts', async () => {
+  it('shows a net worth below zero in red', async () => {
     routes['GET /api/v1/wealth/summary'] = () =>
       json(summary({ netWorth: { usd: -5_000 }, assets: { usd: 1_000 }, debts: { usd: 6_000, count: 1, monthlyPaymentUsd: 0 } }));
     routes['GET /api/v1/debts'] = () => json([MOM]);
     await renderApp(undefined, '−$5,000');
 
     expect(screen.getByText('−$5,000').style.color).toBe('var(--color-negative)');
-    expect(screen.getByText('1 debt')).toBeTruthy();
+    expect(document.querySelector('.hero-split')!.textContent).toBe('Assets $1,000 · Debts $6,000');
   });
 
-  it('has nothing owed on the dashboard without debts, and the hero has no split', async () => {
+  it('says nothing about debts on the dashboard without them', async () => {
     await renderApp();
-
-    expect(screen.getByText('Nothing owed')).toBeTruthy();
-    expect(screen.getByText('Cards, loans or a mortgage go in Debts')).toBeTruthy();
     expect(document.querySelector('.hero-split')).toBeNull();
   });
 
@@ -602,7 +595,9 @@ describe('net worth with debts', () => {
     await renderApp();
     nav('History');
 
+    tab('Checkpoints');
     expect(screen.getByText('Assets $19,000 · Debts $10,000')).toBeTruthy();
+    tab('Activity');
     const list = await screen.findByRole('list', { name: 'Activity' });
     const [payment] = within(list).getAllByRole('listitem');
     expect(within(payment).getByText('Payment · Visa')).toBeTruthy();
@@ -617,7 +612,7 @@ describe('net worth with debts', () => {
     const query = new URL(requests('GET', '/api/v1/movements')[1][0]).searchParams;
     expect(query.get('debtId')).toBe('d1');
     expect(query.get('holdingId')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Debts', pressed: false }));
+    fireEvent.change(screen.getByLabelText('Kind of change'), { target: { value: 'debts' } });
     await waitFor(() => expect(requests('GET', '/api/v1/movements')).toHaveLength(3));
     expect(new URL(requests('GET', '/api/v1/movements')[2][0]).searchParams.get('kind')).toBe('DEBT_PAYMENT,DEBT_CHARGE,DEBT_INTEREST');
   });

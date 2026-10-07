@@ -11,6 +11,7 @@ import type { ExpectedReturnItem } from '@/lib/api';
 import { formatCurrency } from '@/lib/calculations';
 import { expectedReturnOf, formatReturn, parsePercent } from '@/lib/returns';
 import type { Holding } from '@/types/wealth';
+import { useT } from '@/lib/i18n';
 
 const textOf = (pct: number | null) => (pct === null ? '' : String(pct));
 
@@ -20,6 +21,8 @@ const textOf = (pct: number | null) => (pct === null ? '' : String(pct));
 export function ExpectedReturnsDialog({ onClose }: { onClose: () => void }) {
   const { holdings, setExpectedReturns } = useWealth();
   const { toast } = useUi();
+  const tAll = useT();
+  const t = tAll.returns;
   const [typed, setTyped] = useState<Record<string, string>>(() =>
     Object.fromEntries(holdings.map((h) => [h.id, textOf(h.expectedReturnPct)])),
   );
@@ -53,7 +56,7 @@ export function ExpectedReturnsDialog({ onClose }: { onClose: () => void }) {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (invalid.length) {
-      setError(`Check the return of ${invalid.map((h) => h.name).join(', ')}`);
+      setError(t.check(invalid.map((h) => h.name).join(', ')));
       return;
     }
     if (changes.length === 0) {
@@ -65,19 +68,17 @@ export function ExpectedReturnsDialog({ onClose }: { onClose: () => void }) {
     try {
       await setExpectedReturns(changes);
     } catch (err) {
-      setError(errorMessage(err, "Couldn't save the returns. Please try again."));
+      setError(errorMessage(err, t.failed));
       setSaving(false);
       return;
     }
-    toast.success('Expected returns saved');
+    toast.success(t.saved);
     onClose();
   };
 
   return (
-    <Modal title="Set expected returns" onClose={onClose} busy={saving} className="dialog-wide">
-      <div className="dialog-subtitle">
-        Roughly how much each one grows in a year. Leave empty if you don&apos;t know: it counts as 0%.
-      </div>
+    <Modal title={t.title} onClose={onClose} busy={saving} className="dialog-wide">
+      <div className="dialog-subtitle">{t.subtitle}</div>
       {error && <FormError>{error}</FormError>}
 
       <form onSubmit={save} noValidate className="dialog-form">
@@ -90,9 +91,9 @@ export function ExpectedReturnsDialog({ onClose }: { onClose: () => void }) {
                 <legend>{assetClass}</legend>
                 <div className="returns-apply">
                   <PercentInput
-                    label={`Return for all of ${assetClass}`}
+                    label={t.forAllOf(assetClass)}
                     hideLabel
-                    placeholder="Same for all"
+                    placeholder={t.sameForAll}
                     value={classText}
                     onChange={(text) => setClassTyped((current) => ({ ...current, [assetClass]: text }))}
                   />
@@ -101,9 +102,9 @@ export function ExpectedReturnsDialog({ onClose }: { onClose: () => void }) {
                     className="btn btn-secondary"
                     disabled={!classText.trim() || classParsed.error !== undefined}
                     onClick={() => applyToClass(assetClass, members)}
-                    aria-label={`Apply to ${assetClass}`}
+                    aria-label={t.applyTo(assetClass)}
                   >
-                    Apply to class
+                    {t.applyToClass}
                   </button>
                 </div>
                 {members.map((h) => (
@@ -115,7 +116,7 @@ export function ExpectedReturnsDialog({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                     <PercentInput
-                      label={`Expected return of ${h.name}`}
+                      label={t.of(h.name)}
                       hideLabel
                       placeholder="—"
                       value={typed[h.id] ?? ''}
@@ -131,25 +132,21 @@ export function ExpectedReturnsDialog({ onClose }: { onClose: () => void }) {
 
         <div className="preview" aria-live="polite">
           {preview.weightedPct === null ? (
-            'Add assets to see what your portfolio would earn.'
+            t.addAssets
           ) : (
             <>
-              <div>
-                Your portfolio: {formatReturn(preview.weightedPct)} a year · ≈ {formatCurrency(preview.annualUsd)}
-              </div>
-              <div className="text-muted">
-                {preview.coveragePct === 100 ? 'Every asset has a return' : `Based on ${formatReturn(preview.coveragePct)} of your portfolio`}
-              </div>
+              <div>{t.portfolio(formatReturn(preview.weightedPct), formatCurrency(preview.annualUsd))}</div>
+              <div className="text-muted">{preview.coveragePct === 100 ? t.everyAsset : t.basedOn(formatReturn(preview.coveragePct))}</div>
             </>
           )}
         </div>
 
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {tAll.common.cancel}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : changes.length ? `Save ${changes.length} ${changes.length === 1 ? 'return' : 'returns'}` : 'Save'}
+            {saving ? tAll.common.saving : changes.length ? t.saveN(changes.length) : tAll.common.save}
           </button>
         </div>
       </form>

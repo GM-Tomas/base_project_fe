@@ -4,14 +4,15 @@ import React from 'react';
 import { formatCurrency, formatSignedCurrency as signed, formatSignedPercentage as percent } from '@/lib/calculations';
 import { formatDay } from '@/lib/movements';
 import type { PeriodPoint, PeriodStats as Stats, Stretch } from '@/lib/periods';
+import { messages, useT } from '@/lib/i18n';
 
-const when = (p: PeriodPoint) => (p.snapshot ? formatDay(p.snapshot.capturedAt) : 'today');
+const when = (p: PeriodPoint) => (p.snapshot ? formatDay(p.snapshot.capturedAt) : messages().stats.today);
 const pctOf = (s: Stretch) => (s.pct === null ? '' : ` (${percent(s.pct)})`);
 const tone = (usd: number) => (usd > 0 ? 'stat-up' : usd < 0 ? 'stat-down' : '');
 
-function Stat({ label, value, sub, className, wide }: { label: string; value: string; sub: string; className?: string; wide?: boolean }) {
+function Stat({ label, value, sub, className }: { label: string; value: string; sub: string; className?: string }) {
   return (
-    <div className={wide ? 'stat stat-wide' : 'stat'}>
+    <div className="figure">
       <div className="stat-label">{label}</div>
       <div className={className ? `stat-value ${className}` : 'stat-value'}>{value}</div>
       <div className="stat-sub">{sub}</div>
@@ -19,45 +20,52 @@ function Stat({ label, value, sub, className, wide }: { label: string; value: st
   );
 }
 
-// What a period's points say: how much it changed (and annualized, with enough time), its high and low, the
-// worst drop from a high, and the best and worst stretch between two checkpoints in a row.
+// What a period's points say: how much it changed (and annualized, with enough time) and the worst drop
+// from a high; folded away, its high and low and the best and worst stretch between two checkpoints in a row.
 export function PeriodStats({ stats }: { stats: Stats }) {
   const { change, start, end, annualizedPct, high, low, drawdown, best, worst } = stats;
+  const t = useT().stats;
   return (
-    <div className="stats-grid" aria-label="This period in figures" role="group">
-      <Stat
-        label="Change"
-        wide
-        value={`${signed(change.usd)}${pctOf(change)}`}
-        sub={`From ${formatCurrency(start.value)} on ${when(start)} to ${formatCurrency(end.value)}${end.snapshot ? ` on ${when(end)}` : ' today'}`}
-        className={tone(change.usd)}
-      />
-      <Stat
-        label="Annualized change"
-        value={annualizedPct === null ? '—' : `${percent(annualizedPct)} a year`}
-        sub={annualizedPct === null ? 'Needs 90 days or more, from above zero' : 'Includes what you saved, not just returns'}
-        className={annualizedPct === null ? undefined : tone(annualizedPct)}
-      />
-      <Stat label="High" value={formatCurrency(high.value)} sub={when(high)} />
-      <Stat label="Low" value={formatCurrency(low.value)} sub={when(low)} />
-      <Stat
-        label="Biggest drop"
-        value={drawdown ? `${signed(drawdown.usd)}${pctOf(drawdown)}` : 'None'}
-        sub={drawdown ? `From the high of ${when(drawdown.from)} to ${when(drawdown.to)}` : 'It never fell from a high'}
-        className={drawdown ? 'stat-down' : undefined}
-      />
-      <Stat
-        label="Best stretch"
-        value={best ? `${signed(best.usd)}${pctOf(best)}` : '—'}
-        sub={best ? `${when(best.from)} → ${when(best.to)}` : 'No rise between two checkpoints'}
-        className={best ? 'stat-up' : undefined}
-      />
-      <Stat
-        label="Worst stretch"
-        value={worst ? `${signed(worst.usd)}${pctOf(worst)}` : '—'}
-        sub={worst ? `${when(worst.from)} → ${when(worst.to)}` : 'No fall between two checkpoints'}
-        className={worst ? 'stat-down' : undefined}
-      />
-    </div>
+    <section className="period-figures" aria-label={t.group} role="group">
+      <div className="card elev-sm figures figures-3">
+        <Stat
+          label={t.change}
+          value={`${signed(change.usd)}${pctOf(change)}`}
+          sub={t.changeSub(formatCurrency(start.value), when(start), formatCurrency(end.value), end.snapshot ? when(end) : null)}
+          className={tone(change.usd)}
+        />
+        <Stat
+          label={t.annualized}
+          value={annualizedPct === null ? '—' : t.aYear(percent(annualizedPct))}
+          sub={annualizedPct === null ? t.needs90 : t.includesSaved}
+          className={annualizedPct === null ? undefined : tone(annualizedPct)}
+        />
+        <Stat
+          label={t.biggestDrop}
+          value={drawdown ? `${signed(drawdown.usd)}${pctOf(drawdown)}` : t.none}
+          sub={drawdown ? t.fromHigh(when(drawdown.from), when(drawdown.to)) : t.neverFell}
+          className={drawdown ? 'stat-down' : undefined}
+        />
+      </div>
+      <details className="more">
+        <summary>{t.more}</summary>
+        <div className="card elev-sm figures">
+          <Stat label={t.high} value={formatCurrency(high.value)} sub={when(high)} />
+          <Stat label={t.low} value={formatCurrency(low.value)} sub={when(low)} />
+          <Stat
+            label={t.best}
+            value={best ? `${signed(best.usd)}${pctOf(best)}` : '—'}
+            sub={best ? `${when(best.from)} → ${when(best.to)}` : t.noRise}
+            className={best ? 'stat-up' : undefined}
+          />
+          <Stat
+            label={t.worst}
+            value={worst ? `${signed(worst.usd)}${pctOf(worst)}` : '—'}
+            sub={worst ? `${when(worst.from)} → ${when(worst.to)}` : t.noFall}
+            className={worst ? 'stat-down' : undefined}
+          />
+        </div>
+      </details>
+    </section>
   );
 }

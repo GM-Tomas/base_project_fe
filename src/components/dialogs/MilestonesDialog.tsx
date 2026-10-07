@@ -9,6 +9,7 @@ import { FormError } from '@/components/ui/FormError';
 import { IconButton } from '@/components/ui/IconButton';
 import { exactUsd, parseAmount } from '@/lib/money';
 import { DEFAULT_ESTIMATE, MAX_MILESTONE_USD, MAX_MILESTONES } from '@/lib/preferences';
+import { useT } from '@/lib/i18n';
 
 const textsOf = (amounts: number[]) => amounts.map((a) => String(a));
 
@@ -17,6 +18,8 @@ export function MilestonesDialog({ onClose }: { onClose: () => void }) {
   const { estimatePrefs, setEstimatePrefs } = useWealth();
   const [texts, setTexts] = useState(() => textsOf(estimatePrefs.milestonesUsd));
   const [error, setError] = useState('');
+  const tAll = useT();
+  const t = tAll.milestones;
 
   const set = (i: number, text: string) => setTexts((current) => current.map((t, j) => (j === i ? text : t)));
 
@@ -27,11 +30,11 @@ export function MilestonesDialog({ onClose }: { onClose: () => void }) {
     for (const text of filled) {
       const parsed = parseAmount(text);
       if (parsed.error !== undefined) {
-        setError(`"${text}": ${parsed.error}`);
+        setError(t.notAnAmount(text, parsed.error));
         return;
       }
       if (parsed.value <= 0 || parsed.value > MAX_MILESTONE_USD) {
-        setError(`Milestones go from more than $0 up to ${exactUsd(MAX_MILESTONE_USD)}`);
+        setError(t.range(exactUsd(MAX_MILESTONE_USD)));
         return;
       }
       amounts.push(parsed.value);
@@ -42,20 +45,20 @@ export function MilestonesDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title="Edit milestones" onClose={onClose}>
-      <div className="dialog-subtitle">The amounts of net worth Estimate tells you when you reach, up to {MAX_MILESTONES}.</div>
+    <Modal title={t.title} onClose={onClose}>
+      <div className="dialog-subtitle">{t.subtitle(MAX_MILESTONES)}</div>
       {error && <FormError>{error}</FormError>}
 
       <form onSubmit={save} noValidate className="dialog-form">
         {texts.map((text, i) => (
           <div key={i} className="milestone-row">
-            <MoneyInput label={`Milestone ${i + 1}`} value={text} onChange={(t) => set(i, t)} placeholder="e.g. 500,000" />
-            <IconButton label={`Remove milestone ${i + 1}`} onClick={() => setTexts((current) => current.filter((_, j) => j !== i))}>
+            <MoneyInput label={t.milestone(i + 1)} value={text} onChange={(typed) => set(i, typed)} placeholder={t.placeholder} />
+            <IconButton label={t.remove(i + 1)} onClick={() => setTexts((current) => current.filter((_, j) => j !== i))}>
               <X size={15} aria-hidden />
             </IconButton>
           </div>
         ))}
-        {texts.length === 0 && <div className="text-muted">No milestones: Estimate shows just where you&apos;re headed.</div>}
+        {texts.length === 0 && <div className="text-muted">{t.none}</div>}
         <div className="milestone-tools">
           <button
             type="button"
@@ -63,19 +66,19 @@ export function MilestonesDialog({ onClose }: { onClose: () => void }) {
             disabled={texts.length >= MAX_MILESTONES}
             onClick={() => setTexts((current) => [...current, ''])}
           >
-            Add a milestone
+            {t.add}
           </button>
           <button type="button" className="link-btn link-accent" onClick={() => setTexts(textsOf(DEFAULT_ESTIMATE.milestonesUsd))}>
-            Reset to $150k and $250k
+            {t.reset}
           </button>
         </div>
 
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Cancel
+            {tAll.common.cancel}
           </button>
           <button type="submit" className="btn btn-primary">
-            Save milestones
+            {t.save}
           </button>
         </div>
       </form>

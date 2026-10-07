@@ -3,6 +3,7 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { useT } from '@/lib/i18n';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -24,6 +25,7 @@ export interface ModalProps {
 // moves in when it opens, stays inside (Tab cycles), and goes back to what opened it when it closes.
 export function Modal({ title, onClose, children, busy = false, initialFocusRef, className, variant = 'dialog' }: ModalProps) {
   const titleId = useId();
+  const t = useT();
   const dialogRef = useRef<HTMLDivElement>(null);
   // A click only closes it if the press started on the backdrop too: selecting text in a field and letting
   // go outside the dialog mustn't throw the form away.
@@ -92,7 +94,7 @@ export function Modal({ title, onClose, children, busy = false, initialFocusRef,
         {drawer ? (
           <div className="dialog-header">
             {heading}
-            <button type="button" className="icon-btn" aria-label="Close" title="Close" onClick={onClose} disabled={busy}>
+            <button type="button" className="icon-btn" aria-label={t.common.close} title={t.common.close} onClick={onClose} disabled={busy}>
               <X size={16} aria-hidden />
             </button>
           </div>

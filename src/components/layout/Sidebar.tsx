@@ -5,11 +5,13 @@ import { useWealth } from '@/context/WealthContext';
 import { useAuth } from '@/context/AuthContext';
 import { ProfileModal } from '@/components/modals/ProfileModal';
 import { accountLabel } from '@/lib/account';
+import { useT } from '@/lib/i18n';
 import { NAV_ITEMS } from './navItems';
 
 export const Sidebar: React.FC = () => {
   const { view, setView } = useWealth();
   const { user } = useAuth();
+  const t = useT();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const { name, initial } = accountLabel(user);
@@ -35,26 +37,11 @@ export const Sidebar: React.FC = () => {
           <path d="M16 2L29 9V23L16 30L3 23V9L16 2Z" stroke="var(--color-accent)" strokeWidth="1.6" />
           <circle cx="16" cy="16" r="5.5" fill="var(--color-accent)" opacity="0.9" />
         </svg>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: '17px', letterSpacing: '0.02em', color: 'var(--color-text)' }}>
-            BASE
-          </div>
-          <div
-            style={{
-              fontSize: '9.5px',
-              letterSpacing: '0.08em',
-              color: 'color-mix(in srgb, var(--color-text) 50%, transparent)',
-              textTransform: 'uppercase',
-              marginTop: '1px',
-            }}
-          >
-            Your money, together
-          </div>
-        </div>
+        <div style={{ fontWeight: 600, fontSize: '17px', letterSpacing: '0.02em', color: 'var(--color-text)' }}>BASE</div>
       </div>
 
       {/* Navigation Links */}
-      <nav aria-label="Main" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <nav aria-label={t.nav.main} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
         {NAV_ITEMS.map((item) => {
           const isActive = view === item.id;
           return (
@@ -74,16 +61,14 @@ export const Sidebar: React.FC = () => {
                 fontWeight: isActive ? 500 : 400,
                 color: isActive ? 'var(--color-accent)' : 'var(--color-text)',
                 background: isActive ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
-                border: isActive
-                  ? '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)'
-                  : '1px solid transparent',
+                border: 'none',
                 textAlign: 'left',
                 width: '100%',
                 transition: 'all 0.15s ease',
               }}
             >
               {item.icon}
-              <span>{item.label}</span>
+              <span>{t.nav[item.id]}</span>
             </button>
           );
         })}

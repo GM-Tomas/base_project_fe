@@ -2,6 +2,7 @@
 
 import React, { useId } from 'react';
 import { today } from '@/lib/movements';
+import { useT } from '@/lib/i18n';
 
 export interface DateInputProps {
   label?: string;
@@ -11,11 +12,12 @@ export interface DateInputProps {
 }
 
 // The day something happened: the browser's date picker, up to today in the user's time zone.
-export function DateInput({ label = 'Date', value, onChange }: DateInputProps) {
+export function DateInput({ label, value, onChange }: DateInputProps) {
   const id = useId();
+  const t = useT();
   return (
     <div className="field">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>{label ?? t.common.date}</label>
       <input
         id={id}
         className="input"

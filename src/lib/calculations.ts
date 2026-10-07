@@ -1,4 +1,9 @@
 import { amountsHidden, HIDDEN_AMOUNT } from './privacy';
+import { intlLocale } from './i18n';
+
+/** A number in the app's language, with up to `digits` decimals (exactly that many with `fixed`). */
+export const formatNumber = (n: number, digits = 0, fixed = false) =>
+  n.toLocaleString(intlLocale(), { maximumFractionDigits: digits, minimumFractionDigits: fixed ? digits : 0 });
 
 /**
  * Format a USD value for display, in whole dollars: "$1,234", or "−$1,234" below zero (a net worth can be).
@@ -6,7 +11,7 @@ import { amountsHidden, HIDDEN_AMOUNT } from './privacy';
 export function formatCurrency(valUSD: number): string {
   if (amountsHidden()) return HIDDEN_AMOUNT;
   const rounded = Math.round(valUSD);
-  return (rounded < 0 ? '−$' : '$') + Math.abs(rounded).toLocaleString('en-US');
+  return (rounded < 0 ? '−$' : '$') + formatNumber(Math.abs(rounded));
 }
 
 /** A change in whole dollars, with its sign: "+$1,235", "−$50", "$0". */
@@ -19,14 +24,14 @@ export function formatSignedCurrency(usd: number): string {
 /** A change in %, to a tenth, with its sign: "+12.3%", "−4.0%", "0.0%". */
 export function formatSignedPercentage(pct: number): string {
   const tenths = Math.round(pct * 10);
-  return `${tenths > 0 ? '+' : tenths < 0 ? '−' : ''}${(Math.abs(tenths) / 10).toFixed(1)}%`;
+  return `${tenths > 0 ? '+' : tenths < 0 ? '−' : ''}${formatNumber(Math.abs(tenths) / 10, 1, true)}%`;
 }
 
 /**
  * Format percentage with explicit +/- sign
  */
 export function formatPercentage(n: number): string {
-  return (n > 0 ? '+' : '') + n.toFixed(1) + '%';
+  return (n > 0 ? '+' : n < 0 ? '-' : '') + formatNumber(Math.abs(n), 1, true) + '%';
 }
 
 /**

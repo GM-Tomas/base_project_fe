@@ -1,4 +1,5 @@
 import { amountsHidden, HIDDEN_AMOUNT } from './privacy';
+import { intlLocale, messages } from './i18n';
 
 // Amounts as people type them: "1.234,56" in Argentina, "1,234.56" in the US, with or without "$", "US$",
 // "USD" or spaces. The API keeps 2 decimals, so amounts are rounded to cents here as it rounds them (half-up,
@@ -6,8 +7,6 @@ import { amountsHidden, HIDDEN_AMOUNT } from './privacy';
 
 export type ParsedAmount = { value: number; error?: undefined } | { value?: undefined; error: string };
 
-export const AMOUNT_HINT = 'Enter an amount like 1,234.56';
-export const NEGATIVE_AMOUNT = "Amounts can't be negative";
 
 const CURRENCY = /US\$|USD|\$/gi;
 
@@ -56,23 +55,23 @@ export function parseAmount(raw: string): ParsedAmount {
   let text = raw.replace(/\s/g, '').replace(CURRENCY, '');
   const negative = /^[-−]/.test(text);
   if (negative) text = text.slice(1);
-  if (!/^[\d.,]*\d[\d.,]*$/.test(text)) return { error: AMOUNT_HINT };
+  if (!/^[\d.,]*\d[\d.,]*$/.test(text)) return { error: messages().amounts.hint };
 
   const digits = splitDigits(text);
-  if (!digits || !/^\d*$/.test(digits[0]) || !/^\d*$/.test(digits[1])) return { error: AMOUNT_HINT };
+  if (!digits || !/^\d*$/.test(digits[0]) || !/^\d*$/.test(digits[1])) return { error: messages().amounts.hint };
   const value = toCents(...digits);
-  if (!Number.isFinite(value)) return { error: AMOUNT_HINT };
-  if (negative && value !== 0) return { error: NEGATIVE_AMOUNT };
+  if (!Number.isFinite(value)) return { error: messages().amounts.hint };
+  if (negative && value !== 0) return { error: messages().amounts.negative };
   return { value };
 }
 
-const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+/** formatUsd, also in privacy mode: what goes into a field, or what the user just typed. In the app's language
+ * ("$1,234.56", "$1.234,56"): parseAmount reads both. */
+export const exactUsd = (value: number) =>
+  `${value < 0 ? '-' : ''}$${Math.abs(value).toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** "$1,234.56" — with cents, for previews and anywhere an exact amount matters ("$•••••" in privacy mode). */
-export const formatUsd = (value: number) => (amountsHidden() ? HIDDEN_AMOUNT : usd.format(value));
-
-/** formatUsd, also in privacy mode: what goes into a field, or what the user just typed. */
-export const exactUsd = (value: number) => usd.format(value);
+export const formatUsd = (value: number) => (amountsHidden() ? HIDDEN_AMOUNT : exactUsd(value));
 
 /** An amount that can be below zero (a net worth): "-1,234.56", "−$500", "$-500". */
 export function parseSignedAmount(raw: string): ParsedAmount {
@@ -80,6 +79,6 @@ export function parseSignedAmount(raw: string): ParsedAmount {
   const negative = /^[-−]/.test(text);
   const parsed = parseAmount(negative ? text.slice(1) : text);
   // A second minus ("--5") is a typo, not a negative amount.
-  if (parsed.error !== undefined) return { error: AMOUNT_HINT };
+  if (parsed.error !== undefined) return { error: messages().amounts.hint };
   return { value: negative && parsed.value !== 0 ? -parsed.value : parsed.value };
 }

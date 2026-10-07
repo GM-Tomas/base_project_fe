@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useUi } from '@/context/UiContext';
 import { api } from '@/lib/api';
 import { claimMonth, hasCheckpointThisMonth, releaseMonth } from '@/lib/monthlyCheckpoint';
+import { messages } from '@/lib/i18n';
 
 // With the monthly checkpoint on, saves this month's when the app opens (or when it's turned on) and there's
 // none yet, once: what's recorded, if anything, and the snapshots read again right before.
@@ -27,10 +28,10 @@ export function MonthlyCheckpoint() {
       try {
         if (hasCheckpointThisMonth(await api.getSnapshots(), now)) return;
         await takeSnapshot();
-        toast.success('Monthly checkpoint saved');
+        toast.success(messages().snapshot.monthlySaved);
       } catch {
         releaseMonth(account);
-        toast.error("Couldn't save this month's checkpoint. It'll be tried again next time.");
+        toast.error(messages().snapshot.monthlyFailed);
       }
     })();
     // What's on screen when it's turned on (or the app opens) is what's checked.

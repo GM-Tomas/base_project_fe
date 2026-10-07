@@ -118,23 +118,26 @@ describe('mock API: platforms', () => {
   it('customizes a platform, and resets it', async () => {
     const api = demo();
     const id = platformIdOf('Binance');
-    const p = await api.updatePlatform(id, { avatarText: ' 🟡 ', color: '#F0B90B', type: ' Crypto exchange ' });
-    expect(p).toMatchObject({ name: 'Binance', avatarText: '🟡', color: '#f0b90b', type: 'Crypto exchange', holdingsCount: 2 });
+    const p = await api.updatePlatform(id, { avatarText: ' 🟡 ', color: '#F0B90B', textColor: '#1A1A1A', type: ' Crypto exchange ' });
+    expect(p).toMatchObject({ name: 'Binance', avatarText: '🟡', color: '#f0b90b', textColor: '#1a1a1a', type: 'Crypto exchange', holdingsCount: 2 });
     expect((await api.getSummary()).byPlatform.find((b) => b.name === 'Binance')).toMatchObject({
-      avatarText: '🟡', color: '#f0b90b', type: 'Crypto exchange',
+      avatarText: '🟡', color: '#f0b90b', textColor: '#1a1a1a', type: 'Crypto exchange',
     });
-    const reset = await api.updatePlatform(id, { avatarText: null, color: null, type: null });
-    expect(reset).toMatchObject({ avatarText: null, color: null, type: 'Exchange' }); // the type it had before
+    const reset = await api.updatePlatform(id, { avatarText: null, color: null, textColor: null, type: null });
+    expect(reset).toMatchObject({ avatarText: null, color: null, textColor: null, type: 'Exchange' }); // the type it had before
+    // Only the letters' color is a look worth keeping too.
+    expect(await api.updatePlatform(id, { textColor: '#ffffff' })).toMatchObject({ textColor: '#ffffff', color: null });
     expect((await api.updatePlatform(id, { type: '  ' })).type).toBe('Exchange');
   });
 
   it('checks what is sent', async () => {
     const api = demo();
     await expect(
-      api.updatePlatform(platformIdOf('Binance'), { name: ' ', type: 'x'.repeat(41), avatarText: 'ABC', color: 'red' }),
+      api.updatePlatform(platformIdOf('Binance'), { name: ' ', type: 'x'.repeat(41), avatarText: 'ABC', color: 'red', textColor: '#fff' }),
     ).rejects.toMatchObject({
       status: 400,
-      message: 'Name is required; type must be at most 40 characters; avatarText must be 1 or 2 characters (an emoji counts as one); color must be a hex color like #1a2b3c',
+      message:
+        'Name is required; type must be at most 40 characters; avatarText must be 1 or 2 characters (an emoji counts as one); color must be a hex color like #1a2b3c; textColor must be a hex color like #1a2b3c',
     });
     await expect(api.updatePlatform(platformIdOf('Binance'), { name: 'x'.repeat(121) })).rejects.toMatchObject({ message: 'Name must be at most 120 characters' });
     await expect(api.updatePlatform(platformIdOf('Nowhere'), { color: '#000000' })).rejects.toMatchObject({ status: 404, message: 'Platform not found' });

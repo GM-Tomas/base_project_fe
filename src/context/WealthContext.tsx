@@ -9,13 +9,14 @@ import {
   AssetClass,
   AssetClassInfo,
   ViewType,
+  SettingsTab,
   Movement,
   Debt,
   EstimatePreferences,
   ExpectedReturn,
   Preferences,
 } from '@/types/wealth';
-import { assetClassColor, assetClassTag, platformColor, platformTag } from '@/lib/constants';
+import { assetClassColor, platformColor } from '@/lib/constants';
 import { initialOf } from '@/lib/initial';
 import { formatCurrency, formatPercentage } from '@/lib/calculations';
 import {
@@ -33,9 +34,11 @@ import {
   PlatformPatch,
 } from '@/lib/api';
 import { DEFAULT_PREFERENCES, withDefaults } from '@/lib/preferences';
-import { INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
+import { ALL, INITIAL_ASSETS_TABLE, type AssetsTableState } from '@/lib/assetsTable';
 import { DEFAULT_PERIOD, type PeriodPreset } from '@/lib/periods';
 import { useAmountsHidden } from '@/lib/privacy';
+import { messages, setLanguageSetting, useLanguage, type Language } from '@/lib/i18n';
+import { formatNumber } from '@/lib/calculations';
 
 /** How History is looked at: its period (a preset, or two dates), and whether today's value is in it. */
 export interface HistoryPeriodState {
@@ -53,7 +56,6 @@ interface ClassDistributionItem {
   value: number;
   pct: number;
   color: string;
-  tagClass: string;
   pctLabel: string;
   /** Whether it counts as ready to spend. */
   liquid: boolean;
@@ -68,10 +70,10 @@ interface PlatformCardItem {
   pctLabel: string;
   /** Its color: the user's, or one picked from its name. */
   color: string;
-  tagClass: string;
   /** What its thumbnail shows: the user's text, or its initial. */
   initial: string;
-  isActive: boolean;
+  /** Its thumbnail's letters, if the user picked a color for them. */
+  textColor: string | null;
 }
 
 /** How a class looks: its color (the user's or its default) and, with the user's, the tag that shows it. */
@@ -81,19 +83,21 @@ export interface ClassLook {
   custom: string | null;
 }
 
-/** How a platform's thumbnail looks: the user's text and color, or its initial and a color from its name. */
+/** How a platform's thumbnail looks: the user's text and colors, or its initial and a color from its name. */
 export interface PlatformLook {
   text: string;
   color: string;
+  textColor: string | null;
 }
 
 interface WealthContextType {
   // State
   view: ViewType;
-  selectedPlatform: string | null;
   assetsTable: AssetsTableState;
   /** History's period: it outlives a trip to another view. */
   historyPeriod: HistoryPeriodState;
+  /** Settings' tab: it outlives a trip to another view. */
+  settingsTab: SettingsTab;
   holdings: Holding[];
   /** Largest balance first. */
   debts: Debt[];
@@ -123,12 +127,14 @@ interface WealthContextType {
   /** What the portfolio is expected to earn in a year (each holding's return weighted by value). */
   expectedReturn: ExpectedReturn;
   ytdGrowthFormatted: string;
-  ytdLabel: string;
+  /** "+12.3% since January", or that there's no history yet. */
+  ytdText: string;
+  /** The language the app is in (what's worked out here follows it). */
+  language: Language;
   liquidityPct: number;
   illiquidPct: number;
   classDistribution: ClassDistributionItem[];
   platformDistribution: PlatformCardItem[];
-  selectedPlatformHoldings: Holding[];
   /** The user's classes, in the order they're offered. */
   availableAssetClasses: AssetClass[];
   /** The same, each with how it's set up and what it holds. */
@@ -140,11 +146,13 @@ interface WealthContextType {
 
   // Actions
   setView: (view: ViewType) => void;
-  setSelectedPlatform: (platform: string | null) => void;
-  /** Platforms view, with that platform's holdings open. */
+  /** Assets, showing that platform's (with what can be done there). */
   openPlatform: (platform: string) => void;
   setAssetsTable: React.Dispatch<React.SetStateAction<AssetsTableState>>;
   setHistoryPeriod: React.Dispatch<React.SetStateAction<HistoryPeriodState>>;
+  /** Settings, on one of its tabs. */
+  openSettings: (tab: SettingsTab) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
   /** Changes how Estimate is set up (saved a second later). */
   setEstimatePrefs: (change: (prefs: EstimatePreferences) => EstimatePreferences) => void;
   /** Changes how the app opens (saved at once). A new History period applies to History now too. */
@@ -180,16 +188,16 @@ const WealthContext = createContext<WealthContextType | undefined>(undefined);
 const PREFERENCES_SAVE_DELAY_MS = 1000;
 
 // The API spells a platform as on its earliest holding, so deleting that holding (say, from another
-// device) can change how a selected platform is spelled. Follow it through the holdings it still has; with
-// none left, it's gone.
-function followPlatform(selected: string | null, before: Holding[], after: Holding[]): string | null {
-  if (selected === null || after.some((h) => h.platform === selected)) return selected;
+// device), or renaming the platform, changes how the one Assets is filtered by is spelled. Follow it through
+// the holdings it still has; with none left, it's gone (All).
+function followPlatform(selected: string, before: Holding[], after: Holding[]): string {
+  if (selected === ALL || after.some((h) => h.platform === selected)) return selected;
   const ids = new Set(before.filter((h) => h.platform === selected).map((h) => h.id));
-  return after.find((h) => ids.has(h.id))?.platform ?? null;
+  return after.find((h) => ids.has(h.id))?.platform ?? ALL;
 }
 
 // How a failed load ends the sentence on the error screen: what the API said, if it answered.
-const reason = (e: unknown) => (e instanceof ApiError ? `: ${e.message}` : '. Please try again.');
+const reason = (e: unknown) => (e instanceof ApiError ? messages().app.reason(e.message) : messages().app.tryAgain);
 
 const EMPTY_SUMMARY: WealthSummary = {
   netWorth: { usd: 0 },
@@ -205,10 +213,10 @@ const EMPTY_SUMMARY: WealthSummary = {
 
 export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [view, setViewState] = useState<ViewType>('dashboard');
-  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   // The Assets table's search, filters and order outlive a trip to another view (but not the account).
   const [assetsTable, setAssetsTable] = useState<AssetsTableState>(INITIAL_ASSETS_TABLE);
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriodState>(INITIAL_HISTORY_PERIOD);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const holdingsRef = useRef<Holding[]>([]);
@@ -229,6 +237,8 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Amounts are formatted as "$•••••" in privacy mode: everything that shows them follows it from here.
   const amountsHidden = useAmountsHidden();
+  // Text and numbers on screen follow the language: what's worked out here too.
+  const language = useLanguage();
 
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
   const preferencesRef = useRef<Preferences>(DEFAULT_PREFERENCES);
@@ -273,7 +283,10 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setAssetClassInfos(assetClassesRes.classes ?? []);
     setSnapshots(snapshotsRes);
     setDebts(debtsRes);
-    setSelectedPlatform((selected) => followPlatform(selected, before, holdingsRes));
+    setAssetsTable((table) => {
+      const platform = followPlatform(table.platform, before, holdingsRes);
+      return platform === table.platform ? table : { ...table, platform };
+    });
     setDataVersion((v) => v + 1);
   }, []);
 
@@ -289,6 +302,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (saved && isCurrent() && !pendingSave.current) {
           preferencesRef.current = saved;
           setPreferences(saved);
+          // The account's language, if it has one; "auto" leaves this device's (its browser's, or the one
+          // picked to sign in).
+          if (saved.language !== 'auto') setLanguageSetting(saved.language);
         }
         if (isCurrent() && !opened.current) {
           opened.current = true;
@@ -297,7 +313,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setHistoryPeriod((period) => ({ ...period, preset: start.historyPeriod }));
         }
       } catch (e) {
-        if (isCurrent()) setLoadError(`Couldn't load your data${reason(e)}`);
+        if (isCurrent()) setLoadError(messages().app.loadError(reason(e)));
       } finally {
         if (isCurrent()) setLoading(false);
       }
@@ -342,6 +358,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       changePreferences((prefs) => ({ ...prefs, ...change }), 0);
       const preset = change.historyPeriod;
       if (preset) setHistoryPeriod((period) => ({ ...period, preset }));
+      if (change.language) setLanguageSetting(change.language);
     },
     [changePreferences],
   );
@@ -359,17 +376,18 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Computed values — all sourced from GET /wealth/summary (server-side aggregation), not
   // recomputed from the raw holdings list on every render.
   const netWorthUSD = summary.netWorth.usd;
-  const netWorthFormatted = useMemo(() => formatCurrency(netWorthUSD), [netWorthUSD, amountsHidden]); // eslint-disable-line react-hooks/exhaustive-deps
+  const netWorthFormatted = useMemo(() => formatCurrency(netWorthUSD), [netWorthUSD, amountsHidden, language]); // eslint-disable-line react-hooks/exhaustive-deps
   const assetsUSD = summary.assets.usd;
   const debtsUSD = summary.debts.usd;
   const monthlyDebtPaymentsUSD = summary.debts.monthlyPaymentUsd;
   const expectedReturn = summary.expectedReturn;
-  const ytdGrowthFormatted = useMemo(() => formatPercentage(summary.ytd.growthPct), [summary.ytd.growthPct]);
-  const ytdLabel = useMemo(() => {
-    if (summary.ytd.basis === 'YEAR_START_SNAPSHOT') return 'since January';
-    if (summary.ytd.basis === 'EARLIEST_SNAPSHOT') return 'since your first snapshot';
-    return 'no history yet';
-  }, [summary.ytd.basis]);
+  const ytdGrowthFormatted = useMemo(() => formatPercentage(summary.ytd.growthPct), [summary.ytd.growthPct, language]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ytdText = useMemo(() => {
+    const t = messages().dashboard;
+    if (summary.ytd.basis === 'YEAR_START_SNAPSHOT') return t.sinceJanuary(ytdGrowthFormatted);
+    if (summary.ytd.basis === 'EARLIEST_SNAPSHOT') return t.sinceFirst(ytdGrowthFormatted);
+    return t.noHistory;
+  }, [summary.ytd.basis, ytdGrowthFormatted, language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const liquidityPct = summary.liquidity.liquidPct;
   const illiquidPct = summary.liquidity.illiquidPct;
@@ -387,7 +405,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const platformLook = useCallback(
     (name: string): PlatformLook => {
       const p = platformsByName.get(name);
-      return { text: p?.avatarText ?? initialOf(name), color: p?.color ?? platformColor(name) };
+      return { text: p?.avatarText ?? initialOf(name), color: p?.color ?? platformColor(name), textColor: p?.textColor ?? null };
     },
     [platformsByName],
   );
@@ -399,11 +417,10 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         value: item.valueUsd,
         pct: item.pct,
         color: item.color ?? assetClassColor(item.assetClass),
-        tagClass: assetClassTag(item.assetClass),
-        pctLabel: item.pct.toFixed(1) + '%',
+        pctLabel: formatNumber(item.pct, 1, true) + '%',
         liquid: item.liquid ?? false,
       })),
-    [summary.byAssetClass],
+    [summary.byAssetClass, language], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const platformDistribution = useMemo<PlatformCardItem[]>(
@@ -414,19 +431,13 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         balanceUSD: item.valueUsd,
         balanceFormatted: formatCurrency(item.valueUsd),
         pctOfTotal: item.pct,
-        pctLabel: item.pct.toFixed(1) + '%',
+        pctLabel: formatNumber(item.pct, 1, true) + '%',
         color: item.color ?? platformColor(item.name),
-        tagClass: platformTag(item.type),
         initial: item.avatarText ?? initialOf(item.name),
-        isActive: selectedPlatform === item.name,
+        textColor: item.textColor ?? null,
       })),
-    [summary.byPlatform, selectedPlatform, amountsHidden], // eslint-disable-line react-hooks/exhaustive-deps
+    [summary.byPlatform, amountsHidden, language], // eslint-disable-line react-hooks/exhaustive-deps
   );
-
-  const selectedPlatformHoldings = useMemo(() => {
-    if (!selectedPlatform) return [];
-    return holdings.filter((h) => h.platform === selectedPlatform);
-  }, [holdings, selectedPlatform]);
 
   // Actions. Once a change went through, failing to reload afterwards isn't the change failing: reported
   // as such, it would invite doing it again (a duplicate holding, say). It's the error screen instead.
@@ -434,7 +445,7 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       await refresh();
     } catch (e) {
-      setLoadError(`Your change was saved, but your data couldn't be reloaded${reason(e)}`);
+      setLoadError(messages().app.reloadError(reason(e)));
     }
   }, [refresh]);
 
@@ -619,9 +630,9 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     <WealthContext.Provider
       value={{
         view,
-        selectedPlatform,
         assetsTable,
         historyPeriod,
+        settingsTab,
         holdings,
         debts,
         platforms,
@@ -641,28 +652,29 @@ export const WealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         monthlyDebtPaymentsUSD,
         expectedReturn,
         ytdGrowthFormatted,
-        ytdLabel,
+        ytdText,
+        language,
         liquidityPct,
         illiquidPct,
         classDistribution,
         platformDistribution,
-        selectedPlatformHoldings,
         availableAssetClasses: assetClasses,
         assetClassInfos,
         classLook,
         platformLook,
 
-        setView: (v) => {
-          setViewState(v);
-          setSelectedPlatform(null);
-        },
-        setSelectedPlatform,
+        setView: setViewState,
         openPlatform: (platform) => {
-          setViewState('platforms');
-          setSelectedPlatform(platform);
+          setViewState('assets');
+          setAssetsTable((table) => ({ ...table, query: '', assetClass: ALL, platform }));
         },
         setAssetsTable,
         setHistoryPeriod,
+        openSettings: (tab) => {
+          setSettingsTab(tab);
+          setViewState('settings');
+        },
+        setSettingsTab,
         setEstimatePrefs,
         setGeneralPrefs,
         addHolding,

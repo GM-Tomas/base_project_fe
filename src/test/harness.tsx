@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, vi } from 'vitest';
 import type { Session } from '@supabase/supabase-js';
 import HomePage from '@/app/page';
@@ -44,9 +44,9 @@ export const summary = (over: Partial<WealthSummary> = {}): WealthSummary => ({
     { assetClass: 'Gold', valueUsd: 4345.6, pct: 35.2, count: 2, color: null, liquid: false },
   ],
   byPlatform: [
-    { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null },
-    { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1, avatarText: null, color: null },
-    { name: 'Empty', type: 'Bank', valueUsd: 0, pct: 0, count: 0, avatarText: null, color: null },
+    { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null, textColor: null },
+    { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1, avatarText: null, color: null, textColor: null },
+    { name: 'Empty', type: 'Bank', valueUsd: 0, pct: 0, count: 0, avatarText: null, color: null, textColor: null },
   ],
   ...over,
 });
@@ -71,7 +71,7 @@ export const HOLDINGS = [
 ];
 
 export const platform = (name: string, over: Partial<Platform> = {}): Platform => ({
-  id: `id-${name}`, name, type: 'Other', avatarText: null, color: null, holdingsCount: 0, valueUsd: 0, createdAt: '', ...over,
+  id: `id-${name}`, name, type: 'Other', avatarText: null, color: null, textColor: null, holdingsCount: 0, valueUsd: 0, createdAt: '', ...over,
 });
 
 export const PLATFORMS: Platform[] = [
@@ -210,6 +210,27 @@ export async function renderApp(session: Session | null = SESSION, netWorth = '$
 }
 
 export const nav = (label: string) => fireEvent.click(screen.getByRole('button', { name: label }));
+
+/** Opens a row's ⋯ (an asset's or a debt's) and picks one of its actions ("Edit", "Remove", …). */
+export const rowAction = (subject: string, action: string, within_: HTMLElement = document.body) => {
+  fireEvent.click(within(within_).getByRole('button', { name: `Actions for ${subject}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: action }));
+};
+
+/** Assets, showing one platform's (as Platforms did). */
+export const showPlatform = (name: string) => {
+  nav('Assets');
+  fireEvent.change(screen.getByLabelText('Filter by platform'), { target: { value: name } });
+};
+
+/** Picks one of a view's tabs (History's, Settings'). */
+export const tab = (name: string) => fireEvent.click(screen.getByRole('tab', { name }));
+
+/** Opens Settings on one of its tabs. */
+export const settings = (tabName: string) => {
+  nav('Settings');
+  tab(tabName);
+};
 
 /** Opens New ▾ in the header and picks one of its items ("Asset", "Debt", …). */
 export const newItem = (label: string) => {

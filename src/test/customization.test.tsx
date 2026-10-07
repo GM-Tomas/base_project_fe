@@ -13,7 +13,9 @@ import {
   renderApp,
   requests,
   routes,
+  showPlatform,
   summary,
+  tab,
 } from './harness';
 import { listNames } from '@/components/views/DashboardView';
 
@@ -31,10 +33,10 @@ const click = (name: string | RegExp, within_: HTMLElement = document.body) => f
 const section = (name: string) => screen.getByRole('region', { name });
 const row = (table: HTMLElement, name: string) => within(table).getAllByRole('row').find((r) => r.textContent?.includes(name))!;
 
-async function openSettings() {
+async function openSettings(tabName = 'Classes') {
   await renderApp();
   nav('Settings');
-  await screen.findByRole('heading', { name: 'Asset classes' });
+  tab(tabName);
 }
 
 describe('Settings', () => {
@@ -62,6 +64,7 @@ describe('Settings', () => {
     expect((equity.querySelector('.class-dot') as HTMLElement).style.background).toBe('rgb(255, 0, 0)');
     expect(row(classes, 'Gold').textContent).toContain('Locked in');
 
+    tab('Platforms');
     const platforms = section('Platforms');
     const balanz = row(platforms, 'Balanz');
     expect(balanz.querySelector('.platform-avatar')!.textContent).toBe('BZ');
@@ -172,7 +175,7 @@ describe('Settings', () => {
       balanz = { ...balanz, ...JSON.parse(String(init.body)) };
       return json(balanz);
     };
-    await openSettings();
+    await openSettings('Platforms');
     click('Customize Balanz');
     const form = dialog('Customize Balanz');
     const preview = () => form.querySelector('.platform-preview .platform-avatar')!.textContent;
@@ -183,12 +186,22 @@ describe('Settings', () => {
     expect(preview()).toBe('B');
     type('Thumbnail', ' 🏦 ', form);
     expect(preview()).toBe('🏦');
-    fireEvent.click(within(form).getByRole('radio', { name: 'Amber' }));
+    const picker = (name: string) => within(form).getByRole('group', { name: new RegExp(`^${name}`) });
+    fireEvent.click(within(picker('Background')).getByRole('radio', { name: 'Amber' }));
+    // Letters of their own go on the solid color; a pair hard to tell apart is pointed out.
+    const avatar = () => form.querySelector<HTMLElement>('.platform-preview .platform-avatar')!;
+    expect(avatar().style.color).toBe('rgb(231, 182, 67)');
+    fireEvent.click(within(picker('Text')).getByRole('radio', { name: 'Orange' }));
+    expect(within(form).getByText('Low contrast: the letters may be hard to read.')).toBeTruthy();
+    type('Or your own', '#1A1A1A', picker('Text'));
+    expect(within(form).queryByText('Low contrast: the letters may be hard to read.')).toBeNull();
+    expect(avatar().style.background).toBe('rgb(231, 182, 67)');
+    expect(avatar().style.color).toBe('rgb(26, 26, 26)');
     type('Type', 'Broker', form);
     click('Save changes', form);
 
     expect(await screen.findByText('Changes saved')).toBeTruthy();
-    expect(sent('PATCH', '/api/v1/platforms/id-Balanz')).toEqual({ type: 'Broker', avatarText: '🏦', color: '#e7b643' });
+    expect(sent('PATCH', '/api/v1/platforms/id-Balanz')).toEqual({ type: 'Broker', avatarText: '🏦', color: '#e7b643', textColor: '#1a1a1a' });
     await waitFor(() => expect(row(section('Platforms'), 'Balanz').querySelector('.platform-avatar')!.textContent).toBe('🏦'));
 
     // Reset to default: its initial and a color from its name again.
@@ -199,12 +212,12 @@ describe('Settings', () => {
     expect(again.querySelector('.platform-preview .platform-avatar')!.textContent).toBe('B');
     click('Save changes', again);
     await waitFor(() => expect(requests('PATCH', '/api/v1/platforms/id-Balanz')).toHaveLength(2));
-    expect(sent('PATCH', '/api/v1/platforms/id-Balanz', 1)).toEqual({ avatarText: null, color: null });
+    expect(sent('PATCH', '/api/v1/platforms/id-Balanz', 1)).toEqual({ avatarText: null, color: null, textColor: null });
   });
 
   it('renames a platform onto another (case aside) as a merge, once confirmed', async () => {
     routes['PATCH /api/v1/platforms/id-Balanz'] = () => json(platform('Vault', { holdingsCount: 3 }));
-    await openSettings();
+    await openSettings('Platforms');
     click('Customize Balanz');
     const form = dialog('Customize Balanz');
     type('Name', 'vault', form);
@@ -228,36 +241,40 @@ describe("the user's colors and thumbnails", () => {
             { assetClass: 'Gold', valueUsd: 4345.6, pct: 35.2, count: 2, color: null, liquid: false },
           ],
           byPlatform: [
-            { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1, avatarText: 'BZ', color: '#00ff00' },
-            { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null },
+            { name: 'Balanz', type: 'Broker', valueUsd: 8000, pct: 64.8, count: 1, avatarText: 'BZ', color: '#00ff00', textColor: '#111111' },
+            { name: 'Vault', type: 'Safe', valueUsd: 4345.6, pct: 35.2, count: 2, avatarText: null, color: null, textColor: null },
           ],
         }),
       );
-    routes['GET /api/v1/platforms'] = () => json([platform('Balanz', { avatarText: 'BZ', color: '#00ff00' }), ...PLATFORMS.slice(1)]);
+    routes['GET /api/v1/platforms'] = () => json([platform('Balanz', { avatarText: 'BZ', color: '#00ff00', textColor: '#111111' }), ...PLATFORMS.slice(1)]);
     routes['GET /api/v1/asset-classes'] = () =>
       json({ ...ASSET_CLASSES, classes: [assetClass('Cash'), assetClass('Equity', { color: '#ff0000' }), assetClass('Gold')] });
   };
 
-  it('show on the dashboard, Platforms and Assets', async () => {
+  it("show on the dashboard and in Assets, a platform's too", async () => {
     custom();
     await renderApp();
     // Dashboard: where it lives, and the donut's legend.
     const lives = screen.getByText('Where it lives').parentElement!;
     expect([...lives.querySelectorAll('.platform-avatar')].map((a) => a.textContent)).toEqual(['BZ', 'V']);
-    expect((lives.querySelector('.platform-avatar') as HTMLElement).style.color).toBe('rgb(0, 255, 0)');
+    const balanz = lives.querySelector('.platform-avatar') as HTMLElement;
+    expect(balanz.style.color).toBe('rgb(17, 17, 17)');
+    expect(balanz.style.background).toBe('rgb(0, 255, 0)');
 
-    nav('Platforms');
-    expect(screen.getByText('BZ')).toBeTruthy();
+    showPlatform('Balanz');
+    expect(within(section('Balanz')).getByText('BZ')).toBeTruthy();
     click('Customize Balanz');
     expect(dialog('Customize Balanz')).toBeTruthy();
     click('Cancel', dialog('Customize Balanz'));
+    fireEvent.change(screen.getByLabelText('Filter by platform'), { target: { value: 'All' } });
 
-    nav('Assets');
     const spy = screen.getByRole('row', { name: /SPY/ });
     expect(spy.querySelector('.platform-avatar')!.textContent).toBe('BZ');
+    expect((spy.querySelector('.platform-avatar') as HTMLElement).style.color).toBe('rgb(17, 17, 17)');
+    // A class: a dot of its color, and its name.
     const tag = within(spy).getByText('Equity');
-    expect(tag.className).toBe('tag tag-custom');
-    expect(tag.style.getPropertyValue('--tag-color')).toBe('#ff0000');
+    expect(tag.className).toBe('class-tag');
+    expect((tag.querySelector('.class-dot') as HTMLElement).style.background).toBe('rgb(255, 0, 0)');
     // The class chips show each class's color.
     const chip = screen.getByRole('button', { name: 'Equity', pressed: false });
     expect((chip.querySelector('.class-dot') as HTMLElement).style.background).toBe('rgb(255, 0, 0)');
@@ -271,8 +288,8 @@ describe("the user's colors and thumbnails", () => {
   it('show in the transfer dialog', async () => {
     custom();
     await renderApp();
-    nav('Platforms');
-    click('Transfer from Balanz');
+    showPlatform('Balanz');
+    click('Transfer from here');
     const transfer = dialog('Transfer');
     const from = within(transfer).getAllByLabelText('Platform')[0];
     expect(from.parentElement!.querySelector('.platform-avatar')!.textContent).toBe('BZ');
@@ -296,9 +313,11 @@ describe("the user's colors and thumbnails", () => {
     custom();
     await renderApp();
     const card = screen.getByText('Ready to spend').parentElement!;
-    expect(card.querySelector('.card-body')!.textContent).toBe('Equity you can move quickly · 30% locked in · Change');
+    expect(card.querySelector('.card-body')!.textContent).toBe('Equity · 30% locked in · Change');
     click('Change', card);
-    expect(await screen.findByRole('heading', { name: 'Asset classes' })).toBeTruthy();
+    // Settings, where each class says whether it's ready to spend.
+    expect(screen.getByRole('tab', { name: 'Classes', selected: true })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Asset classes' })).toBeTruthy();
   });
 });
 

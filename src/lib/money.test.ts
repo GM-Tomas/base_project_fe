@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { AMOUNT_HINT, NEGATIVE_AMOUNT, formatUsd, parseAmount, parseSignedAmount } from './money';
+import { formatUsd, parseAmount, parseSignedAmount } from './money';
+import { en } from '@/i18n/en';
+
+const AMOUNT_HINT = en.amounts.hint;
+const NEGATIVE_AMOUNT = en.amounts.negative;
 
 describe('parseAmount', () => {
   it.each([

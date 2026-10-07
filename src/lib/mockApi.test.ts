@@ -25,11 +25,11 @@ describe('mock API (the data previews run on)', () => {
       { assetClass: 'Cash', valueUsd: 12_700, pct: 11.8, count: 2, color: null, liquid: true },
     ]);
     expect(summary.byPlatform).toEqual([
-      { name: 'Interactive Brokers', type: 'Broker', valueUsd: 55_150, pct: 51.3, count: 2, avatarText: null, color: null },
-      { name: 'Binance', type: 'Exchange', valueUsd: 24_570, pct: 22.9, count: 2, avatarText: null, color: null },
-      { name: 'Balanz', type: 'Broker', valueUsd: 15_000, pct: 14, count: 1, avatarText: null, color: null },
-      { name: 'Santander', type: 'Bank', valueUsd: 9_500, pct: 8.8, count: 1, avatarText: null, color: null },
-      { name: 'Mercado Pago', type: 'Wallet', valueUsd: 3_200, pct: 3, count: 1, avatarText: null, color: null },
+      { name: 'Interactive Brokers', type: 'Broker', valueUsd: 55_150, pct: 51.3, count: 2, avatarText: null, color: null, textColor: null },
+      { name: 'Binance', type: 'Exchange', valueUsd: 24_570, pct: 22.9, count: 2, avatarText: null, color: null, textColor: null },
+      { name: 'Balanz', type: 'Broker', valueUsd: 15_000, pct: 14, count: 1, avatarText: null, color: null, textColor: null },
+      { name: 'Santander', type: 'Bank', valueUsd: 9_500, pct: 8.8, count: 1, avatarText: null, color: null, textColor: null },
+      { name: 'Mercado Pago', type: 'Wallet', valueUsd: 3_200, pct: 3, count: 1, avatarText: null, color: null, textColor: null },
     ]);
     expect(summary.liquidity).toEqual({
       liquidPct: 86,
@@ -75,7 +75,7 @@ describe('mock API (the data previews run on)', () => {
     const api = createMockApi(at('2026-10-04T10:00:00Z'));
 
     const platform = (name: string, type: string, created: string, holdingsCount: number, valueUsd: number) => ({
-      id: platformIdOf(name), name, type, avatarText: null, color: null, holdingsCount, valueUsd, createdAt: `2025-${created}-15T00:00:00.000Z`,
+      id: platformIdOf(name), name, type, avatarText: null, color: null, textColor: null, holdingsCount, valueUsd, createdAt: `2025-${created}-15T00:00:00.000Z`,
     });
     expect(await api.getPlatforms()).toEqual([
       platform('Balanz', 'Broker', '05', 1, 15_000),
@@ -311,19 +311,37 @@ describe('mock API (the data previews run on)', () => {
 
   it('keeps how the app opens, checked as the API checks it', async () => {
     const api = createMockApi(at('2026-10-04T10:00:00Z'));
-    expect(await api.getPreferences()).toMatchObject({ autoSnapshot: 'OFF', defaultView: 'dashboard', historyPeriod: '1Y' });
+    expect(await api.getPreferences()).toMatchObject({ autoSnapshot: 'OFF', defaultView: 'dashboard', historyPeriod: '1Y', language: 'auto' });
 
-    const saved = await api.savePreferences({ estimate: { years: 20 } as never, autoSnapshot: 'MONTHLY', defaultView: 'history', historyPeriod: '3M' });
-    expect(saved).toMatchObject({ estimate: { years: 20, contributionUsd: 900 }, autoSnapshot: 'MONTHLY', defaultView: 'history', historyPeriod: '3M' });
+    const saved = await api.savePreferences({
+      estimate: { years: 20 } as never,
+      autoSnapshot: 'MONTHLY',
+      defaultView: 'history',
+      historyPeriod: '3M',
+      language: 'es',
+    });
+    expect(saved).toMatchObject({
+      estimate: { years: 20, contributionUsd: 900 },
+      autoSnapshot: 'MONTHLY',
+      defaultView: 'history',
+      historyPeriod: '3M',
+      language: 'es',
+    });
     // What a PUT leaves out takes its default.
     expect(await api.savePreferences({ estimate: {} as never } as never)).toMatchObject({ autoSnapshot: 'OFF', defaultView: 'dashboard' });
 
     await expect(
-      api.savePreferences({ estimate: {} as never, autoSnapshot: 'WEEKLY' as never, defaultView: 'reports' as never, historyPeriod: 'CUSTOM' as never }),
+      api.savePreferences({
+        estimate: {} as never,
+        autoSnapshot: 'WEEKLY' as never,
+        defaultView: 'reports' as never,
+        historyPeriod: 'CUSTOM' as never,
+        language: 'fr' as never,
+      }),
     ).rejects.toMatchObject({
       status: 400,
       message:
-        'autoSnapshot must be one of OFF, MONTHLY; defaultView must be one of dashboard, platforms, assets, debts, estimate, history, settings; historyPeriod must be one of 1M, 3M, 6M, YTD, 1Y, 3Y, ALL',
+        'autoSnapshot must be one of OFF, MONTHLY; defaultView must be one of dashboard, platforms, assets, debts, estimate, history, settings; historyPeriod must be one of 1M, 3M, 6M, YTD, 1Y, 3Y, ALL; language must be one of auto, en, es',
     });
   });
 

@@ -5,6 +5,7 @@ import { formatCurrency, formatSignedCurrency } from '@/lib/calculations';
 import { compactUsd, niceTicks } from '@/lib/chartScale';
 import { formatDay } from '@/lib/movements';
 import { describeSpan, timeTicks, type PeriodPoint } from '@/lib/periods';
+import { messages, useT } from '@/lib/i18n';
 
 // As the projection's chart: the SVG is stretched to its box, so lines are drawn in its coordinates and the
 // round things and text (dots, axis labels, the tooltip) are laid over it in %.
@@ -28,6 +29,7 @@ export interface HistoryChartProps {
  */
 export function HistoryChart({ points, start, from, to }: HistoryChartProps) {
   const [active, setActive] = useState<number | null>(null);
+  const t = useT().historyChart;
   const ticks = useMemo(() => {
     const values = [...points.map((p) => p.value), ...(start ? [start.value] : [])];
     return niceTicks(Math.min(...values), Math.max(...values));
@@ -67,8 +69,8 @@ export function HistoryChart({ points, start, from, to }: HistoryChartProps) {
   const [first, end] = [points[0], points[last]];
   const label =
     last > 0
-      ? `Net worth from ${formatCurrency(first.value)} to ${formatCurrency(end.value)} over ${describeSpan(first.at, end.at)}`
-      : `Net worth: ${formatCurrency(first.value)}`;
+      ? t.span(formatCurrency(first.value), formatCurrency(end.value), describeSpan(first.at, end.at))
+      : t.single(formatCurrency(first.value));
 
   const point = active !== null ? points[active] : null;
   const previous = active ? points[active - 1] : start && point !== start ? start : null;
@@ -87,7 +89,7 @@ export function HistoryChart({ points, start, from, to }: HistoryChartProps) {
         className="chart-plot"
         tabIndex={0}
         role="group"
-        aria-label={`${label}. Use the arrow keys to read each point.`}
+        aria-label={t.keys(label)}
         onMouseMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
         onMouseLeave={() => setActive(null)}
         onFocus={() => setActive((i) => i ?? last)}
@@ -181,11 +183,12 @@ export function HistoryChart({ points, start, from, to }: HistoryChartProps) {
 // A point's figures, as the tooltip lists them: its value, what it was made of, and its change from the
 // point before.
 function describe(p: PeriodPoint, previous: PeriodPoint | null) {
-  const title = p.snapshot ? `${formatDay(p.snapshot.capturedAt)}${p.snapshot.source === 'MANUAL' ? ' · added by hand' : ''}` : 'Today';
-  const lines: [string, string][] = [['Net worth', formatCurrency(p.value)]];
-  if (p.debts > 0) lines.push(['Assets', formatCurrency(p.assets)], ['Debts', formatCurrency(p.debts)]);
+  const t = messages().historyChart;
+  const title = p.snapshot ? `${formatDay(p.snapshot.capturedAt)}${p.snapshot.source === 'MANUAL' ? t.byHand : ''}` : t.today;
+  const lines: [string, string][] = [[t.netWorth, formatCurrency(p.value)]];
+  if (p.debts > 0) lines.push([t.assets, formatCurrency(p.assets)], [t.debts, formatCurrency(p.debts)]);
   if (previous) {
-    lines.push([`Since ${previous.snapshot ? formatDay(previous.snapshot.capturedAt) : 'today'}`, formatSignedCurrency(p.value - previous.value)]);
+    lines.push([t.since(previous.snapshot ? formatDay(previous.snapshot.capturedAt) : t.todayLower), formatSignedCurrency(p.value - previous.value)]);
   }
   return { title, lines };
 }

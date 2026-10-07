@@ -11,10 +11,9 @@ export const MAX_CLASS_SETTINGS = 100;
 /** Platforms a user can customize. */
 export const MAX_PLATFORM_SETTINGS = 1000;
 
-/** The types offered for a platform; any other (up to 40 characters) is fine too. */
-export const PLATFORM_TYPES = ['Bank', 'Broker', 'Exchange', 'Wallet', 'Other'];
 
 export const COLOR_MESSAGE = 'color must be a hex color like #1a2b3c';
+export const TEXT_COLOR_MESSAGE = 'textColor must be a hex color like #1a2b3c';
 export const AVATAR_MESSAGE = 'avatarText must be 1 or 2 characters (an emoji counts as one)';
 
 /** The design system's colors, as the API keeps them (#rrggbb): its accents, then the hues around them. */
@@ -34,6 +33,49 @@ export const PALETTE: { name: string; hex: string }[] = [
 ];
 
 export const isHexColor = (text: string) => /^#[0-9a-fA-F]{6}$/.test(text);
+
+/**
+ * A color's relative luminance (WCAG 2), from #rrggbb, or oklch(L C H) as the design tokens are written, or
+ * lab(L a b) as the build ships them; null otherwise.
+ */
+export function luminance(color: string): number | null {
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color.trim());
+  const ok = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)/i.exec(color.trim());
+  const lab = /^lab\(\s*([\d.]+)%?\s/i.exec(color.trim());
+  // CIELAB's lightness is luminance, perceptually scaled.
+  if (lab) return +lab[1] > 8 ? ((+lab[1] + 16) / 116) ** 3 : +lab[1] / 903.3;
+  let rgb: number[];
+  if (hex) {
+    rgb = hex.slice(1).map((h) => {
+      const c = parseInt(h, 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+  } else if (ok) {
+    // OKLCH → OKLab → linear sRGB (Björn Ottosson's matrices), clipped to the gamut.
+    const L = +ok[1] / (ok[2] ? 100 : 1);
+    const a = +ok[3] * Math.cos((+ok[4] * Math.PI) / 180);
+    const b = +ok[3] * Math.sin((+ok[4] * Math.PI) / 180);
+    const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+    rgb = [
+      4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+    ].map((v) => Math.min(1, Math.max(0, v)));
+  } else {
+    return null;
+  }
+  return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+}
+
+/** WCAG 2 contrast between two colors, 1 to 21; null if either can't be read. */
+export function contrastRatio(a: string, b: string): number | null {
+  const la = luminance(a);
+  const lb = luminance(b);
+  if (la === null || lb === null) return null;
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
 
 // One segmenter for every call, made on first use (see initial.ts).
 let segmenter: Intl.Segmenter | null | undefined;

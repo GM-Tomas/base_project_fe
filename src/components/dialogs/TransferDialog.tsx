@@ -17,6 +17,7 @@ import { classHint, platformHint } from './HoldingFormDialog';
 import { PlatformSelectFrame } from '@/components/ui/PlatformSelectFrame';
 import { MAX_NOTE, noteFor, noteProblem } from './RecordChangeDialog';
 import { useMovementFeedback } from './useMovementFeedback';
+import { useT } from '@/lib/i18n';
 
 // Choices that aren't a platform or a holding: a destination that doesn't exist yet. Names are typed by
 // users, so these can't be mistaken for one (a platform can't be blank).
@@ -40,6 +41,8 @@ export interface TransferDialogProps {
 export function TransferDialog({ from, platform, onClose }: TransferDialogProps) {
   const { holdings, platforms, availableAssetClasses, recordMovement } = useWealth();
   const { recorded } = useMovementFeedback();
+  const tAll = useT();
+  const t = tAll.transfer;
   const ids = { fromPlatform: useId(), fromAsset: useId(), toPlatform: useId(), toAsset: useId(), name: useId(), note: useId() };
   const platformNames = platforms.map((p) => p.name);
   const on = (name: string) => holdings.filter((h) => h.platform === name).sort(byName);
@@ -109,28 +112,28 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
     source && value && !overdrawn && !feeTooBig && (destination || creating)
       ? {
           from: `${source.platform} · ${source.name}: ${formatUsd(source.valueUsd)} → ${formatUsd(cents(source.valueUsd - value))}`,
-          to: `${destinationPlatform || 'New platform'} · ${destination?.name ?? (normalizeLabel(newName) || 'New asset')}: ${formatUsd(destination?.valueUsd ?? 0)} → ${formatUsd(cents((destination?.valueUsd ?? 0) + value - feeValue))}`,
+          to: `${destinationPlatform || t.newPlatform} · ${destination?.name ?? (normalizeLabel(newName) || t.newAsset)}: ${formatUsd(destination?.valueUsd ?? 0)} → ${formatUsd(cents((destination?.valueUsd ?? 0) + value - feeValue))}`,
         }
       : null;
 
   const problem = () =>
     !source
-      ? 'Choose where the money comes from'
+      ? t.chooseFrom
       : !destination && !creating
-        ? 'Choose where the money goes'
+        ? t.chooseTo
         : creating && !normalizeLabel(newPlatform) && toPlatform === NEW_PLATFORM
-          ? 'Please enter the new platform'
+          ? t.enterNewPlatform
           : creating && !normalizeLabel(newName)
-            ? 'Please enter a name for the new asset'
+            ? t.enterNewName
             : creating && !normalizeLabel(newClass)
-              ? 'Please choose or enter an asset class'
+              ? tAll.holdingForm.enterClass
               : !amount.trim()
-                ? 'Please enter an amount'
+                ? tAll.amounts.enter
                 : (parsedAmount!.error ??
-                  (value === 0 ? 'The amount must be more than 0' : undefined) ??
+                  (value === 0 ? tAll.amounts.moreThanZero : undefined) ??
                   parsedFee?.error ??
-                  (overdrawn ? `You can transfer up to ${formatUsd(source.valueUsd)} from ${source.name}` : undefined) ??
-                  (feeTooBig ? "The fee can't be larger than the amount" : undefined) ??
+                  (overdrawn ? t.upTo(formatUsd(source.valueUsd), source.name) : undefined) ??
+                  (feeTooBig ? t.feeTooBig : undefined) ??
                   dateProblem(date) ??
                   noteProblem(note));
 
@@ -158,7 +161,7 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
     try {
       movement = await recordMovement(input);
     } catch (err) {
-      setError(errorMessage(err, "Couldn't record this transfer. Please try again."));
+      setError(errorMessage(err, t.failed));
       setSaving(false);
       return;
     }
@@ -167,19 +170,19 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
   };
 
   return (
-    <Modal title="Transfer" onClose={onClose} busy={saving} className="dialog-wide">
+    <Modal title={t.title} onClose={onClose} busy={saving} className="dialog-wide">
       {error && <FormError>{error}</FormError>}
 
       <form onSubmit={handleSubmit} noValidate className="dialog-form">
         <fieldset className="form-group">
-          <legend>From</legend>
+          <legend>{t.from}</legend>
           <div className="form-grid-2">
             <div className="field">
-              <label htmlFor={ids.fromPlatform}>Platform</label>
+              <label htmlFor={ids.fromPlatform}>{tAll.common.platform}</label>
               <PlatformSelectFrame platform={fromPlatform}>
                 <select id={ids.fromPlatform} className="input" value={fromPlatform} onChange={(e) => pickFromPlatform(e.target.value)}>
                   <option value={NEW} disabled>
-                    Choose a platform
+                    {t.choosePlatform}
                   </option>
                   {platformNames.map((name) => (
                     <option key={name} value={name}>
@@ -190,7 +193,7 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
               </PlatformSelectFrame>
             </div>
             <div className="field">
-              <label htmlFor={ids.fromAsset}>Asset</label>
+              <label htmlFor={ids.fromAsset}>{tAll.common.asset}</label>
               <select
                 id={ids.fromAsset}
                 className="input"
@@ -199,7 +202,7 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
                 onChange={(e) => pickFrom(e.target.value)}
               >
                 <option value={NEW} disabled>
-                  Choose an asset
+                  {t.chooseAsset}
                 </option>
                 {on(fromPlatform).map((h) => (
                   <option key={h.id} value={h.id}>
@@ -211,53 +214,53 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
           </div>
           {source && (
             <div className="field-hint">
-              Available: {formatUsd(source.valueUsd)}{' '}
+              {t.available(formatUsd(source.valueUsd))}{' '}
               <button type="button" className="link-btn link-accent" onClick={() => setAmount(exactUsd(source.valueUsd))}>
-                Max
+                {t.max}
               </button>
             </div>
           )}
         </fieldset>
 
         <fieldset className="form-group">
-          <legend>To</legend>
+          <legend>{t.to}</legend>
           <div className="form-grid-2">
             <div className="field">
-              <label htmlFor={ids.toPlatform}>Platform</label>
+              <label htmlFor={ids.toPlatform}>{tAll.common.platform}</label>
               <PlatformSelectFrame platform={toPlatform}>
                 <select id={ids.toPlatform} className="input" value={toPlatform} onChange={(e) => pickToPlatform(e.target.value)}>
                   <option value={NEW} disabled>
-                    Choose a platform
+                    {t.choosePlatform}
                   </option>
                   {platformNames.map((name) => (
                     <option key={name} value={name}>
                       {name}
                     </option>
                   ))}
-                  <option value={NEW_PLATFORM}>A new platform…</option>
+                  <option value={NEW_PLATFORM}>{t.newPlatformOption}</option>
                 </select>
               </PlatformSelectFrame>
             </div>
             {toPlatform !== NEW_PLATFORM && (
               <div className="field">
-                <label htmlFor={ids.toAsset}>Asset</label>
+                <label htmlFor={ids.toAsset}>{tAll.common.asset}</label>
                 <select id={ids.toAsset} className="input" value={toId} disabled={!toPlatform} onChange={(e) => pickTo(e.target.value)}>
                   <option value={NEW} disabled>
-                    Choose an asset
+                    {t.chooseAsset}
                   </option>
                   {toChoices.map((h) => (
                     <option key={h.id} value={h.id}>
                       {h.name}
                     </option>
                   ))}
-                  {toPlatform && <option value={NEW_ASSET}>A new asset on {toPlatform}…</option>}
+                  {toPlatform && <option value={NEW_ASSET}>{t.newAssetOption(toPlatform)}</option>}
                 </select>
               </div>
             )}
             {toPlatform === NEW_PLATFORM && (
               <Combobox
-                label="New platform"
-                placeholder="e.g. Balanz"
+                label={t.newPlatform}
+                placeholder={t.newPlatformPlaceholder}
                 value={newPlatform}
                 onChange={setNewPlatform}
                 options={[]}
@@ -268,11 +271,11 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
           {creating && (
             <div className="form-grid-2">
               <div className="field">
-                <label htmlFor={ids.name}>New asset name</label>
+                <label htmlFor={ids.name}>{t.newAssetName}</label>
                 <input id={ids.name} className="input" type="text" value={newName} onChange={(e) => setNewName(e.target.value)} />
               </div>
               <Combobox
-                label="Asset class"
+                label={tAll.common.assetClass}
                 value={newClass}
                 onChange={setNewClass}
                 options={availableAssetClasses}
@@ -283,19 +286,19 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
         </fieldset>
 
         <div className="form-grid-2">
-          <MoneyInput label="Amount (USD)" value={amount} onChange={setAmount} />
-          <MoneyInput label="Fee (USD, optional)" value={fee} onChange={setFee} />
+          <MoneyInput label={tAll.common.amountUsd} value={amount} onChange={setAmount} />
+          <MoneyInput label={t.fee} value={fee} onChange={setFee} />
         </div>
 
         <div className="form-grid-2">
           <DateInput value={date} onChange={setDate} />
           <div className="field">
-            <label htmlFor={ids.note}>Note (optional)</label>
+            <label htmlFor={ids.note}>{tAll.common.noteOptional}</label>
             <input
               id={ids.note}
               className="input"
               type="text"
-              placeholder="e.g. Moving savings"
+              placeholder={t.notePlaceholder}
               maxLength={MAX_NOTE}
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -311,19 +314,19 @@ export function TransferDialog({ from, platform, onClose }: TransferDialogProps)
                 <div>{preview.to}</div>
               </>
             ) : overdrawn ? (
-              `You can transfer up to ${formatUsd(source!.valueUsd)} from ${source!.name}.`
+              `${t.upTo(formatUsd(source!.valueUsd), source!.name)}.`
             ) : (
-              "The fee can't be larger than the amount."
+              `${t.feeTooBig}.`
             )}
           </div>
         )}
 
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {tAll.common.cancel}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving || overdrawn || feeTooBig}>
-            {saving ? 'Transferring…' : 'Transfer'}
+            {saving ? t.transferring : t.title}
           </button>
         </div>
       </form>

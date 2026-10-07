@@ -3,7 +3,8 @@
 import React from 'react';
 import { useWealth } from '@/context/WealthContext';
 import { formatCurrency } from '@/lib/calculations';
-import { averageRate, DEBT_KIND_LABEL, debtFreeOutlook, debtFreeSummary, dueText, formatRate, payoffText } from '@/lib/debts';
+import { averageRate, debtFreeOutlook, debtFreeSummary, debtKindLabel, dueText, formatRate, payoffText } from '@/lib/debts';
+import { useT } from '@/lib/i18n';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DebtRowActions, useDebtActions } from '@/components/dialogs/useDebtActions';
 import { useOpenDebt, useOpenDebtFromRow } from '@/components/dialogs/DebtDrawer';
@@ -21,19 +22,21 @@ export const DebtsView: React.FC = () => {
   const actions = useDebtActions();
   const openDebt = useOpenDebt();
   const openFromRow = useOpenDebtFromRow();
+  const tAll = useT();
+  const t = tAll.debts;
 
   if (debts.length === 0) {
     return (
       <div className="card elev-sm">
         <EmptyState
-          title="Nothing owed"
+          title={t.emptyTitle}
           action={
             <button className="btn btn-primary" onClick={() => actions.add()}>
-              Add a debt
+              {t.emptyButton}
             </button>
           }
         >
-          If you have a card balance, a loan or a mortgage, add it to see your real net worth.
+          {t.emptyText}
         </EmptyState>
       </div>
     );
@@ -45,50 +48,48 @@ export const DebtsView: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      <div className="debt-overview">
-        <div className="card elev-sm">
-          <div className="card-kicker">You owe</div>
+      <section className="card elev-sm figures debt-overview" aria-label={t.overview}>
+        <div className="figure">
+          <div className="card-kicker">{t.youOwe}</div>
           <div className="metric-value">{formatCurrency(debtsUSD)}</div>
-          <div className="card-body">
-            {debts.length} {debts.length === 1 ? 'debt' : 'debts'}
-          </div>
+          <div className="card-body">{tAll.common.debts(debts.length)}</div>
         </div>
-        <div className="card elev-sm">
-          <div className="card-kicker">Monthly payments</div>
+        <div className="figure">
+          <div className="card-kicker">{t.monthlyPayments}</div>
           <div className="metric-value">{formatCurrency(monthlyDebtPaymentsUSD)}</div>
           <div className="card-body">
             {withPayment === 0
-              ? 'None set yet'
+              ? t.noneSet
               : withPayment < debts.length
-                ? `For ${withPayment} of ${debts.length} debts`
-                : (['For your debt', 'For both debts'][debts.length - 1] ?? `For all ${debts.length} debts`)}
+                ? t.forSome(withPayment, debts.length)
+                : ([t.forOne, t.forBoth][debts.length - 1] ?? t.forAll(debts.length))}
           </div>
         </div>
-        <div className="card elev-sm">
-          <div className="card-kicker">Average rate</div>
+        <div className="figure">
+          <div className="card-kicker">{t.averageRate}</div>
           <div className="metric-value">{rate === null ? '—' : formatRate(Math.round(rate * 10) / 10)}</div>
-          <div className="card-body">{rate === null ? 'Add the rates to see it' : 'A year, weighted by balance'}</div>
+          <div className="card-body">{rate === null ? t.addRates : t.weighted}</div>
         </div>
-        <div className="card elev-sm">
+        <div className="figure">
           <div className="card-kicker">{debtFree.label}</div>
           <div className="metric-value" style={{ color: TONE_COLOR[debtFree.tone] }}>
             {debtFree.value}
           </div>
           <div className="card-body">{debtFree.detail}</div>
         </div>
-      </div>
+      </section>
 
       <div className="card elev-sm" style={{ padding: '6px 16px 12px', overflowX: 'auto' }}>
         <table className="table">
           <thead>
             <tr>
-              <th>Debt</th>
-              <th>Left to pay</th>
-              <th>Rate</th>
-              <th>Monthly</th>
-              <th>Paid off</th>
-              <th style={{ width: '104px' }}>
-                <span className="sr-only">Actions</span>
+              <th>{t.columns.debt}</th>
+              <th>{t.columns.leftToPay}</th>
+              <th>{t.columns.rate}</th>
+              <th>{t.columns.monthly}</th>
+              <th>{t.columns.paidOff}</th>
+              <th style={{ width: '48px' }}>
+                <span className="sr-only">{tAll.common.actions}</span>
               </th>
             </tr>
           </thead>
@@ -102,7 +103,7 @@ export const DebtsView: React.FC = () => {
                     <button type="button" className="link-btn" data-debt-name style={{ fontWeight: 500 }} onClick={() => openDebt(d)}>
                       {d.name}
                     </button>
-                    <div className="text-muted debt-sub">{[d.lender, DEBT_KIND_LABEL[d.kind]].filter(Boolean).join(' · ')}</div>
+                    <div className="text-muted debt-sub">{[d.lender, debtKindLabel(d.kind)].filter(Boolean).join(' · ')}</div>
                   </td>
                   <td style={{ padding: '12px 10px', fontWeight: 500 }} className="text-nowrap">
                     {formatCurrency(d.balanceUsd)}
@@ -117,7 +118,7 @@ export const DebtsView: React.FC = () => {
                   <td style={{ padding: '12px 10px', color: payoff.tone === 'neutral' ? undefined : TONE_COLOR[payoff.tone] }} className="debt-payoff">
                     {payoff.text}
                   </td>
-                  <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                  <td style={{ padding: '6px', textAlign: 'right' }}>
                     <DebtRowActions debt={d} />
                   </td>
                 </tr>
@@ -127,7 +128,7 @@ export const DebtsView: React.FC = () => {
           <tfoot>
             <tr>
               <td colSpan={6} className="table-total">
-                {debts.length} {debts.length === 1 ? 'debt' : 'debts'} · {formatCurrency(debtsUSD)}
+                {t.total(debts.length, formatCurrency(debtsUSD))}
               </td>
             </tr>
           </tfoot>

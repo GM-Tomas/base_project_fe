@@ -1,4 +1,6 @@
 import type { ExpectedReturn, Holding } from '@/types/wealth';
+import { formatNumber } from './calculations';
+import { messages } from './i18n';
 
 // Expected yearly returns: each holding's (as the API keeps them: -100 to 100, 2 decimals), the portfolio's
 // (weighted by value, as the API works it out: base_project_go domain/service.CalculateExpectedReturn) and
@@ -90,8 +92,7 @@ export function returnShares(holdings: Pick<Holding, 'name' | 'assetClass' | 'va
 }
 
 /** "7.8%", "-2.5%", "12%": a yearly return in a few characters. */
-export const formatReturn = (pct: number, digits = 1) =>
-  `${pct.toLocaleString('en-US', { maximumFractionDigits: digits })}%`;
+export const formatReturn = (pct: number, digits = 1) => `${formatNumber(pct, digits)}%`;
 
 export type ParsedPercent = { value: number | null; error?: undefined } | { value?: undefined; error: string };
 
@@ -103,8 +104,8 @@ export function parsePercent(raw: string, { min = -MAX_RETURN_PCT, max = MAX_RET
   const text = raw.replace(/\s|%/g, '').replace(/^−/, '-');
   if (!text) return { value: null };
   const decimal = text.includes('.') ? text : text.replace(',', '.');
-  if (!/^-?(\d+(\.\d*)?|\.\d+)$/.test(decimal)) return { error: 'Enter a percentage, like 7.5' };
+  if (!/^-?(\d+(\.\d*)?|\.\d+)$/.test(decimal)) return { error: messages().percent.hint };
   const value = round2(Number(decimal));
-  if (value < min || value > max) return { error: `Between ${min}% and ${max}%` };
+  if (value < min || value > max) return { error: messages().percent.between(min, max) };
   return { value: Object.is(value, -0) ? 0 : value };
 }

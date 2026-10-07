@@ -1,7 +1,11 @@
 import type { Api } from './api';
 import type { AssetClassInfo, Debt, Holding, Movement, Platform, Preferences, Snapshot } from '@/types/wealth';
-import { KIND_LABEL, today } from './movements';
-import { DEBT_KIND_LABEL } from './debts';
+import { today } from './movements';
+import { en } from '@/i18n/en';
+
+// The files keep one format whatever the app's language (they're read by spreadsheets and scripts): English.
+const KIND_LABEL = en.movements.kinds;
+const DEBT_KIND_LABEL = en.debts.kinds;
 
 // Settings → Your data: everything recorded, built in the browser from the API (there's no export endpoint).
 // One JSON file with all of it, or a CSV per list for a spreadsheet. Amounts are plain numbers, never hidden

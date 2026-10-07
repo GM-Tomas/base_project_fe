@@ -22,7 +22,9 @@ export const DEFAULT_ESTIMATE: EstimatePreferences = {
 };
 
 /** The views the app can open on, in the navigation's order. */
-export const START_VIEWS: ViewType[] = ['dashboard', 'platforms', 'assets', 'debts', 'estimate', 'history', 'settings'];
+export const START_VIEWS: ViewType[] = ['dashboard', 'assets', 'debts', 'estimate', 'history', 'settings'];
+/** What the API takes: Platforms too, from before it was folded into Assets (it opens Assets). */
+const API_START_VIEWS = ['dashboard', 'platforms', 'assets', 'debts', 'estimate', 'history', 'settings'];
 export const HISTORY_PERIODS: HistoryPeriodPreset[] = ['1M', '3M', '6M', 'YTD', '1Y', '3Y', 'ALL'];
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -30,7 +32,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   autoSnapshot: 'OFF',
   defaultView: 'dashboard',
   historyPeriod: '1Y',
+  language: 'auto',
 };
+
+const LANGUAGES: Preferences['language'][] = ['auto', 'en', 'es'];
 
 type FieldError = { field: string; message: string };
 
@@ -39,9 +44,15 @@ export function withDefaults(saved: Partial<Preferences>): Preferences {
   return {
     estimate: { ...DEFAULT_ESTIMATE, ...saved.estimate },
     autoSnapshot: saved.autoSnapshot === 'MONTHLY' ? 'MONTHLY' : 'OFF',
-    defaultView: saved.defaultView && START_VIEWS.includes(saved.defaultView) ? saved.defaultView : DEFAULT_PREFERENCES.defaultView,
+    defaultView:
+      (saved.defaultView as string) === 'platforms'
+        ? 'assets'
+        : saved.defaultView && START_VIEWS.includes(saved.defaultView)
+          ? saved.defaultView
+          : DEFAULT_PREFERENCES.defaultView,
     historyPeriod:
       saved.historyPeriod && HISTORY_PERIODS.includes(saved.historyPeriod) ? saved.historyPeriod : DEFAULT_PREFERENCES.historyPeriod,
+    language: saved.language && LANGUAGES.includes(saved.language) ? saved.language : DEFAULT_PREFERENCES.language,
   };
 }
 
@@ -51,11 +62,14 @@ export function preferencesProblems(p: Omit<Preferences, 'estimate'>): FieldErro
   if (p.autoSnapshot !== 'OFF' && p.autoSnapshot !== 'MONTHLY') {
     errors.push({ field: 'autoSnapshot', message: 'autoSnapshot must be one of OFF, MONTHLY' });
   }
-  if (!START_VIEWS.includes(p.defaultView)) {
-    errors.push({ field: 'defaultView', message: `defaultView must be one of ${START_VIEWS.join(', ')}` });
+  if (!API_START_VIEWS.includes(p.defaultView)) {
+    errors.push({ field: 'defaultView', message: `defaultView must be one of ${API_START_VIEWS.join(', ')}` });
   }
   if (!HISTORY_PERIODS.includes(p.historyPeriod)) {
     errors.push({ field: 'historyPeriod', message: `historyPeriod must be one of ${HISTORY_PERIODS.join(', ')}` });
+  }
+  if (!LANGUAGES.includes(p.language)) {
+    errors.push({ field: 'language', message: `language must be one of ${LANGUAGES.join(', ')}` });
   }
   return errors;
 }

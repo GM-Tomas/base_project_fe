@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { FormError } from './FormError';
 import { errorMessage } from '@/lib/apiError';
+import { useT } from '@/lib/i18n';
 
 export interface ConfirmDialogProps {
   title: string;
@@ -12,7 +13,7 @@ export interface ConfirmDialogProps {
   /** Shown on the confirm button while it works ("Removing…"). */
   busyLabel: string;
   tone?: 'danger' | 'primary';
-  /** Shown when it fails without the API saying why (a network error). */
+  /** Shown when it fails without the API saying why (a network error); "Something went wrong" otherwise. */
   failureMessage?: string;
   /** Does the work; a rejection keeps the dialog open with the error. */
   onConfirm: () => Promise<void>;
@@ -27,10 +28,11 @@ export function ConfirmDialog({
   confirmLabel,
   busyLabel,
   tone = 'danger',
-  failureMessage = 'Something went wrong. Please try again.',
+  failureMessage,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -41,7 +43,7 @@ export function ConfirmDialog({
     try {
       await onConfirm();
     } catch (e) {
-      setError(errorMessage(e, failureMessage));
+      setError(errorMessage(e, failureMessage ?? t.common.somethingWrong));
       setBusy(false);
       return;
     }
@@ -54,7 +56,7 @@ export function ConfirmDialog({
       {error && <FormError>{error}</FormError>}
       <div className="dialog-actions">
         <button ref={cancelRef} type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
-          Cancel
+          {t.common.cancel}
         </button>
         <button type="button" className={tone === 'danger' ? 'btn btn-danger' : 'btn btn-primary'} onClick={confirm} disabled={busy}>
           {busy ? busyLabel : confirmLabel}

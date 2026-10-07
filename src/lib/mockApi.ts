@@ -433,6 +433,7 @@ export function createMockApi(now: () => Date = () => new Date()): Api {
       autoSnapshot: sent.autoSnapshot ?? DEFAULT_PREFERENCES.autoSnapshot,
       defaultView: sent.defaultView ?? DEFAULT_PREFERENCES.defaultView,
       historyPeriod: sent.historyPeriod ?? DEFAULT_PREFERENCES.historyPeriod,
+      language: sent.language ?? DEFAULT_PREFERENCES.language,
     };
     rejectInvalid([...estimateProblems(e), ...preferencesProblems(rest)]);
     preferences = { estimate: normalizeEstimate(e), ...rest };

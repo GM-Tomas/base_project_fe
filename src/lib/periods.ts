@@ -1,4 +1,6 @@
 import type { HistoryPeriodPreset, Snapshot } from '@/types/wealth';
+import { formatNumber } from './calculations';
+import { intlLocale, messages } from './i18n';
 
 // History's periods of analysis: the range each one covers (in the browser's time zone), the points of the
 // net worth in it, and what they say: the change, annualized, the high and low, the worst drop from a high,
@@ -6,16 +8,11 @@ import type { HistoryPeriodPreset, Snapshot } from '@/types/wealth';
 
 export type PeriodPreset = HistoryPeriodPreset | 'CUSTOM';
 
-export const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
-  { value: '1M', label: '1M' },
-  { value: '3M', label: '3M' },
-  { value: '6M', label: '6M' },
-  { value: 'YTD', label: 'YTD' },
-  { value: '1Y', label: '1Y' },
-  { value: '3Y', label: '3Y' },
-  { value: 'ALL', label: 'All' },
-  { value: 'CUSTOM', label: 'Custom' },
-];
+export const PERIOD_PRESET_VALUES: PeriodPreset[] = ['1M', '3M', '6M', 'YTD', '1Y', '3Y', 'ALL', 'CUSTOM'];
+
+/** History's periods, as its control offers them, in the app's language. */
+export const periodPresets = (): { value: PeriodPreset; label: string }[] =>
+  PERIOD_PRESET_VALUES.map((value) => ({ value, label: messages().history.presets[value] }));
 
 export const DEFAULT_PERIOD: HistoryPeriodPreset = '1Y';
 
@@ -53,9 +50,10 @@ export function localDay(text: string): Date | null {
 /** What's wrong with a custom period's dates, if anything. */
 export function customProblem(from: string, to: string, now: Date): string | undefined {
   const [start, end] = [localDay(from), localDay(to)];
-  if (!start || !end) return 'Pick both dates';
-  if (end < start) return "The end can't be before the start";
-  if (end > startOfDay(now)) return "The end can't be in the future";
+  const t = messages().history;
+  if (!start || !end) return t.bothDates;
+  if (end < start) return t.endBeforeStart;
+  if (end > startOfDay(now)) return t.endInFuture;
   return undefined;
 }
 
@@ -173,12 +171,13 @@ export function periodStats(start: PeriodPoint | null, points: PeriodPoint[], en
 
 /** How long from one date to another, as a chart's summary says it: "12 days", "3 months", "1 year", "2.5 years". */
 export function describeSpan(from: Date, to: Date): string {
+  const t = messages().history.span;
   const days = Math.max(0, Math.round((to.getTime() - from.getTime()) / DAY_MS));
-  if (days < 60) return `${days} ${days === 1 ? 'day' : 'days'}`;
+  if (days < 60) return t.days(days);
   const months = Math.round(days / 30.44);
-  if (months < 12) return `${months} months`;
+  if (months < 12) return t.months(months);
   const years = Math.round((days / 365.25) * 10) / 10;
-  return `${years} ${years === 1 ? 'year' : 'years'}`;
+  return t.years(formatNumber(years, 1), years === 1);
 }
 
 /** Labels for a time axis from `from` to `to`: `count` evenly spaced, the ends included. */
@@ -190,7 +189,7 @@ export function timeTicks(from: Date, to: Date, count = 4): { at: Date; label: s
   const n = span > 0 ? count : 1;
   return Array.from({ length: n }, (_, i) => {
     const at = new Date(from.getTime() + (n > 1 ? (span * i) / (n - 1) : 0));
-    return { at, label: at.toLocaleDateString('en-US', format) };
+    return { at, label: at.toLocaleDateString(intlLocale(), format) };
   });
 }
 

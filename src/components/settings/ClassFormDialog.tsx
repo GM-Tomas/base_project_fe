@@ -16,6 +16,7 @@ import { MAX_CLASS_NAME } from '@/lib/customization';
 import { normalizeLabel } from '@/lib/labels';
 import { parsePercent } from '@/lib/returns';
 import type { AssetClassInfo } from '@/types/wealth';
+import { messages, useT } from '@/lib/i18n';
 
 export interface ClassFormDialogProps {
   onClose: () => void;
@@ -23,18 +24,12 @@ export interface ClassFormDialogProps {
   assetClass?: AssetClassInfo;
 }
 
-const LIQUIDITY = [
-  { value: 'yes', label: 'Ready to spend' },
-  { value: 'no', label: 'Locked in' },
-] as const;
-
-const assets = (n: number) => `${n} ${n === 1 ? 'asset' : 'assets'}`;
-
 /** "Merge Stocks into Equity? Its 3 assets move to Equity." */
 export function mergeMessage(from: AssetClassInfo, into: AssetClassInfo): string {
+  const t = messages().classForm;
   const n = from.holdingsCount;
-  const moving = n === 0 ? 'It has no assets.' : n === 1 ? `Its asset moves to ${into.name}.` : `Its ${assets(n)} move to ${into.name}.`;
-  return `Merge ${from.name} into ${into.name}? ${moving} ${into.name} keeps its own color and settings.`;
+  const moving = n === 0 ? t.noAssets : n === 1 ? t.itsAssetMoves(into.name) : t.itsAssetsMove(n, into.name);
+  return t.merge(from.name, into.name, moving);
 }
 
 // A new class, or editing one: its name, color, whether it counts as ready to spend and the return its
@@ -43,6 +38,8 @@ export function ClassFormDialog({ onClose, assetClass }: ClassFormDialogProps) {
   const { assetClassInfos, createAssetClass, updateAssetClass } = useWealth();
   const { toast, openDialog } = useUi();
   const nameId = useId();
+  const tAll = useT();
+  const t = tAll.classForm;
 
   const [name, setName] = useState(assetClass?.name ?? '');
   const [color, setColor] = useState<string | null>(assetClass?.color ?? null);
@@ -69,13 +66,13 @@ export function ClassFormDialog({ onClose, assetClass }: ClassFormDialogProps) {
 
   const problem = () =>
     !typed
-      ? 'Please enter a name'
+      ? t.enterName
       : [...typed].length > MAX_CLASS_NAME
-        ? `Keep the name under ${MAX_CLASS_NAME} characters`
+        ? t.nameTooLong(MAX_CLASS_NAME)
         : !assetClass && existing
-          ? `You already have a class named ${typed}`
+          ? t.exists(typed)
           : parsedReturn.error
-            ? `Default return: ${parsedReturn.error}`
+            ? t.defaultReturnProblem(parsedReturn.error)
             : null;
 
   const save = async (e: React.FormEvent) => {
@@ -89,15 +86,15 @@ export function ClassFormDialog({ onClose, assetClass }: ClassFormDialogProps) {
       // Onto a class they have: a merge, once they say so (the rest of the form is left out).
       openDialog((close) => (
         <ConfirmDialog
-          title={`Merge into ${existing.name}?`}
+          title={tAll.common.mergeInto(existing.name)}
           message={mergeMessage(assetClass, existing)}
-          confirmLabel="Merge"
-          busyLabel="Merging…"
+          confirmLabel={tAll.common.merge}
+          busyLabel={tAll.common.merging}
           tone="primary"
-          failureMessage="Could not merge these classes. Please try again."
+          failureMessage={t.mergeFailed}
           onConfirm={async () => {
             await updateAssetClass(assetClass.id, { name: existing.name, mergeIfExists: true });
-            toast.success(`Merged into ${existing.name}`);
+            toast.success(tAll.common.mergedInto(existing.name));
             onClose();
           }}
           onClose={close}
@@ -119,35 +116,35 @@ export function ClassFormDialog({ onClose, assetClass }: ClassFormDialogProps) {
         });
       }
     } catch (err) {
-      setError(errorMessage(err, 'Could not save this class. Please try again.'));
+      setError(errorMessage(err, t.saveFailed));
       setSaving(false);
       return;
     }
-    toast.success(assetClass ? 'Changes saved' : `${typed} added`);
+    toast.success(assetClass ? tAll.common.changesSaved : t.added(typed));
     onClose();
   };
 
   const renaming = !!assetClass && typed !== assetClass.name && !!typed;
   const nameHint = existing
     ? assetClass
-      ? `${existing.name} already exists: saving merges ${assetClass.name} into it.`
+      ? t.existsHint(existing.name, assetClass.name)
       : null
     : renaming && assetClass.holdingsCount > 0
-      ? `Renames it on its ${assets(assetClass.holdingsCount)}.`
+      ? t.renames(assetClass.holdingsCount)
       : null;
 
   return (
-    <Modal title={assetClass ? `Edit ${assetClass.name}` : 'New class'} onClose={onClose} busy={saving}>
+    <Modal title={assetClass ? tAll.common.edited(assetClass.name) : t.titleNew} onClose={onClose} busy={saving}>
       {error && <FormError>{error}</FormError>}
       <form onSubmit={save} noValidate className="dialog-form">
         <div className="field">
-          <label htmlFor={nameId}>Name</label>
+          <label htmlFor={nameId}>{tAll.common.name}</label>
           <input
             id={nameId}
             className="input"
             type="text"
             autoComplete="off"
-            placeholder="e.g. Real Estate"
+            placeholder={t.namePlaceholder}
             value={name}
             onChange={(e) => setName(e.target.value)}
             aria-describedby={nameHint ? `${nameId}-hint` : undefined}
@@ -159,30 +156,28 @@ export function ClassFormDialog({ onClose, assetClass }: ClassFormDialogProps) {
           )}
         </div>
 
-        <ColorPicker label="Color" value={color} onChange={setColor} defaultColor={assetClassColor(assetClass?.name ?? typed)} />
+        <ColorPicker label={t.color} value={color} onChange={setColor} defaultColor={assetClassColor(assetClass?.name ?? typed)} />
 
         <SegmentedControl
-          label="Liquidity"
+          label={t.liquidity}
           showLabel
-          options={[...LIQUIDITY]}
+          options={[
+            { value: 'yes' as const, label: tAll.settings.ready },
+            { value: 'no' as const, label: tAll.settings.locked },
+          ]}
           value={liquid}
           onChange={setLiquid}
-          hint={liquid === 'yes' ? 'Counts in "Ready to spend" on the dashboard.' : "Doesn't count as ready to spend."}
+          hint={liquid === 'yes' ? t.readyHint : t.lockedHint}
         />
 
-        <PercentInput
-          label="Default return (% a year, optional)"
-          value={returnText}
-          onChange={setReturnText}
-          hint="Its assets without a return of their own count with this one."
-        />
+        <PercentInput label={t.defaultReturn} value={returnText} onChange={setReturnText} hint={t.defaultReturnHint} />
 
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {tAll.common.cancel}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving || unchanged}>
-            {saving ? 'Saving…' : assetClass ? (existing ? 'Merge…' : 'Save changes') : 'Add class'}
+            {saving ? tAll.common.saving : assetClass ? (existing ? tAll.common.mergeEllipsis : tAll.common.saveChanges) : t.add}
           </button>
         </div>
       </form>

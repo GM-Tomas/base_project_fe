@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useWealth } from '@/context/WealthContext';
 import { accountLabel } from '@/lib/account';
 import { Modal } from '@/components/ui/Modal';
+import { useT } from '@/lib/i18n';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -13,6 +14,8 @@ interface ProfileModalProps {
 export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
   const { user, signOut } = useAuth();
   const { netWorthFormatted } = useWealth();
+  const tAll = useT();
+  const t = tAll.profile;
 
   if (!user) return null;
 
@@ -20,7 +23,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
 
   // Modal portals to <body>, out of the Sidebar's stacking context, which would bury it under <main>.
   return (
-    <Modal title="Profile" onClose={onClose}>
+    <Modal title={t.title} onClose={onClose}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         <div
           style={{
@@ -68,16 +71,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
           fontSize: '13px',
         }}
       >
-        <span style={{ color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>Net worth</span>
+        <span style={{ color: 'color-mix(in srgb, var(--color-text) 55%, transparent)' }}>{t.netWorth}</span>
         <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{netWorthFormatted}</span>
       </div>
 
       <div className="dialog-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>
-          Close
+          {tAll.common.close}
         </button>
         <button type="button" className="btn btn-primary" onClick={signOut}>
-          Sign out
+          {t.signOut}
         </button>
       </div>
     </Modal>

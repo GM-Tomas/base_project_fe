@@ -2,6 +2,7 @@
 
 import React, { useId, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
+import { useT } from '@/lib/i18n';
 
 export interface PickDialogProps {
   title: string;
@@ -17,6 +18,7 @@ export interface PickDialogProps {
 export function PickDialog({ title, label, options, onPick, onClose }: PickDialogProps) {
   const id = useId();
   const [value, setValue] = useState(options[0]?.value ?? '');
+  const t = useT().common;
   return (
     <Modal title={title} onClose={onClose}>
       <form
@@ -38,10 +40,10 @@ export function PickDialog({ title, label, options, onPick, onClose }: PickDialo
         </div>
         <div className="dialog-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Cancel
+            {t.cancel}
           </button>
           <button type="submit" className="btn btn-primary">
-            Continue
+            {t.continue}
           </button>
         </div>
       </form>

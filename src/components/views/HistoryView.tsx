@@ -10,19 +10,20 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { IconButton } from '@/components/ui/IconButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Tabs } from '@/components/ui/Tabs';
 import { ActivityList } from '@/components/activity/ActivityList';
 import { HistoryChart } from '@/components/history/HistoryChart';
 import { PeriodStats } from '@/components/history/PeriodStats';
 import { ChangeBreakdown } from '@/components/history/ChangeBreakdown';
 import { PastCheckpointDialog } from '@/components/history/PastCheckpointDialog';
-import { SnapshotReminder } from '@/components/history/SnapshotReminder';
-import { KIND_GROUPS, today } from '@/lib/movements';
+import { KIND_GROUPS, today, type KindGroup } from '@/lib/movements';
+import { intlLocale, useT } from '@/lib/i18n';
 import {
   customProblem,
   periodEnds,
   periodOf,
   periodStats,
-  PERIOD_PRESETS,
+  periodPresets,
   pointsIn,
   type PeriodPoint,
   type PeriodPreset,
@@ -30,15 +31,20 @@ import {
 import type { Snapshot } from '@/types/wealth';
 
 const formatCheckpointLabel = (capturedAt: string) =>
-  new Date(capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  new Date(capturedAt).toLocaleDateString(intlLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
+
+type HistoryTab = 'overview' | 'checkpoints' | 'activity';
+const TABS: HistoryTab[] = ['overview', 'checkpoints', 'activity'];
 
 // Everything recorded in the period, newest first: what kind of change, and on which asset or debt.
 function ActivitySection({ from, to }: { from?: string; to?: string }) {
   const { holdings, debts } = useWealth();
-  const [group, setGroup] = useState<string | null>(null);
+  const t = useT().activity;
+  const groups = useT().movements.groups;
+  const [group, setGroup] = useState<KindGroup | null>(null);
   // "holding:<id>", "debt:<id>", or empty for everything.
   const [subject, setSubject] = useState('');
-  const kinds = KIND_GROUPS.find((g) => g.label === group)?.kinds;
+  const kinds = KIND_GROUPS.find((g) => g.id === group)?.kinds;
   // A filter on an asset or a debt that's gone since shows everything.
   const [type, id] = subject.split(':');
   const holdingId = type === 'holding' && holdings.some((h) => h.id === id) ? id : undefined;
@@ -52,27 +58,32 @@ function ActivitySection({ from, to }: { from?: string; to?: string }) {
   ));
 
   return (
-    <div className="card elev-sm" style={{ padding: '18px 20px' }}>
-      <div className="card-kicker">Activity</div>
+    <div className="card elev-sm" style={{ padding: '14px 20px' }}>
       <div className="activity-filters">
-        <div className="chips" role="group" aria-label="Kind of change">
-          {[null, ...KIND_GROUPS.map((g) => g.label)].map((label) => (
-            <button key={label ?? 'all'} type="button" className="chip" aria-pressed={group === label} onClick={() => setGroup(label)}>
-              {label ?? 'All'}
-            </button>
+        <select
+          className="input activity-kind"
+          aria-label={t.kindOfChange}
+          value={group ?? ''}
+          onChange={(e) => setGroup((e.target.value || null) as KindGroup | null)}
+        >
+          <option value="">{t.allKinds}</option>
+          {KIND_GROUPS.map((g) => (
+            <option key={g.id} value={g.id}>
+              {groups[g.id]}
+            </option>
           ))}
-        </div>
+        </select>
         <select
           className="input activity-asset"
-          aria-label={debts.length ? 'Filter by asset or debt' : 'Filter by asset'}
+          aria-label={debts.length ? t.filterByAssetOrDebt : t.filterByAsset}
           value={holdingId ? `holding:${holdingId}` : debtId ? `debt:${debtId}` : ''}
           onChange={(e) => setSubject(e.target.value)}
         >
-          <option value="">{debts.length ? 'All assets and debts' : 'All assets'}</option>
+          <option value="">{debts.length ? t.allAssetsAndDebts : t.allAssets}</option>
           {debts.length ? (
             <>
-              <optgroup label="Assets">{assetOptions}</optgroup>
-              <optgroup label="Debts">
+              <optgroup label={t.assetsGroup}>{assetOptions}</optgroup>
+              <optgroup label={t.debtsGroup}>
                 {debtsByName.map((d) => (
                   <option key={d.id} value={`debt:${d.id}`}>
                     {d.name}
@@ -92,13 +103,7 @@ function ActivitySection({ from, to }: { from?: string; to?: string }) {
         debtId={debtId}
         from={from}
         to={to}
-        empty={
-          group || holdingId || debtId
-            ? 'Nothing recorded matches this filter'
-            : from
-              ? 'Nothing recorded in this period'
-              : 'Nothing recorded yet: gains, losses, deposits and transfers show up here.'
-        }
+        empty={group || holdingId || debtId ? t.noMatch : from ? t.nothingInPeriod : t.nothingYet}
       />
     </div>
   );
@@ -115,6 +120,9 @@ export const HistoryView: React.FC = () => {
   const { snapshots, takeSnapshot, deleteSnapshot, historyPeriod, setHistoryPeriod, netWorthUSD, assetsUSD, debtsUSD, holdings } =
     useWealth();
   const { openDialog, toast } = useUi();
+  const tAll = useT();
+  const t = tAll.history;
+  const [tab, setTab] = useState<HistoryTab>('overview');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const now = useMemo(() => new Date(), [snapshots, historyPeriod]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -141,9 +149,9 @@ export const HistoryView: React.FC = () => {
     setIsSaving(true);
     try {
       await takeSnapshot();
-      toast.success('Snapshot saved');
+      toast.success(tAll.snapshot.saved);
     } catch (e) {
-      setError(errorMessage(e, 'Could not save a snapshot right now'));
+      setError(errorMessage(e, tAll.snapshot.failed));
     } finally {
       setIsSaving(false);
     }
@@ -153,43 +161,56 @@ export const HistoryView: React.FC = () => {
     const when = formatCheckpointLabel(s.capturedAt);
     openDialog((close) => (
       <ConfirmDialog
-        title="Delete checkpoint?"
-        message={`The checkpoint of ${when} (${formatCurrency(s.totalValueUsd)}) will be removed from your history.`}
-        confirmLabel="Delete"
-        busyLabel="Deleting…"
-        failureMessage="Could not delete this checkpoint. Please try again."
+        title={t.deleteTitle}
+        message={t.deleteMessage(when, formatCurrency(s.totalValueUsd))}
+        confirmLabel={t.delete}
+        busyLabel={t.deleting}
+        failureMessage={t.deleteFailed}
         onClose={close}
         onConfirm={async () => {
           await deleteSnapshot(s.id);
-          toast.success('Checkpoint deleted');
+          toast.success(t.deleted);
         }}
       />
     ));
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* The card below has the button to save one. */}
-      <SnapshotReminder withSave={false} />
+  const noCheckpoints = (
+    <EmptyState title={t.noCheckpoints}>{t.noCheckpointsText}</EmptyState>
+  );
+  const noneInPeriod = (
+    <EmptyState
+      title={t.noneInPeriod}
+      action={
+        <button className="btn btn-secondary" onClick={() => setHistoryPeriod((p) => ({ ...p, preset: 'ALL' }))}>
+          {t.showAllTime}
+        </button>
+      }
+    >
+      {stats ? t.wentFrom(formatCurrency(stats.start.value), formatCurrency(stats.end.value)) : t.pickLonger}
+    </EmptyState>
+  );
 
-      <div className="card elev-sm" style={{ padding: '18px 22px' }}>
+  return (
+    <div className="view-stack">
+      <div className="history-controls">
         <div className="history-head">
-          <SegmentedControl label="Period" options={PERIOD_PRESETS} value={preset} onChange={pick} />
+          <SegmentedControl label={t.period} options={periodPresets()} value={preset} onChange={pick} />
           <div className="history-actions">
             {error && <span className="field-error" style={{ margin: 0 }}>{error}</span>}
             <button className="btn btn-secondary" onClick={() => openDialog((close) => <PastCheckpointDialog onClose={close} />)}>
               <CalendarPlus size={14} aria-hidden />
-              Add a past checkpoint
+              {t.addPast}
             </button>
             <button className="btn btn-primary" onClick={handleTakeSnapshot} disabled={isSaving}>
-              {isSaving ? 'Saving…' : 'Save a snapshot'}
+              {isSaving ? tAll.common.saving : tAll.snapshot.save}
             </button>
           </div>
         </div>
         {preset === 'CUSTOM' && (
           <div className="history-custom">
             <div className="field">
-              <label htmlFor="history-from">From</label>
+              <label htmlFor="history-from">{t.from}</label>
               <input
                 id="history-from"
                 className="input"
@@ -201,7 +222,7 @@ export const HistoryView: React.FC = () => {
               />
             </div>
             <div className="field">
-              <label htmlFor="history-to">To</label>
+              <label htmlFor="history-to">{t.to}</label>
               <input
                 id="history-to"
                 className="input"
@@ -212,7 +233,7 @@ export const HistoryView: React.FC = () => {
                 onChange={(e) => setHistoryPeriod((p) => ({ ...p, to: e.target.value }))}
               />
             </div>
-            {customError && <div className="field-error">{customError}: showing all time.</div>}
+            {customError && <div className="field-error">{t.showingAllTime(customError)}</div>}
           </div>
         )}
         {period.untilNow && (
@@ -222,104 +243,104 @@ export const HistoryView: React.FC = () => {
               checked={includeToday}
               onChange={(e) => setHistoryPeriod((p) => ({ ...p, includeToday: e.target.checked }))}
             />
-            Include today&apos;s value
+            {t.includeToday}
           </label>
-        )}
-
-        {snapshots.length === 0 ? (
-          <EmptyState title="No checkpoints yet">
-            A checkpoint records your net worth at a moment in time. Save one now, and again every month or so, to
-            see how it grows. Had one from before? Add it as a past checkpoint.
-          </EmptyState>
-        ) : checkpoints.length === 0 ? (
-          <EmptyState
-            title="No checkpoints in this period"
-            action={
-              <button className="btn btn-secondary" onClick={() => setHistoryPeriod((p) => ({ ...p, preset: 'ALL' }))}>
-                Show all time
-              </button>
-            }
-          >
-            {stats ? `It went from ${formatCurrency(stats.start.value)} to ${formatCurrency(stats.end.value)}.` : 'Pick a longer period.'}
-          </EmptyState>
-        ) : (
-          <>
-            <HistoryChart points={points} start={start} from={chartFrom} to={chartTo} />
-            {start && (
-              <div className="chart-legend history-legend">
-                <span className="legend-dash" aria-hidden /> Start: {formatCurrency(start.value)}
-                {start.snapshot && ` on ${formatCheckpointLabel(start.snapshot.capturedAt)}`}
-              </div>
-            )}
-          </>
         )}
       </div>
 
-      {stats && stats.end !== stats.start && (
-        <>
-          <PeriodStats stats={stats} />
-          <ChangeBreakdown start={stats.start} end={stats.end} />
-        </>
-      )}
+      <Tabs label={t.tabs.label} tabs={TABS.map((id) => ({ id, label: t.tabs[id] }))} value={tab} onChange={setTab}>
+        {tab === 'overview' && (
+          <>
+            <div className="card elev-sm" style={{ padding: '18px 22px' }}>
+              {snapshots.length === 0 ? (
+                noCheckpoints
+              ) : checkpoints.length === 0 ? (
+                noneInPeriod
+              ) : (
+                <>
+                  <HistoryChart points={points} start={start} from={chartFrom} to={chartTo} />
+                  {start && (
+                    <div className="chart-legend history-legend">
+                      <span className="legend-dash" aria-hidden /> {t.start(formatCurrency(start.value))}
+                      {start.snapshot && t.onDay(formatCheckpointLabel(start.snapshot.capturedAt))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {stats && stats.end !== stats.start && (
+              <>
+                <PeriodStats stats={stats} />
+                <ChangeBreakdown start={stats.start} end={stats.end} />
+              </>
+            )}
+          </>
+        )}
 
-      {checkpoints.length > 0 && (
-        <div className="card elev-sm" style={{ padding: '6px 16px 16px', overflowX: 'auto' }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Checkpoint</th>
-                <th>Net worth</th>
-                <th>Change</th>
-                <th style={{ width: '48px' }}>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {checkpoints.map(({ snapshot: s }) => {
-                const label = formatCheckpointLabel(s.capturedAt);
-                const change = s.changePctFromPrevious;
-                const tone = change === null || change === 0 ? 'var(--color-neutral-400)' : change > 0 ? 'var(--color-positive)' : 'var(--color-negative)';
-                return (
-                  <tr key={s.id}>
-                    <td style={{ padding: '12px 10px', fontWeight: 500 }}>
-                      <span className="with-avatar">
-                        {label}
-                        {s.source === 'MANUAL' && (
-                          <span className="manual-mark" title="Added by hand" aria-label="Added by hand" role="img">
-                            <NotebookPen size={13} aria-hidden />
-                          </span>
-                        )}
-                      </span>
-                      {s.note && <div className="text-muted debt-sub">{s.note}</div>}
-                    </td>
-                    <td style={{ padding: '12px 10px' }} className="text-nowrap">
-                      {formatCurrency(s.totalValueUsd)}
-                      {s.debtsUsd > 0 && (
-                        <div className="text-muted debt-sub">
-                          Assets {formatCurrency(s.assetsUsd)} · Debts {formatCurrency(s.debtsUsd)}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 10px' }}>
-                      <span style={{ color: tone, fontSize: '13px', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
-                        {change === null ? '—' : (change > 0 ? '▲ ' : change < 0 ? '▼ ' : '– ') + formatPercentage(change)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                      <IconButton label={`Delete checkpoint of ${label}`} tone="danger" onClick={() => confirmDelete(s)}>
-                        <Trash2 size={15} aria-hidden />
-                      </IconButton>
-                    </td>
+        {tab === 'checkpoints' &&
+          (checkpoints.length === 0 ? (
+            <div className="card elev-sm">{snapshots.length === 0 ? noCheckpoints : noneInPeriod}</div>
+          ) : (
+            <div className="card elev-sm" style={{ padding: '6px 16px 16px', overflowX: 'auto' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t.columns.checkpoint}</th>
+                    <th>{t.columns.netWorth}</th>
+                    <th>{t.columns.change}</th>
+                    <th style={{ width: '48px' }}>
+                      <span className="sr-only">{tAll.common.actions}</span>
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {checkpoints.map(({ snapshot: s }) => {
+                    const label = formatCheckpointLabel(s.capturedAt);
+                    const change = s.changePctFromPrevious;
+                    const tone = change === null || change === 0 ? 'var(--color-neutral-400)' : change > 0 ? 'var(--color-positive)' : 'var(--color-negative)';
+                    return (
+                      <tr key={s.id}>
+                        <td style={{ padding: '12px 10px', fontWeight: 500 }}>
+                          <span className="with-avatar">
+                            {label}
+                            {s.source === 'MANUAL' && (
+                              <span className="manual-mark" title={t.addedByHand} aria-label={t.addedByHand} role="img">
+                                <NotebookPen size={13} aria-hidden />
+                              </span>
+                            )}
+                          </span>
+                          {s.note && <div className="text-muted debt-sub">{s.note}</div>}
+                        </td>
+                        <td style={{ padding: '12px 10px' }} className="text-nowrap">
+                          {formatCurrency(s.totalValueUsd)}
+                          {s.debtsUsd > 0 && (
+                            <div className="text-muted debt-sub">
+                              {t.assetsAndDebts(formatCurrency(s.assetsUsd), formatCurrency(s.debtsUsd))}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 10px' }}>
+                          <span style={{ color: tone, fontSize: '13px', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                            {change === null ? '—' : (change > 0 ? '▲ ' : change < 0 ? '▼ ' : '– ') + formatPercentage(change)}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                          <IconButton label={t.deleteOf(label)} tone="danger" onClick={() => confirmDelete(s)}>
+                            <Trash2 size={15} aria-hidden />
+                          </IconButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
 
-      <ActivitySection from={period.from?.toISOString()} to={period.untilNow ? undefined : period.to.toISOString()} />
+        {tab === 'activity' && (
+          <ActivitySection from={period.from?.toISOString()} to={period.untilNow ? undefined : period.to.toISOString()} />
+        )}
+      </Tabs>
     </div>
   );
 };

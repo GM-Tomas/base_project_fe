@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Movement, MovementHolding } from '@/types/wealth';
-import { holding, HOLDINGS, installFakeBackend, json, nav, renderApp, requests, routes } from './harness';
+import { holding, HOLDINGS, installFakeBackend, json, nav, renderApp, requests, routes, rowAction, showPlatform, tab } from './harness';
 
 // F2: gains, losses, deposits, withdrawals and transfers; what an edit of a value was; a holding's panel;
 // the activity log and undoing. The backend is faked (harness.ts); the app runs for real.
@@ -57,7 +57,7 @@ describe('record a change', () => {
     await renderApp();
     nav('Assets');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Record a change to SPY' }));
+    rowAction('SPY', 'Record a change');
     const d = dialog('Record a change');
     expect(within(d).getByText('SPY · Balanz · worth $8,000.00')).toBeTruthy();
     // A gain unless told otherwise, explained; the amount has the focus.
@@ -84,7 +84,7 @@ describe('record a change', () => {
     routes['POST /api/v1/movements'] = () => json(movement('m2', 'LOSS'), 201);
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Record a change to SPY' }));
+    rowAction('SPY', 'Record a change');
     const d = dialog('Record a change');
     fireEvent.click(within(d).getByRole('radio', { name: 'Loss' }));
     expect(within(d).getByText('Loss: a fall in price, or a cost.')).toBeTruthy();
@@ -132,7 +132,7 @@ describe('record a change', () => {
       json({ detail: "SPY is worth $10.00: you can't withdraw more than that." }, 409);
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Record a change to SPY' }));
+    rowAction('SPY', 'Record a change');
     const d = dialog('Record a change');
     fireEvent.click(within(d).getByRole('radio', { name: 'Withdrawal' }));
     fill(d, 'Amount (USD)', '500');
@@ -153,7 +153,7 @@ describe('record a change', () => {
     routes['DELETE /api/v1/movements/m1'] = () => json({ detail: "Gold bar was removed, so this can't be undone." }, 409);
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Record a change to Gold bar' }));
+    rowAction('Gold bar', 'Record a change');
     const d = dialog('Record a change');
     fireEvent.click(within(d).getByRole('radio', { name: 'Deposit' }));
     fill(d, 'Amount (USD)', '1');
@@ -162,7 +162,7 @@ describe('record a change', () => {
     expect(await screen.findByText("Gold bar was removed, so this can't be undone.")).toBeTruthy();
 
     routes['DELETE /api/v1/movements/m1'] = () => Promise.reject(new TypeError('offline'));
-    fireEvent.click(screen.getByRole('button', { name: 'Record a change to Gold bar' }));
+    rowAction('Gold bar', 'Record a change');
     fill(dialog('Record a change'), 'Amount (USD)', '1');
     fireEvent.click(screen.getByRole('button', { name: 'Record gain' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
@@ -182,7 +182,7 @@ describe('transfer', () => {
     routes['POST /api/v1/movements'] = () => json(movement('m3', 'TRANSFER', { toHolding: COINS }), 201);
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Transfer from SPY' }));
+    rowAction('SPY', 'Transfer');
     const d = dialog('Transfer');
     const from = group(d, 'From');
     const to = group(d, 'To');
@@ -216,11 +216,11 @@ describe('transfer', () => {
     expect(screen.getByText('Transfer recorded')).toBeTruthy();
   });
 
-  it('moves money to a new asset on a new platform, from a platform card', async () => {
+  it("moves money to a new asset on a new platform, from a platform's assets", async () => {
     routes['POST /api/v1/movements'] = () => json(movement('m4', 'TRANSFER', { holding: GOLD, toHolding: ref('h9', 'Gold bar', 'Bank X') }), 201);
     await renderApp();
-    nav('Platforms');
-    fireEvent.click(screen.getByRole('button', { name: 'Transfer from Vault' }));
+    showPlatform('Vault');
+    fireEvent.click(screen.getByRole('button', { name: 'Transfer from here' }));
     const d = dialog('Transfer');
     const from = group(d, 'From');
     const to = group(d, 'To');
@@ -263,8 +263,7 @@ describe('transfer', () => {
 
   it('picks the only holding a platform has, and offers a new one where there is none other', async () => {
     await renderApp();
-    nav('Platforms');
-    fireEvent.click(screen.getByRole('button', { name: "Vault: show what's there" }));
+    showPlatform('Vault');
     fireEvent.click(screen.getByRole('button', { name: 'Transfer from here' }));
     const d = dialog('Transfer');
     const from = group(d, 'From');
@@ -310,7 +309,7 @@ describe('editing a value says what it was', () => {
     routes['PATCH /api/v1/holdings/h1'] = () => json(holding('h1', 'SPY', 'Equity', 'Balanz', 9000));
     await renderApp();
     nav('Assets');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit SPY' }));
+    rowAction('SPY', 'Edit');
     return dialog('Edit asset');
   };
 
@@ -419,15 +418,15 @@ describe("an asset's panel", () => {
     expect(screen.getByText('Asset removed')).toBeTruthy();
   });
 
-  it("opens from a platform's holdings, and goes to its platform", async () => {
+  it("opens from its row, and shows its platform's assets", async () => {
     await renderApp();
-    nav('Platforms');
-    fireEvent.click(screen.getByRole('button', { name: "Vault: show what's there" }));
+    nav('Assets');
     fireEvent.click(screen.getByRole('button', { name: 'Coins' }));
     const panel = dialog('Coins');
     fireEvent.click(within(panel).getByRole('button', { name: 'Vault' }));
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByText("Vault · what's there")).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Vault' })).toBeTruthy();
+    expect(screen.queryByText('SPY')).toBeNull();
   });
 
   it('loads more, a page at a time, and retries when loading fails', async () => {
@@ -466,6 +465,7 @@ describe('activity', () => {
     routes['GET /api/v1/movements'] = () => json({ items: ALL, nextCursor: null });
     await renderApp();
     nav('History');
+    tab('Activity');
 
     const list = await screen.findByRole('list', { name: 'Activity' });
     const titles = within(list)
@@ -485,11 +485,12 @@ describe('activity', () => {
     expect(within(correction).getByText('−$10.00')).toBeTruthy();
     expect(within(gain).queryByRole('button')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Transfers' }));
+    const kind = (value: string) => fireEvent.change(screen.getByLabelText('Kind of change'), { target: { value } });
+    kind('transfers');
     await waitFor(() => expect(requests('GET', '/api/v1/movements')).toHaveLength(2));
     expect(movementsQuery(1).get('kind')).toBe('TRANSFER');
-    expect(screen.getByRole('button', { name: 'Transfers' }).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Gains & losses' }));
+    expect((screen.getByLabelText('Kind of change') as HTMLSelectElement).value).toBe('transfers');
+    kind('gainsLosses');
     await waitFor(() => expect(requests('GET', '/api/v1/movements')).toHaveLength(3));
     expect(movementsQuery(2).get('kind')).toBe('GAIN,LOSS');
 
@@ -499,7 +500,7 @@ describe('activity', () => {
     expect(movementsQuery(3).get('kind')).toBe('GAIN,LOSS');
 
     routes['GET /api/v1/movements'] = () => json({ items: [], nextCursor: null });
-    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    kind('');
     expect(await screen.findByText('Nothing recorded matches this filter')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Filter by asset'), { target: { value: '' } });
     expect(await screen.findByText('Nothing recorded in this period')).toBeTruthy();
@@ -519,6 +520,7 @@ describe('activity', () => {
     };
     await renderApp();
     nav('History');
+    tab('Activity');
 
     fireEvent.click(await screen.findByRole('button', { name: 'Undo transfer of $100.00 from Gold bar to Coins' }));
     const confirm = dialog('Undo this change?');
@@ -540,6 +542,7 @@ describe('activity', () => {
     routes['DELETE /api/v1/movements/m1'] = () => json({ detail: 'SPY is worth $500.00: undoing this would take it below zero.' }, 409);
     await renderApp();
     nav('History');
+    tab('Activity');
 
     fireEvent.click(await screen.findByRole('button', { name: 'Undo deposit of $1,000.00 on SPY' }));
     const confirm = dialog('Undo this change?');
@@ -555,6 +558,7 @@ describe('activity', () => {
     routes['GET /api/v1/movements'] = () => json({ items: ALL.slice(0, 1), nextCursor: 'c1' });
     await renderApp();
     nav('History');
+    tab('Activity');
     await screen.findByText('Transfer · Gold bar → Coins');
     routes['GET /api/v1/movements'] = () => new Promise<Response>((resolve) => (resolveMore = resolve));
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
@@ -563,7 +567,7 @@ describe('activity', () => {
 
     // A filter changes meanwhile: the page that comes back belongs to the old list.
     routes['GET /api/v1/movements'] = () => json({ items: ALL.slice(1, 2), nextCursor: null });
-    fireEvent.click(screen.getByRole('button', { name: 'Corrections' }));
+    fireEvent.change(screen.getByLabelText('Kind of change'), { target: { value: 'corrections' } });
     await screen.findByText('Correction · Coins');
     await act(async () => resolveMore(json({ items: ALL.slice(4), nextCursor: null })));
     expect(screen.queryByText('Deposit · SPY')).toBeNull();

@@ -2,38 +2,32 @@
 
 import React from 'react';
 import { Modal } from '@/components/ui/Modal';
+import { useT } from '@/lib/i18n';
 
-/** The keyboard shortcuts, as the help lists them (the keys are what the hotkeys listen for). */
-export const SHORTCUTS: { key: string; does: string }[] = [
-  { key: 'N', does: 'Add an asset' },
-  { key: 'G', does: 'Record a gain or loss' },
-  { key: 'T', does: 'Transfer between assets' },
-  { key: 'D', does: 'Add a debt' },
-  { key: 'S', does: 'Save a snapshot' },
-  { key: '/', does: 'Search your assets' },
-  { key: 'H', does: 'Hide or show amounts' },
-  { key: '?', does: 'Show these shortcuts' },
-];
+/** The keyboard shortcuts' keys, in the order the help lists them (what each does is the language's). */
+export const SHORTCUTS = ['N', 'G', 'T', 'D', 'S', '/', 'H', '?'];
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const tAll = useT();
+  const t = tAll.shortcuts;
   return (
-    <Modal title="Keyboard shortcuts" onClose={onClose}>
+    <Modal title={t.title} onClose={onClose}>
       <dl className="shortcuts">
-        {SHORTCUTS.map((s) => (
-          <div key={s.key} className="shortcut">
+        {SHORTCUTS.map((key) => (
+          <div key={key} className="shortcut">
             <dt>
-              <kbd>{s.key}</kbd>
+              <kbd>{key}</kbd>
             </dt>
-            <dd>{s.does}</dd>
+            <dd>{t.does[key]}</dd>
           </div>
         ))}
       </dl>
       <p className="dialog-text text-muted" style={{ margin: 0 }}>
-        They work anywhere in BASE, except while you type in a field or a dialog is open.
+        {t.note}
       </p>
       <div className="dialog-actions">
         <button type="button" className="btn btn-primary" onClick={onClose}>
-          Done
+          {tAll.common.done}
         </button>
       </div>
     </Modal>
