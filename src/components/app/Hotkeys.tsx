@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { useQuickActions, type QuickActions } from './useQuickActions';
 
 const KEYS: Record<string, keyof QuickActions> = {
@@ -27,11 +27,13 @@ function typing(target: EventTarget | null): boolean {
 export function Hotkeys() {
   const actions = useQuickActions();
   const latest = useRef(actions);
-  useEffect(() => {
+  // Layout effects: listening (with what's on screen) from the very commit that paints the app, so a key
+  // pressed right as it shows isn't lost. A passive effect can run a moment later.
+  useLayoutEffect(() => {
     latest.current = actions;
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat || typing(e.target)) return;
       if (document.querySelector('[role="dialog"], [role="menu"]')) return;

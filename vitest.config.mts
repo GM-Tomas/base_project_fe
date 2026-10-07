@@ -9,6 +9,8 @@ export default defineConfig({
     // Tests run on real data (with fetch and Supabase mocked) unless they opt into mock data themselves,
     // whatever the shell exports.
     env: { NEXT_PUBLIC_DATA_SOURCE: 'live' },
+    // The app-level flows render the whole app: ~10s each on a 4-core machine with coverage on, over the 5s default.
+    testTimeout: 30_000,
     coverage: {
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/test/**', 'src/**/*.test.{ts,tsx}'],
