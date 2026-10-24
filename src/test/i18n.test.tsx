@@ -99,5 +99,10 @@ describe('the app in Spanish', () => {
     fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'secret' } });
     fireEvent.submit(screen.getByRole('button', { name: 'Entrar' }).closest('form')!);
     expect(await screen.findByText('El email o la contraseña no son correctos')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '¿Olvidaste tu contraseña?' }));
+    expect(screen.getByText('Escribí tu email y te mandamos un link para cambiar tu contraseña.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Volver a entrar' }));
+    expect(screen.getByRole('button', { name: 'Entrar' })).toBeTruthy();
   });
 });

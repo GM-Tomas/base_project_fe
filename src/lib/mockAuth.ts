@@ -36,6 +36,12 @@ export function createDemoAuth(): AuthClient {
       change('SIGNED_IN', demoSession);
       return { error: null };
     },
+    setSession: async () => {
+      change('SIGNED_IN', demoSession);
+      return { data: { session: demoSession }, error: null };
+    },
+    resetPasswordForEmail: async () => ({ error: null }),
+    updateUser: async () => ({ error: null }),
     signOut: async () => {
       change('SIGNED_OUT', null);
       return { error: null };

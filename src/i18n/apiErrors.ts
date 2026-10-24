@@ -6,6 +6,14 @@ const EXACT: Record<string, string> = {
   'Your session expired. Please sign in again.': 'Tu sesión venció. Volvé a entrar.',
   'Invalid login credentials': 'El email o la contraseña no son correctos',
   'Email not confirmed': 'Todavía no confirmaste tu email',
+  'Email link is invalid or has expired': 'Este link venció o ya se usó. Pedí uno nuevo.',
+  'Email rate limit exceeded': 'Se enviaron demasiados emails. Esperá un rato y probá de nuevo.',
+  'For security purposes, you can only request this once every 60 seconds':
+    'Por seguridad, solo podés pedirlo una vez por minuto',
+  'New password should be different from the old password.':
+    'La contraseña nueva tiene que ser distinta de la anterior.',
+  'Password should be at least 6 characters.': 'La contraseña tiene que tener al menos 6 caracteres.',
+  'Password should be at least 8 characters.': 'La contraseña tiene que tener al menos 8 caracteres.',
   'Platform not found': 'No se encontró la plataforma',
   'Asset class not found': 'No se encontró la clase',
   'Malformed JSON body': 'El pedido está mal formado',
@@ -83,6 +91,7 @@ const PATTERNS: [RegExp, (...groups: string[]) => string][] = [
   [/^Name must be at most (\d+) characters$/, (n) => `El nombre puede tener hasta ${n} caracteres`],
   [/^type must be at most (\d+) characters$/, (n) => `El tipo puede tener hasta ${n} caracteres`],
   [/^(Note|Notes|Debt name|Lender) exceeds max length \(\d+ > (\d+)\)$/, (field, max) => `${LONG_FIELD[field]} puede tener hasta ${max} caracteres`],
+  [/^For security purposes, you can only request this after (\d+) seconds\.$/, (s) => `Por seguridad, esperá ${s} segundos antes de pedirlo de nuevo.`],
   [/^Request failed with status (\d+)$/, (status) => `El pedido falló (estado ${status})`],
 ];
 

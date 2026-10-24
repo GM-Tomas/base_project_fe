@@ -10,6 +10,9 @@ vi.mock('@/lib/supabaseClient', () => ({
       getSession: vi.fn(),
       onAuthStateChange: vi.fn(),
       signInWithPassword: vi.fn(),
+      setSession: vi.fn(),
+      resetPasswordForEmail: vi.fn(),
+      updateUser: vi.fn(),
       signOut: vi.fn(),
     },
   },
@@ -19,6 +22,8 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  localStorage.removeItem('base.recovering');
+  window.location.hash = '';
   // The privacy mode is kept per browser: each test starts with amounts shown.
   setAmountsHidden(false);
   // So is the language: each test starts in the browser's (English).

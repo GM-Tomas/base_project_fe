@@ -18,8 +18,12 @@ describe('demo sign-in (mock data)', () => {
     expect(listener).toHaveBeenLastCalledWith('SIGNED_IN', start.session);
     expect((await auth.getSession()).data.session).toBe(start.session);
 
+    await expect(auth.setSession({ access_token: 'a', refresh_token: 'b' })).resolves.toMatchObject({ error: null });
+    await expect(auth.resetPasswordForEmail('anyone@example.com')).resolves.toEqual({ error: null });
+    await expect(auth.updateUser({ password: 'new-password' })).resolves.toEqual({ error: null });
+
     data.subscription.unsubscribe();
     await auth.signOut();
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
   });
 });

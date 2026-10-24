@@ -24,7 +24,7 @@ import { useLanguage, useT } from '@/lib/i18n';
 const canSkipLogin = process.env.NODE_ENV !== 'production';
 
 export default function HomePage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, recoveringPassword } = useAuth();
   const [skipped, setSkipped] = useState(false);
   const language = useLanguage();
   // The page says what language it's in (screen readers read it so, the browser translates from it).
@@ -33,8 +33,8 @@ export default function HomePage() {
   }, [language]);
 
   if (authLoading) return null;
-  if (!user && !(canSkipLogin && skipped)) {
-    return <Login onSkip={canSkipLogin ? () => setSkipped(true) : undefined} />;
+  if (recoveringPassword || (!user && !(canSkipLogin && skipped))) {
+    return <Login onSkip={!recoveringPassword && canSkipLogin ? () => setSkipped(true) : undefined} />;
   }
 
   // Mounted only once there is a session (and keyed by user): data loads right after sign-in, and

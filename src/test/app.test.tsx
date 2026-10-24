@@ -95,6 +95,110 @@ describe('auth', () => {
     expect(container.querySelector('input[type=password]')!.getAttribute('autocomplete')).toBe('current-password');
   });
 
+  it('sends a password reset email and lets the user return to sign in', async () => {
+    await renderApp(null);
+    await screen.findByText('Sign in to see your full financial picture.');
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ana@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    expect(screen.getByText("Enter your email and we'll send you a link to reset your password.")).toBeTruthy();
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('ana@example.com');
+
+    vi.mocked(supabase.auth.resetPasswordForEmail).mockResolvedValueOnce({
+      error: { message: 'Email rate limit exceeded' },
+    } as never);
+    fireEvent.submit(screen.getByRole('button', { name: 'Send reset link' }).closest('form')!);
+    expect(await screen.findByText('Email rate limit exceeded')).toBeTruthy();
+    expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalledWith('ana@example.com', {
+      redirectTo: window.location.origin,
+    });
+
+    vi.mocked(supabase.auth.resetPasswordForEmail).mockResolvedValueOnce({ error: null } as never);
+    fireEvent.submit(screen.getByRole('button', { name: 'Send reset link' }).closest('form')!);
+    expect(await screen.findByText('Check your email for a link to reset your password.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    expect(screen.getByText('Sign in to see your full financial picture.')).toBeTruthy();
+  });
+
+  it('recovers a password from a valid recovery link without adopting the session until submitted', async () => {
+    const payload = btoa(JSON.stringify({ email: 'ana@example.com', amr: [{ method: 'recovery' }] }))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    const recoveryJwt = `eyJhbGciOiJFUzI1NiJ9.${payload}.sig`;
+    window.location.hash = `#access_token=${recoveryJwt}&refresh_token=ref-tok&type=recovery`;
+
+    await renderApp(null);
+    expect(await screen.findByText('Choose a new password for ana@example.com.')).toBeTruthy();
+    // Hash is scrubbed immediately and no session is written before the user submits a new password.
+    expect(window.location.hash).toBe('');
+    expect(supabase.auth.setSession).not.toHaveBeenCalled();
+
+    // Validation: < 8 chars, then mismatched, then API error (keeps recovery locked!), then success.
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: '1234567' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: '1234567' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Save password' }).closest('form')!);
+    expect(screen.getByText('Use at least 8 characters')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'new-secret-8' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'different-8' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Save password' }).closest('form')!);
+    expect(screen.getByText("Passwords don't match")).toBeTruthy();
+
+    vi.mocked(supabase.auth.setSession).mockImplementationOnce(async () => {
+      authListener('SIGNED_IN', SESSION);
+      return { data: { session: SESSION }, error: null } as never;
+    });
+    vi.mocked(supabase.auth.updateUser).mockResolvedValueOnce({
+      error: { message: 'New password should be different from the old password.' },
+    } as never);
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'new-secret-8' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Save password' }).closest('form')!);
+    expect(await screen.findByText('New password should be different from the old password.')).toBeTruthy();
+    expect(localStorage.getItem('base.recovering')).toBe('1');
+    expect(screen.queryByText('$12,346')).toBeNull();
+
+    vi.mocked(supabase.auth.updateUser).mockResolvedValueOnce({ error: null } as never);
+    vi.mocked(supabase.auth.signOut).mockResolvedValueOnce({ error: null } as never);
+    fireEvent.submit(screen.getByRole('button', { name: 'Save password' }).closest('form')!);
+    expect(supabase.auth.updateUser).toHaveBeenCalledWith({ password: 'new-secret-8' });
+    expect(await screen.findByText('$12,346')).toBeTruthy();
+    expect(localStorage.getItem('base.recovering')).toBeNull();
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'others' });
+
+    // Cancelling an active PASSWORD_RECOVERY session signs it out locally.
+    act(() => authListener('PASSWORD_RECOVERY', SESSION));
+    expect(await screen.findByText('Choose a new password for ana@example.com.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('rejects forged or expired URL tokens and never overwrites an existing session', async () => {
+    // 1. A normal password JWT disguised with &type=recovery is rejected before touching Supabase.
+    const normalPayload = btoa(JSON.stringify({ email: 'attacker@example.com', amr: [{ method: 'password' }] }));
+    window.location.hash = `#access_token=hdr.${normalPayload}.sig&refresh_token=ref&type=recovery`;
+    const first = await renderApp(null);
+    expect(await screen.findByText('Email link is invalid or has expired')).toBeTruthy();
+    expect(window.location.hash).toBe('');
+    expect(supabase.auth.setSession).not.toHaveBeenCalled();
+    first.unmount();
+
+    // 2. An expired recovery redirect surfaces GoTrue's message and scrubs the URL.
+    window.location.hash = '#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired';
+    const second = await renderApp(null);
+    expect(await screen.findByText('Email link is invalid or has expired')).toBeTruthy();
+    expect(window.location.hash).toBe('');
+    second.unmount();
+
+    // 3. A bare #access_token link (session-fixation attempt) is scrubbed and ignored.
+    window.location.hash = '#access_token=attacker&refresh_token=ref';
+    await renderApp(null);
+    expect(await screen.findByText('Sign in to see your full financial picture.')).toBeTruthy();
+    expect(window.location.hash).toBe('');
+    expect(supabase.auth.setSession).not.toHaveBeenCalled();
+  });
+
   it('lets developers skip login', async () => {
     await renderApp(null);
     fireEvent.click(await screen.findByRole('button', { name: 'Skip login (dev)' }));
