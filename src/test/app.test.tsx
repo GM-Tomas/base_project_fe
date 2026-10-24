@@ -122,7 +122,7 @@ describe('auth', () => {
   });
 
   it('recovers a password from a valid recovery link without adopting the session until submitted', async () => {
-    const payload = btoa(JSON.stringify({ email: 'ana@example.com', amr: [{ method: 'recovery' }] }))
+    const payload = btoa(JSON.stringify({ email: 'ana@example.com', amr: [{ method: 'otp', timestamp: 1792880570 }] }))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');

@@ -47,8 +47,9 @@ function setRecoveryLock(locked: boolean) {
   }
 }
 
-// Verify that a recovery link's JWT actually carries GoTrue's `amr: [{ method: "recovery" }]` claim before
-// showing the reset screen, so a regular password-login token disguised with `&type=recovery` is rejected.
+// Verify that a recovery link's JWT carries GoTrue's one-time recovery AMR claim ("otp" in GoTrue's
+// mfa_amr_claims table for /auth/v1/verify links, or "recovery") and not a regular "password" login,
+// so a password-login token disguised with `&type=recovery` is rejected before touching storage.
 export function parseRecoveryJwt(token: string): { valid: boolean; email: string | null } {
   const parts = token.split('.');
   if (parts.length !== 3) return { valid: false, email: null };
@@ -56,7 +57,10 @@ export function parseRecoveryJwt(token: string): { valid: boolean; email: string
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
     const payload = JSON.parse(atob(padded)) as { email?: unknown; amr?: Array<{ method?: string }> };
-    const isRecovery = Array.isArray(payload.amr) && payload.amr.some((entry) => entry?.method === 'recovery');
+    const isRecovery =
+      Array.isArray(payload.amr) &&
+      payload.amr.every((entry) => entry?.method !== 'password') &&
+      payload.amr.some((entry) => entry?.method === 'otp' || entry?.method === 'recovery');
     return { valid: isRecovery, email: typeof payload.email === 'string' ? payload.email : null };
   } catch {
     return { valid: false, email: null };
